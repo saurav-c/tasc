@@ -1,0 +1,39 @@
+syntax="proto3";
+
+import "google/protobuf/empty.proto";
+
+service Aftsi {
+    rpc StartTransaction(google.protobuf.Empty) returns (TransactionID) {}
+    rpc Read(ReadRequest) returns (TransactionResponse) {}
+    rpc Write(WriteRequest) returns (TransactionResponse) {}
+    rpc CommitTransaction(TransactionID) returns (TransactionResponse) {}
+    rpc AbortTransaction(TransactionID) returns (TransactionResponse) {}
+}
+
+message TransactionID {
+    string tid = 1;
+    TransactionError e = 2;
+}
+
+message TransactionResponse {
+    bytes value = 1;
+    TransactionError e = 2;
+}
+
+enum TransactionError {
+    SUCCESS = 0;
+    FAILURE = 1;
+}
+
+message ReadRequest {
+    string tid = 1;
+    string key = 2;
+    int64 opCounter = 3;
+}
+
+message WriteRequest {
+    string tid = 1;
+    string key = 2;
+    bytes value = 3;
+    int64 opCounter = 4;
+}
