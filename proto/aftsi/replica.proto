@@ -1,0 +1,29 @@
+syntax="proto3";
+
+service ReplicaAftSI {
+    rpc UpdateEntry(TransactionUpdate) returns (UpdateError) {}
+}
+
+enum UpdateError {
+    SUCCESS = 0;
+    FAILURE = 1;
+}
+
+message TransactionUpdate {
+    string tid = 1;
+    string begints = 2;
+    string endts = 3;
+    ReadSet readSet = 4;
+    map<string, CoWrittenSet> coWrittenSets = 5;
+    int8 status = 6;
+    int64 opCounter = 7;
+    map<string, bytes> writeBuffer = 8;
+}
+
+message ReadSet {
+    repeated string keys = 1;
+}
+
+message CoWrittenSet {
+    repeated string keys = 1;
+}

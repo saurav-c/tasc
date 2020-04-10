@@ -39,6 +39,10 @@ func (s *AftSIServer) AbortTransaction(context.Context, *pb.TransactionID) (*pb.
 	panic("implement me")
 }
 
+func (s *AftSIServer) CreateTransactionEntry(context.Context, *pb.NewTransactionEntry) (*empty.Empty, error) {
+	panic("implement me")
+}
+
 
 func main() {
 	lis, err := net.Listen("tcp", port)

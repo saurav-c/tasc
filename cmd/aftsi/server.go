@@ -9,7 +9,7 @@ type TransactionEntry struct {
   begin_ts      string
   end_ts        string
   readSet       []string
-  coWrittenSets [][]string
+  coWrittenSets map[string][]string
   status        int8
   opCounter     int64
 }

@@ -8,6 +8,14 @@ service AftSI {
     rpc Write(WriteRequest) returns (TransactionResponse) {}
     rpc CommitTransaction(TransactionID) returns (TransactionResponse) {}
     rpc AbortTransaction(TransactionID) returns (TransactionResponse) {}
+
+    // Internal API Calls
+    rpc CreateTransactionEntry(NewTransactionEntry) returns (google.protobuf.Empty) {}
+}
+
+message NewTransactionEntry {
+    string tid = 1;
+    string clientIP = 2;
 }
 
 message TransactionID {

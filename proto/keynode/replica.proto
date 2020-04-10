@@ -1,0 +1,29 @@
+syntax="proto3";
+
+import "google/protobuf/empty.proto";
+
+service ReplicaKey {
+    rpc updateKVI(KVIUpdate) returns (UpdateError) {}
+    rpc endTransaction(EndRequest) returns (UpdateError) {}
+}
+
+message KVIUpdate {
+    string tid = 1;
+    repeated string keys = 2;
+    string committs = 3;
+}
+
+message EndRequest {
+    string tid = 1;
+    Action action = 2;
+}
+
+enum Action {
+    COMMIT = 0;
+    ABORT = 1;
+}
+
+enum UpdateError {
+    SUCCESS = 0;
+    FAILURE = 1;
+}
