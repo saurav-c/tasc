@@ -2,7 +2,7 @@ syntax="proto3";
 
 import "google/protobuf/empty.proto";
 
-service Aftsi {
+service AftSI {
     rpc StartTransaction(google.protobuf.Empty) returns (TransactionID) {}
     rpc Read(ReadRequest) returns (TransactionResponse) {}
     rpc Write(WriteRequest) returns (TransactionResponse) {}
