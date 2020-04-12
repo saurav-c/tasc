@@ -34,7 +34,7 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 	tid := readReq.GetTid()
 	key := readReq.GetKey()
 	reqOpCounter := readReq.GetOpCounter()
-	
+
 	s.TransactionTableLock.RLock()
 	opCounter := s.TransactionTable[tid]
 	s.TransactionTableLock.RUnlock()
@@ -54,7 +54,7 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 		if val, ok := writeBuf[key]; ok {
 			s.WriteBufferLock.RUnlock()
 			return &pb.TransactionResponse{value: val, e: pb.TransactionError_SUCCESS}
-		}	
+		}
 	}
 	s.WriteBufferLock.RUnlock()
 
@@ -65,9 +65,9 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 	if val, ok := s.ReadCache[key]; ok {
 		s.ReadCacheLock.RUnlock()
 		return &pb.TransactionResponse{value: val, e: pb.TransactionError_SUCCESS}
-	} 
+	}
 	s.ReadCacheLock.RUnlock()
-	// Otherwise, read from storage layer 
+	// Otherwise, read from storage layer
 
 	// Make routing request to find Key Node IP. Use ZMQ to lookup key from Key Node
 
@@ -80,7 +80,7 @@ func (s *AftSIServer) Write(ctx context.Context, writeReq *pb.WriteRequest) (*pb
 	key := writeReq.GetKey()
 	val := writeReq.GetValue()
 	reqOpCounter := writeReq.GetOpCounter()
-	
+
 	s.TransactionTableLock.RLock()
 	opCounter := s.TransactionTable[tid]
 	s.TransactionTableLock.RUnlock()
@@ -97,6 +97,7 @@ func (s *AftSIServer) Write(ctx context.Context, writeReq *pb.WriteRequest) (*pb
 	s.WriteBufferLock.Lock()
 	s.WriteBuffer[tid][key] = val
 	s.WriteBufferLock.Unlock()
+	return &pb.TransactionResponse{value: nil, e: pb.TransactionError_SUCCESS}, nil
 }
 
 func (s *AftSIServer) CommitTransaction(ctx context.Context, tid *pb.TransactionID) (*pb.TransactionResponse, error) {
