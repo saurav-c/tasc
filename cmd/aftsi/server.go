@@ -2,9 +2,12 @@ package main
 
 import (
 	"fmt"
+	"github.com/pkg/errors"
+	pb "github.com/saurav-c/aftsi/proto/aftsi/api"
 	"hash"
 	"os"
 	"sync"
+	"time"
 
 	zmq "github.com/pebbe/zmq4"
 	storage "github.com/saurav-c/aftsi/lib/storage"
@@ -25,16 +28,27 @@ const (
 	PullTemplate = "tcp://*:%d"
 	PushTemplate = "tcp://%s:%d"
 
-	// Router port for mapping TID tp Txn Manager
+	// Txn Manager port for creating new entries
+	createTxnPortReq = 5001
+	createTxnPortResp = 5002
+
+	// Router port for mapping TID to Txn Manager
 	TxnRouterPullPort = 7000
 	TxnRouterPushPort = 8000
+
+	// Router port for mapping Key to Key Node
+	KeyRouterPullPort = 7001
+	KeyRouterPushPort = 8001
+
+	// Key:Version Encoding
+	keyVersionDelim = ':'
 )
 
 type TransactionEntry struct {
 	beginTS          string
 	endTS            string
 	readSet          map[string]string
-	coWrittenSets    map[string][]string
+	coWrittenSet    map[string]string
 	status           uint8
 	unverifiedProtos map[hash.Hash]*rpb.TransactionUpdate
 }
@@ -56,8 +70,11 @@ type AftSIServer struct {
 
 type ZMQInfo struct {
 	context         *zmq.Context
+	createTxnPuller *zmq.Socket
 	txnRouterPuller *zmq.Socket
 	txnRouterPusher *zmq.Socket
+	keyRouterPuller *zmq.Socket
+	keyRouterPusher *zmq.Socket
 }
 
 func createSocket(tp zmq.Type, context *zmq.Context, address string, bind bool) *zmq.Socket {
@@ -82,33 +99,88 @@ func createSocket(tp zmq.Type, context *zmq.Context, address string, bind bool) 
 }
 
 func pingTxnRouter(zmqInfo *ZMQInfo, tid string) (string, error) {
-	req := &rtr.TxnMngrRequest{
+	req := &rtr.TxnRouterReq{
 		Tid: tid,
 	}
 	data, _ := proto.Marshal(req)
 	zmqInfo.txnRouterPusher.SendBytes(data, zmq.DONTWAIT)
 	data, _ = zmqInfo.txnRouterPuller.RecvBytes(0)
-	resp := &rtr.TxnMngrResponse{}
+	resp := &rtr.RouterResponse{}
 	err := proto.Unmarshal(data, resp)
 	if err != nil {
 		return "", err
 	}
-	return resp.Ip, nil
+	if resp.GetError() == rtr.RouterError_FAILURE {
+		return resp.GetIp(), errors.New("Transaction router error")
+	}
+	return resp.GetIp(), nil
 }
 
-func NewAftSIServer(routerIP string) (*AftSIServer, int, error) {
+func pingKeyRouter(info *ZMQInfo, key string) (string, error) {
+	req := &rtr.KeyRouterReq{
+		Key: key,
+	}
+	data, _ := proto.Marshal(req)
+	info.keyRouterPusher.SendBytes(data, zmq.DONTWAIT)
+	data, _ = info.keyRouterPuller.RecvBytes(0)
+	resp := &rtr.RouterResponse{}
+	err := proto.Unmarshal(data, resp)
+	if err != nil {
+		return "", err
+	}
+	if resp.GetError() == rtr.RouterError_FAILURE {
+		return resp.GetIp(), errors.New("Key router error")
+	}
+	return resp.GetIp(), nil
+}
+
+// Listens for incoming requests via ZMQ
+func txnManagerListen(server *AftSIServer) {
+	// Create a new poller to wait for new updates
+	poller := zmq.NewPoller()
+
+	poller.Add(server.zmqInfo.createTxnPuller, zmq.POLLIN)
+
+	for true {
+		sockets, _ := poller.Poll(10 * time.Millisecond)
+
+		for _, socket := range sockets {
+			switch s := socket.Socket; s {
+			case server.zmqInfo.createTxnPuller:
+				{
+					req := &pb.CreateTxnEntry{}
+					data, _ := server.zmqInfo.createTxnPuller.RecvBytes(zmq.DONTWAIT)
+					proto.Unmarshal(data, req)
+					go server.CreateTransactionEntry(req.GetTid(), req.GetTxnManagerIP())
+				}
+			}
+		}
+	}
+}
+
+func NewAftSIServer(txnRouterIP string, keyRouterIP string) (*AftSIServer, int, error) {
 	zctx, err := zmq.NewContext()
 	if err != nil {
 		return nil, 0, err
 	}
 
+	// Setup Txn Manager ZMQ sockets
+	createTxnPuller := createSocket(zmq.PULL, zctx, fmt.Sprintf(PullTemplate, createTxnPortReq), true)
+
+	// Setup routing ZMQ sockets
 	txnRouterPuller := createSocket(zmq.PULL, zctx, fmt.Sprintf(PullTemplate, TxnRouterPullPort), true)
-	txnRouterPusher := createSocket(zmq.PUSH, zctx, fmt.Sprintf(PushTemplate, routerIP, TxnRouterPushPort), false)
+	txnRouterPusher := createSocket(zmq.PUSH, zctx, fmt.Sprintf(PushTemplate, txnRouterIP, TxnRouterPushPort), false)
+
+	keyRouterPuller := createSocket(zmq.PULL, zctx, fmt.Sprintf(PullTemplate, KeyRouterPullPort), true)
+	keyRouterPusher := createSocket(zmq.PUSH, zctx, fmt.Sprintf(PushTemplate, txnRouterIP, KeyRouterPushPort), false)
 
 	zmqInfo := ZMQInfo{
 		context:         zctx,
+		createTxnPuller: createTxnPuller,
 		txnRouterPuller: txnRouterPuller,
 		txnRouterPusher: txnRouterPusher,
+		keyRouterPuller: keyRouterPuller,
+		keyRouterPusher: keyRouterPusher,
 	}
 
 	return &AftSIServer{
@@ -126,34 +198,3 @@ func NewAftSIServer(routerIP string) (*AftSIServer, int, error) {
 		zmqInfo:              zmqInfo,
 	}, 0, nil
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

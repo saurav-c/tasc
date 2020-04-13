@@ -1,9 +1,20 @@
 syntax="proto3";
 
-message TxnMngrRequest {
+message TxnRouterReq {
     string tid = 1;
 }
 
-message TxnMngrResponse {
+message RouterResponse {
     string ip = 1;
+    RouterError error = 2;
 }
+
+message KeyRouterReq {
+    string key = 1;
+}
+
+enum RouterError {
+    SUCCESS = 0;
+    FAILURE = 1;
+}
+

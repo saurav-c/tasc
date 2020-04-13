@@ -2,18 +2,17 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"hash"
+	zmq "github.com/pebbe/zmq4"
 	"log"
-	"net"
 	"math/rand"
+	"net"
 	"strconv"
 	"sync"
 	"time"
 
 	"github.com/golang/protobuf/ptypes/empty"
-	// "github.com/golang/protobuf/proto"
+	"github.com/golang/protobuf/proto"
 	pb "github.com/saurav-c/aftsi/proto/aftsi/api"
 
 	// rpb "github.com/saurav-c/aftsi/proto/aftsi/replica"
@@ -40,22 +39,26 @@ func (s *AftSIServer) StartTransaction(ctx context.Context, emp *empty.Empty) (*
 		}, nil
 	}
 
-	// Use GRPC to make internal request to this TID's Txn Manager
-	conn, err := grpc.Dial(txnManagerIP + ":" + TxnServerPort)
-	if err != nil {
-		return &pb.TransactionID{
-			Tid: "",
-			E:   pb.TransactionError_FAILURE,
-		}, nil
-	}
-	defer conn.Close()
+	// Use ZMQ to make internal request to this TID's Txn Manager
+	createTxnPusher := createSocket(zmq.PUSH, s.zmqInfo.context, fmt.Sprintf(PushTemplate, txnManagerIP, createTxnPortReq), false)
+	createNewTxnResponse := createSocket(zmq.PULL, s.zmqInfo.context, fmt.Sprintf(PullTemplate, createTxnPortResp), true)
+	defer createTxnPusher.Close()
+	defer createNewTxnResponse.Close()
 
-	client := pb.NewAftSIClient(conn)
-	_, err = client.CreateTransactionEntry(context.Background(), &pb.TransactionID{Tid: tid,})
-	if err != nil {
+	txnEntryReq := &pb.CreateTxnEntry{
+		Tid:          tid,
+		TxnManagerIP: s.IPAddress,
+	}
+	data, _ := proto.Marshal(txnEntryReq)
+	createTxnPusher.SendBytes(data, zmq.DONTWAIT)
+
+	// Wait for response
+	resp := &pb.TransactionResponse{}
+	data, _ = createNewTxnResponse.RecvBytes(0)
+	err = proto.Unmarshal(data, resp)
+	if err != nil || resp.GetE() != pb.TransactionError_SUCCESS {
 		return &pb.TransactionID{
-			Tid: "",
-			E:   pb.TransactionError_FAILURE,
+			E: pb.TransactionError_FAILURE,
 		}, nil
 	}
 
@@ -99,7 +102,7 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 	readSet := s.TransactionTable[tid].readSet
 	s.TransactionTableLock[tid].RUnlock()
 	versionedKey, ok := readSet[key]
-	if ok { 
+	if ok {
 		// Fetch correct version from ReadSet, check for version in ReadCache
 		s.ReadCacheLock.RLock()
 		if val, ok := s.ReadCache[versionedKey]; ok {
@@ -119,7 +122,7 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 			randInt := rand.Intn(len(s.ReadCache))
 			key := ""
 			for key = range s.ReadCache {
-				if (randInt == 0) {
+				if randInt == 0 {
 					break
 				}
 				randInt -= 1
@@ -135,9 +138,28 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 		}, nil
 	}
 
-	// Fetch Correct Version of Key from KeyNode and read from Storage
+	// Find lower bound for key version in order to maintain an atomic read set
 	// TODO
+	// Go thru each cowritten set and check for this key, find max version and send it to KN
+	s.TransactionTableLock[tid].RLock()
+	coWrittenSet := s.TransactionTable[tid].coWrittenSet
+	s.TransactionTableLock[tid].RUnlock()
+	keyLowerBound := ""
+	if version, ok := coWrittenSet[key]; ok {
+		keyLowerBound = version
+	}
 
+	// Fetch Correct Version of Key from KeyNode and read from Storage
+	// Get Key Node for this key
+	keyIP, err := pingKeyRouter(&s.zmqInfo, key)
+	if err != nil {
+		return &pb.TransactionResponse{
+			Value: nil,
+			E:     pb.TransactionError_FAILURE,
+		}, nil
+	}
+	// Use ZMQ to make a read request to the Key Node at keyIP
+	// TODO
 
 	var val []byte
 	s.ReadCacheLock.Lock()
@@ -145,7 +167,7 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 		randInt := rand.Intn(len(s.ReadCache))
 		key := ""
 		for key = range s.ReadCache {
-			if (randInt == 0) {
+			if randInt == 0 {
 				break
 			}
 			randInt -= 1
@@ -218,21 +240,27 @@ func (s *AftSIServer) AbortTransaction(ctx context.Context, req *pb.TransactionI
 	}
 }
 
-func (s *AftSIServer) CreateTransactionEntry(ctx context.Context, req *pb.TransactionID) (*empty.Empty, error) {
-	tid := req.GetTid()
+func (s *AftSIServer) CreateTransactionEntry(tid string, txnManagerIP string) () {
 
 	s.TransactionTable[tid] = &TransactionEntry{
-		beginTS: time.Now().String(),
-		readSet: make(map[string]string),
-		coWrittenSets: make(map[string][]string),
-		status: TxnInProgress,
+		beginTS:      time.Now().String(),
+		readSet:      make(map[string]string),
+		coWrittenSet: make(map[string]string),
+		status:       TxnInProgress,
 	}
 	s.WriteBuffer[tid] = make(map[string][]byte)
 
 	s.TransactionTableLock[tid] = &sync.RWMutex{}
 	s.WriteBufferLock[tid] = &sync.RWMutex{}
 
-	return &empty.Empty{}, nil
+	resp := &pb.TransactionResponse{
+		E: pb.TransactionError_SUCCESS,
+	}
+	data, _ := proto.Marshal(resp)
+
+	socket := createSocket(zmq.PUSH, s.zmqInfo.context, fmt.Sprintf(PushTemplate, txnManagerIP, createTxnPortResp), false)
+	defer socket.Close()
+	socket.SendBytes(data, 0)
 }
 
 func main() {
@@ -243,13 +271,17 @@ func main() {
 
 	server := grpc.NewServer()
 	// TODO: Lookup router IP Address
-	router := ""
+	txnRouter := ""
+	keyRouter := ""
 
-	aftsi, _, err := NewAftSIServer(router)
+	aftsi, _, err := NewAftSIServer(txnRouter, keyRouter)
 	if err != nil {
 		log.Fatal("Could not start server on port %s: %v\n", TxnServerPort, err)
 	}
 	pb.RegisterAftSIServer(server, aftsi)
+
+	// Start listening for updates
+	go txnManagerListen(aftsi)
 
 	fmt.Printf("Starting server at %s.\n", time.Now().String())
 	if err = server.Serve(lis); err != nil {
