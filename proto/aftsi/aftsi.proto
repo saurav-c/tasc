@@ -13,11 +13,6 @@ service AftSI {
     rpc CreateTransactionEntry(NewTransactionEntry) returns (google.protobuf.Empty) {}
 }
 
-message NewTransactionEntry {
-    string tid = 1;
-    string clientIP = 2;
-}
-
 message TransactionID {
     string tid = 1;
     TransactionError e = 2;
@@ -36,12 +31,10 @@ enum TransactionError {
 message ReadRequest {
     string tid = 1;
     string key = 2;
-    int64 opCounter = 3;
 }
 
 message WriteRequest {
     string tid = 1;
     string key = 2;
     bytes value = 3;
-    int64 opCounter = 4;
 }
