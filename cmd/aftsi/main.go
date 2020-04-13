@@ -243,7 +243,7 @@ func (s *AftSIServer) AbortTransaction(ctx context.Context, req *pb.TransactionI
 func (s *AftSIServer) CreateTransactionEntry(tid string, txnManagerIP string) () {
 
 	s.TransactionTable[tid] = &TransactionEntry{
-		beginTS:      time.Now().String(),
+		beginTS:      strconv.FormatInt(time.Now().UnixNano(), 10),
 		readSet:      make(map[string]string),
 		coWrittenSet: make(map[string]string),
 		status:       TxnInProgress,
@@ -260,7 +260,7 @@ func (s *AftSIServer) CreateTransactionEntry(tid string, txnManagerIP string) ()
 
 	socket := createSocket(zmq.PUSH, s.zmqInfo.context, fmt.Sprintf(PushTemplate, txnManagerIP, createTxnPortResp), false)
 	defer socket.Close()
-	socket.SendBytes(data, 0)
+	socket.SendBytes(data, zmq.DONTWAIT)
 }
 
 func main() {
