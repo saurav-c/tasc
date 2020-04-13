@@ -10,7 +10,7 @@ service AftSI {
     rpc AbortTransaction(TransactionID) returns (TransactionResponse) {}
 
     // Internal API Calls
-    rpc CreateTransactionEntry(NewTransactionEntry) returns (google.protobuf.Empty) {}
+    rpc CreateTransactionEntry(TransactionID) returns (google.protobuf.Empty) {}
 }
 
 message TransactionID {

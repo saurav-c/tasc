@@ -4,13 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"hash"
 	"log"
 	"net"
 	"math/rand"
+	"strconv"
+	"sync"
 	"time"
 
 	"github.com/golang/protobuf/ptypes/empty"
-	"github.com/golang/protobuf/proto"
+	// "github.com/golang/protobuf/proto"
 	pb "github.com/saurav-c/aftsi/proto/aftsi/api"
 
 	// rpb "github.com/saurav-c/aftsi/proto/aftsi/replica"
@@ -24,30 +27,42 @@ const (
 func (s *AftSIServer) StartTransaction(ctx context.Context, emp *empty.Empty) (*pb.TransactionID, error) {
 	// Generate TID
 	s.counterMutex.Lock()
-	tid := s.serverID + strconv.Iota(s.counter)
+	tid := s.serverID + strconv.FormatUint(s.counter, 10)
 	s.counter += 1
 	s.counterMutex.Unlock()
 
 	// Ask router for the IP address of master for this TID
-	txnManagerIP, err := txnMa(s.zmqInfo, tid)
+	txnManagerIP, err := pingTxnRouter(&s.zmqInfo, tid)
 	if err != nil {
-		return &pb.TransactionID{tid: "", e: pb.TransactionError_FAILURE}, nil
+		return &pb.TransactionID{
+			Tid: "",
+			E:   pb.TransactionError_FAILURE,
+		}, nil
 	}
 
 	// Use GRPC to make internal request to this TID's Txn Manager
 	conn, err := grpc.Dial(txnManagerIP + ":" + TxnServerPort)
 	if err != nil {
-		return &pb.TransactionID{tid: "", e: pb.TransactionError_FAILURE}, nil
+		return &pb.TransactionID{
+			Tid: "",
+			E:   pb.TransactionError_FAILURE,
+		}, nil
 	}
 	defer conn.Close()
 
 	client := pb.NewAftSIClient(conn)
-	_, err := client.CreateTransactionEntry(context.Context, &pb.TransactionID{tid: tid})
+	_, err = client.CreateTransactionEntry(context.Background(), &pb.TransactionID{Tid: tid,})
 	if err != nil {
-		return &pb.TransactionID{tid: "", e: pb.TransactionError_FAILURE}, nil
+		return &pb.TransactionID{
+			Tid: "",
+			E:   pb.TransactionError_FAILURE,
+		}, nil
 	}
 
-	return &pb.TransactionID{tid: tid, e: pb.TransactionError_SUCCESS}, nil
+	return &pb.TransactionID{
+		Tid: tid,
+		E:   pb.TransactionError_SUCCESS,
+	}, nil
 }
 
 // TODO: Fetch from read cache and update read cache
@@ -55,82 +70,95 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 	// Parse read request fields
 	tid := readReq.GetTid()
 	key := readReq.GetKey()
-	reqOpCounter := readReq.GetOpCounter()
 
-	s.TransactionTableLock.RLock()
-	opCounter := s.TransactionTable[tid]
-	s.TransactionTableLock.RUnlock()
-
-	if opCounter != reqOpCounter {
-		// Need to double check
-		_, err := s.AbortTransaction(ctx, &pb.TransactionID{id: tid})
-		if err != nil {
-			// internal error processing
-		}
-		return nil, errors.New("Transaction had to be aborted")
+	// Verify transaction status
+	s.TransactionTableLock[tid].RLock()
+	if entry, ok := s.TransactionTable[tid]; !ok || entry.status != TxnInProgress {
+		s.TransactionTableLock[tid].RUnlock()
+		return &pb.TransactionResponse{
+			E: pb.TransactionError_FAILURE,
+		}, nil
 	}
+	s.TransactionTableLock[tid].RUnlock()
 
 	// Reading from the Write Buffer
-	s.WriteBufferLock.RLock()
+	s.WriteBufferLock[tid].RLock()
 	if writeBuf, ok := s.WriteBuffer[tid]; ok {
 		if val, ok := writeBuf[key]; ok {
-			s.WriteBufferLock.RUnlock()
-			return nil, &pb.TransactionResponse{value: val, e: pb.TransactionError_SUCCESS}
+			s.WriteBufferLock[tid].RUnlock()
+			return &pb.TransactionResponse{
+				Value: val,
+				E:     pb.TransactionError_SUCCESS,
+			}, nil
 		}
 	}
-	s.WriteBufferLock.RUnlock()
+	s.WriteBufferLock[tid].RUnlock()
 
 	// Reading from the ReadSet
-	s.TransactionTableLock[tid].Lock()
+	s.TransactionTableLock[tid].RLock()
 	readSet := s.TransactionTable[tid].readSet
-	s.TransactionTable[tid].Unlock()
+	s.TransactionTableLock[tid].RUnlock()
 	versionedKey, ok := readSet[key]
 	if ok { 
-		// Fetch correct version from ReadSet
+		// Fetch correct version from ReadSet, check for version in ReadCache
 		s.ReadCacheLock.RLock()
 		if val, ok := s.ReadCache[versionedKey]; ok {
 			s.ReadCacheLock.RUnlock()
-			return nil, &pb.TransactionResponse{value: val, e: pb.TransactionError_SUCCESS}
+			return &pb.TransactionResponse{
+				Value: val,
+				E:     pb.TransactionError_SUCCESS,
+			}, nil
 		}
 		s.ReadCacheLock.RUnlock()
 		// Fetch Value From Storage (stored in val)
+		// TODO
+		var val []byte
+
 		s.ReadCacheLock.Lock()
-		if len(s.ReadCache) == main.ReadCacheLimit {
+		if len(s.ReadCache) == ReadCacheLimit {
 			randInt := rand.Intn(len(s.ReadCache))
-			randKey := ""
-			for key := range sammy {
-				randKey = key
+			key := ""
+			for key = range s.ReadCache {
 				if (randInt == 0) {
 					break
 				}
 				randInt -= 1
 			}
-			del(s.ReadCache, randKey)
+			delete(s.ReadCache, key)
 		}
-		s.ReadCacheLock.Unlock()
 		s.ReadCache[versionedKey] = val
+		s.ReadCacheLock.Unlock()
+
+		return &pb.TransactionResponse{
+			Value: val,
+			E:     pb.TransactionError_SUCCESS,
+		}, nil
 	}
 
 	// Fetch Correct Version of Key from KeyNode and read from Storage
+	// TODO
+
+
+	var val []byte
 	s.ReadCacheLock.Lock()
-	if len(s.ReadCache) == main.ReadCacheLimit {
+	if len(s.ReadCache) == ReadCacheLimit {
 		randInt := rand.Intn(len(s.ReadCache))
-		randKey := ""
-		for key := range sammy {
-			randKey = key
+		key := ""
+		for key = range s.ReadCache {
 			if (randInt == 0) {
 				break
 			}
 			randInt -= 1
 		}
-		del(s.ReadCache, randKey)
+		delete(s.ReadCache, key)
 	}
-	s.ReadCacheLock.Unlock()
 	s.ReadCache[versionedKey] = val
+	s.ReadCacheLock.Unlock()
 
-	// Make routing request to find Key Node IP. Use ZMQ to lookup key from Key Node
-
-	return nil, &pb.TransactionResponse{value: nil, e: pb.TransactionError_SUCCESS}
+	return &pb.TransactionResponse{
+		Value: val,
+		E:     pb.TransactionError_SUCCESS,
+	}, nil
 }
 
 func (s *AftSIServer) Write(ctx context.Context, writeReq *pb.WriteRequest) (*pb.TransactionResponse, error) {
@@ -139,84 +167,92 @@ func (s *AftSIServer) Write(ctx context.Context, writeReq *pb.WriteRequest) (*pb
 	key := writeReq.GetKey()
 	val := writeReq.GetValue()
 
+	// Verify transaction status
+	s.TransactionTableLock[tid].RLock()
+	if entry, ok := s.TransactionTable[tid]; !ok || entry.status != TxnInProgress {
+		s.TransactionTableLock[tid].RUnlock()
+		return &pb.TransactionResponse{
+			E: pb.TransactionError_FAILURE,
+		}, nil
+	}
+	s.TransactionTableLock[tid].RUnlock()
+
 	s.WriteBufferLock[tid].Lock()
 	s.WriteBuffer[tid][key] = val
 	s.WriteBufferLock[tid].Unlock()
 
-	// Send this to the Child Nodes
+	// Send update to replicas
+	// TODO
 
-	return &pb.TransactionResponse{value: nil, e: pb.TransactionError_SUCCESS}, nil
+	return &pb.TransactionResponse{
+		E: pb.TransactionError_SUCCESS,
+	}, nil
 }
 
-func (s *AftSIServer) CommitTransaction(ctx context.Context, tid *pb.TransactionID) (*pb.TransactionResponse, error) {
+func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.TransactionID) (*pb.TransactionResponse, error) {
 	// send internal validate(TID, writeSet, Begin-TS, Commit-TS) to all keyNodes
 	panic("implement me")
 }
 
-func (s *AftSIServer) AbortTransaction(ctx context.Context, tid *pb.TransactionID) (*pb.TransactionResponse, error) {
-	pbtid := tid.GetTid()
-	tidLock, ok := s.TransactionTableLock[pbtid]
-	if ok {
+func (s *AftSIServer) AbortTransaction(ctx context.Context, req *pb.TransactionID) (*pb.TransactionResponse, error) {
+	tid := req.GetTid()
+	if tidLock, ok := s.TransactionTableLock[tid]; ok {
 		tidLock.Lock()
-		_, ok = s.TransactionTable[pbtid];
-		if ok {
-				delete(s.TransactionTable, pbtid);
+		defer tidLock.Unlock()
+		if entry, ok := s.TransactionTable[tid]; ok && entry.status == TxnInProgress {
+			entry.status = TxnAborted
+			return &pb.TransactionResponse{
+				E: pb.TransactionError_SUCCESS,
+			}, nil
+		} else {
+			// Transaction Entry does not exist or Txn was not In Progress
+			return &pb.TransactionResponse{
+				E: pb.TransactionError_FAILURE,
+			}, nil
 		}
-		else {
-			return &pb.TransactionResponse{value: nil, e: pb.TransactionError_FAILURE}, errors.New("Couldn't find entry in transaction table.")
-		}
-		tidLock.Unlock()
-		delete(s.TransactionTableLock, pbtid)
+	} else {
+		// Transaction does not exist
+		return &pb.TransactionResponse{
+			E: pb.TransactionError_FAILURE,
+		}, nil
 	}
-	else {
-		return &pb.TransactionResponse{value: nil, e: pb.TransactionError_FAILURE}, errors.New("Couldn't find lock for transaction table entry.")
-	}
-	writeBufferLock, ok := s.WriteBufferLock[pbtid]
-	if ok {
-		s.writeBufferLock.Lock()
-		_, ok = s.WriteBuffer[pbtid];
-		if ok {
-				delete(s.WriteBuffer, pbtid);
-		}
-		else {
-			return &pb.TransactionResponse{value: nil, e: pb.TransactionError_FAILURE}, errors.New("Couldn't find entry in write buffer.")
-		}
-		s.writeBufferLock.Unlock()
-		delete(s.writeBufferLock, pbtid)
-	}
-	else {
-		return &pb.TransactionResponse{value: nil, e: pb.TransactionError_FAILURE}, errors.New("Couldn't find lock for write buffer entry.")
-	}
-	return &pb.TransactionResponse{value: nil, e: pb.TransactionError_SUCCESS}, nil
 }
 
-func (s *AftSIServer) CreateTransactionEntry(ctx context.Context, entry *pb.NewTransactionEntry) (*empty.Empty, error) {
-	clientIP := entry.GetClientIP()
-	tid := entry.GetTid()
-	s.TransactionTable[tid] = TransactionEntry{BeginTS: time.Now().String(),coWrittenSets: make(map[string][]string), unverifiedProtos: make(map[hash.Hash])}
-	s.WriteBuffer[tid] = make(map[string]byte)
+func (s *AftSIServer) CreateTransactionEntry(ctx context.Context, req *pb.TransactionID) (*empty.Empty, error) {
+	tid := req.GetTid()
 
-	// Send Response to Client 
+	s.TransactionTable[tid] = &TransactionEntry{
+		beginTS: time.Now().String(),
+		readSet: make(map[string]string),
+		coWrittenSets: make(map[string][]string),
+		status: TxnInProgress,
+	}
+	s.WriteBuffer[tid] = make(map[string][]byte)
 
-	return empty.Empty{}, nil
+	s.TransactionTableLock[tid] = &sync.RWMutex{}
+	s.WriteBufferLock[tid] = &sync.RWMutex{}
+
+	return &empty.Empty{}, nil
 }
 
 func main() {
 	lis, err := net.Listen("tcp", TxnServerPort)
 	if err != nil {
-		log.Fatal("Could not start server on port %s: %v\n", port, err)
+		log.Fatal("Could not start server on port %s: %v\n", TxnServerPort, err)
 	}
 
-	// TODO: Figure out actual AFTSI server setup calls
 	server := grpc.NewServer()
-	aftsi, config, err := NewAftSIServer()
+	// TODO: Lookup router IP Address
+	router := ""
+
+	aftsi, _, err := NewAftSIServer(router)
 	if err != nil {
-		log.Fatal("Could not start server on port %s: %v\n", port, err)
+		log.Fatal("Could not start server on port %s: %v\n", TxnServerPort, err)
 	}
 	pb.RegisterAftSIServer(server, aftsi)
 
 	fmt.Printf("Starting server at %s.\n", time.Now().String())
 	if err = server.Serve(lis); err != nil {
-		log.Fatal("Could not start server on port %s: %v\n", port, err)
+		log.Fatal("Could not start server on port %s: %v\n", TxnServerPort, err)
 	}
 }

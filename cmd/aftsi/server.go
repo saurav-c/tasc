@@ -14,6 +14,12 @@ import (
 )
 
 const (
+	// Transaction State Status Codes
+	TxnInProgress = 0
+	TxnInValidation = 1
+	TxnCommitted = 2
+	TxnAborted = 3
+
 	ReadCacheLimit int = 1000
 
 	PullTemplate = "tcp://*:%d"
@@ -29,7 +35,7 @@ type TransactionEntry struct {
 	endTS            string
 	readSet          map[string]string
 	coWrittenSets    map[string][]string
-	status           uint32
+	status           uint8
 	unverifiedProtos map[hash.Hash]*rpb.TransactionUpdate
 }
 
@@ -41,10 +47,10 @@ type AftSIServer struct {
 	StorageManager       storage.StorageManager
 	TransactionTable     map[string]*TransactionEntry
 	TransactionTableLock map[string]*sync.RWMutex
-	WriteBuffer          map[string]map[string]byte
+	WriteBuffer          map[string]map[string][]byte
 	WriteBufferLock      map[string]*sync.RWMutex
-	ReadCache            map[string]byte
-	ReadCacheLock        *sync.Mutex
+	ReadCache            map[string][]byte
+	ReadCacheLock        *sync.RWMutex
 	zmqInfo              ZMQInfo
 }
 
@@ -76,14 +82,16 @@ func createSocket(tp zmq.Type, context *zmq.Context, address string, bind bool) 
 }
 
 func pingTxnRouter(zmqInfo *ZMQInfo, tid string) (string, error) {
-	req := &rtr.TxnMngrRequest{tid: tid}
+	req := &rtr.TxnMngrRequest{
+		Tid: tid,
+	}
 	data, _ := proto.Marshal(req)
-	zmqInfo.txnRouterPusher.SendBytes(data)
-	data, _ = zmqInfo.txnRouterPuller.RecvBytes()
+	zmqInfo.txnRouterPusher.SendBytes(data, zmq.DONTWAIT)
+	data, _ = zmqInfo.txnRouterPuller.RecvBytes(0)
 	resp := &rtr.TxnMngrResponse{}
 	err := proto.Unmarshal(data, resp)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	return resp.Ip, nil
 }
@@ -91,26 +99,32 @@ func pingTxnRouter(zmqInfo *ZMQInfo, tid string) (string, error) {
 func NewAftSIServer(routerIP string) (*AftSIServer, int, error) {
 	zctx, err := zmq.NewContext()
 	if err != nil {
-		return nil, nil, err
+		return nil, 0, err
 	}
 
 	txnRouterPuller := createSocket(zmq.PULL, zctx, fmt.Sprintf(PullTemplate, TxnRouterPullPort), true)
 	txnRouterPusher := createSocket(zmq.PUSH, zctx, fmt.Sprintf(PushTemplate, routerIP, TxnRouterPushPort), false)
 
-	zmqInfo = ZMQInfo{context: zctx, txnRouterPuller: txnRouterPuller, txnRouterPuller: txnRouterPusher}
-	
-	return AftSIServer {
-		counter: 0, 
-		IPAddress: "", 
-		serverID: "", 
-		StorageManager: nil, 
-		TransactionTable: make(map[string]*TransactionEntry),
-		TransactionTableLock: make(map[string]*sync.RWMutex),
-		WriteBuffer: make(map[string]map[string]byte),
-		WriteBufferLock: make(map[string]*sync.RWMutex),
-		ReadCache: make(map[string]byte),
-		zmqInfo: zmqInfo
+	zmqInfo := ZMQInfo{
+		context:         zctx,
+		txnRouterPuller: txnRouterPuller,
+		txnRouterPusher: txnRouterPusher,
 	}
+
+	return &AftSIServer{
+		counter:              0,
+		counterMutex:         &sync.Mutex{},
+		IPAddress:            "",
+		serverID:             "",
+		StorageManager:       nil,
+		TransactionTable:     make(map[string]*TransactionEntry),
+		TransactionTableLock: make(map[string]*sync.RWMutex),
+		WriteBuffer:          make(map[string]map[string][]byte),
+		WriteBufferLock:      make(map[string]*sync.RWMutex),
+		ReadCache:            make(map[string][]byte),
+		ReadCacheLock:        &sync.RWMutex{},
+		zmqInfo:              zmqInfo,
+	}, 0, nil
 }
 
 
