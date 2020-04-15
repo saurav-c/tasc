@@ -213,6 +213,7 @@ func (s *AftSIServer) Write(ctx context.Context, writeReq *pb.WriteRequest) (*pb
 
 func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.TransactionID) (*pb.TransactionResponse, error) {
 	// send internal validate(TID, writeSet, Begin-TS, Commit-TS) to all keyNodes
+
 	panic("implement me")
 }
 

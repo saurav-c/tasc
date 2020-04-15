@@ -2,6 +2,23 @@ package main
 
 import "sync"
 
+const (
+	ReadCacheLimit = 1000
+)
+
+func intersection (a []string, b []string) (bool) {
+	var hash map[string]bool
+	for _, elem := range a {
+		hash[elem] = true
+	}
+	for _, elem := range b {
+		if hash[elem] {
+			return true
+		}
+	}
+	return false
+}
+
 func InsertParticularIndex(list []*keyVersion, kv *keyVersion) []*keyVersion {
 	if len(list) == 0 {
 		return []*keyVersion{kv}
@@ -48,7 +65,6 @@ type KeyNode struct {
 	pendingKeyVersionIndexLock  map[string]*sync.RWMutex
 	pendingTxnCache             map[string]*pendingTxn
 	committedTxnCache           map[string][]string
-	commitedTxnCacheLock        map[string]*sync.RWMutex
 	readCache                   map[string][]byte
 	readCacheLock               *sync.RWMutex
 }
@@ -61,7 +77,6 @@ func NewKeyNode(KeyNodeIP string) (*KeyNode, int, error){
 		pendingKeyVersionIndex:     make(map[string][]*keyVersion),
 		pendingKeyVersionIndexLock: make(map[string]*sync.RWMutex),
 		committedTxnCache:          make(map[string][]string),
-		commitedTxnCacheLock:       make(map[string]*sync.RWMutex),
 		readCache:                  make(map[string][]byte),
 		readCacheLock:              &sync.RWMutex{},
 	}, 0, nil

@@ -14,10 +14,6 @@ type StorageManager interface {
 	// Commit all of the changes made in this transaction to the storage engine.
 	CommitTransaction(transaction *pb.TransactionRecord) error
 
-	// Abort all of the changes made in this transaction, so none of them will be
-	// persisted in the storage engine.
-	AbortTransaction(transaction *pb.TransactionRecord) error
-
 	// Retrieve a transaction record from the storage engine.
 	GetTransaction(transactionKey string) (*pb.TransactionRecord, error)
 
