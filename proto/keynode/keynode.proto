@@ -3,7 +3,6 @@ syntax="proto3";
 import "google/protobuf/empty.proto";
 
 service KeyNode {
-    rpc readKey (KeyRequest) returns (KeyResponse) {}
     rpc validate (ValidateRequest) returns (TransactionState) {}
     rpc endTransaction (TransactionState) returns (google.protobuf.Empty) {}
 }

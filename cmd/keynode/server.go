@@ -33,9 +33,14 @@ type keyVersion struct {
 	tid      string
 	CommitTS string
 }
+
 type KeyNode struct {
 	keyVersionIndex        map[string][]*keyVersion
 	pendingKeyVersionIndex map[string][]*keyVersion
-	commitedTxnCache       map[string][]string
+	committedTxnCache      map[string][]string
 	readCache              map[string]byte
+}
+
+func NewKeyNode(KeyNodeIP string) {
+	panic("implement me")
 }
