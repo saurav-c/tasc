@@ -1,39 +1,33 @@
 syntax="proto3";
 
-import "google/protobuf/empty.proto";
-
-service KeyNode {
-    rpc validate (ValidateRequest) returns (TransactionState) {}
-    rpc endTransaction (TransactionState) returns (google.protobuf.Empty) {}
-}
-
 message KeyRequest {
     string tid = 1;
     string key = 2;
     repeated string readSet = 3;
-    string begints = 4;
+    string beginTS = 4;
     string lowerBound = 5;
+    string txnMngrIP = 6;
 }
 
 message KeyResponse {
     string tid = 1;
-    string keyversion = 2;
+    string keyVersion = 2;
     bytes value = 3;
     repeated string coWrittenSet = 4;
 }
 
 message ValidateRequest {
     string tid = 1;
-    string begints = 2;
-    string committs = 3;
+    string beginTS = 2;
+    string commitTS = 3;
     repeated string keys = 4;
-    repeated string writeset = 5;
 }
 
-message TransactionState {
+message FinishRequest {
     string tid = 1;
     TransactionAction s = 2;
-    map<string, bytes> writeBuffer = 3;
+    repeated string writeSet = 3;
+    repeated bytes writeBuffer = 4;
 }
 
 enum TransactionAction {
