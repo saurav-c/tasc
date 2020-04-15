@@ -49,7 +49,7 @@ type TransactionEntry struct {
 	beginTS          string
 	endTS            string
 	readSet          map[string]string
-	coWrittenSet    map[string]string
+	coWrittenSet     map[string]string
 	status           uint8
 	unverifiedProtos map[hash.Hash]*rpb.TransactionUpdate
 }
@@ -167,7 +167,7 @@ func NewAftSIServer(txnRouterIP string, keyRouterIP string, storageInstance stri
 
 	// TODO: Integrate this into config manager
 	// Need to change parameters to fit around needs better
-	var  storage.StorageManager
+	var storageManager storage.StorageManager
 	switch storageInstance {
 	case "s3":
 		storageManager = storage.NewS3StorageManager("vsreekanti")

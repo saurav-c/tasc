@@ -83,6 +83,11 @@ func (k *KeyNode) readKey (tid string, key string, readList []string, begints st
 					k.readCacheLock.RUnlock()
 					return tid, keyVersionName, val, txnWriteSet, nil
 				}
+				k.readCacheLock.RUnlock()
+				val, ok := k.StorageManager.Get(keyVersionName)
+				if ok != nil {
+					return tid, keyVersionName, nil, txnCoWritten, errors.New("Can't fetch value from storage")
+				}
 				return tid, keyVersionName, nil, txnCoWritten, nil
 			}
 		}
