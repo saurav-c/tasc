@@ -1,10 +1,25 @@
 package main
 
-import "sync"
+import (
+	"fmt"
+	"log"
+	"os"
+	"sync"
+	storage "github.com/saurav-c/aftsi/lib/storage"
+)
 
 const (
 	ReadCacheLimit = 1000
 )
+
+func findIndex (a []string, e string) (int) {
+	for index, elem := range a {
+		if elem == e {
+			return index
+		}
+	}
+	return -1
+}
 
 func intersection (a []string, b []string) (bool) {
 	var hash map[string]bool
@@ -59,6 +74,7 @@ type pendingTxn struct {
 }
 
 type KeyNode struct {
+	StorageManager              storage.StorageManager
 	keyVersionIndex             map[string][]*keyVersion
 	keyVersionIndexLock         map[string]*sync.RWMutex
 	pendingKeyVersionIndex      map[string][]*keyVersion
@@ -70,8 +86,24 @@ type KeyNode struct {
 }
 
 func NewKeyNode(KeyNodeIP string) (*KeyNode, int, error){
+	// TODO: Integrate this into config manager
+	// Need to change parameters to fit around needs better
+	var storageManager storage.StorageManager
+	switch storageInstance {
+	case "s3":
+		storageManager = storage.NewS3StorageManager("vsreekanti")
+	case "dynamo":
+		storageManager = storage.NewDynamoStorageManager("AftData", "AftData")
+	case "redis":
+		storageManager = storage.NewRedisStorageManager("aft-test.kxmfgs.clustercfg.use1.cache.amazonaws.com:6379", "")
+	default:
+		log.Fatal(fmt.Sprintf("Unrecognized storageType %s. Valid types are: s3, dynamo, redis.", conf.StorageType))
+		os.Exit(3)
+	}
+
 	// TODO: Need to create ZMQ Connections
 	return &KeyNode{
+		StorageManager:             storageManager,
 		keyVersionIndex:           	make(map[string][]*keyVersion),
 		keyVersionIndexLock:        make(map[string]*sync.RWMutex),
 		pendingKeyVersionIndex:     make(map[string][]*keyVersion),

@@ -75,8 +75,15 @@ func (k *KeyNode) readKey (tid string, key string, readList []string, begints st
 			txnWriteSet := k.committedTxnCache[txnWriteId]
 			ok := intersection(txnWriteSet, readList)
 			if !ok {
+				indexElem := findIndex(txnWriteSet, keyVersionName)
+				txnCoWritten := append(txnWriteSet[:indexElem], txnWriteSet[indexElem+1:]...)
 				// TODO: Fetch Value from Read Cache or Storage (depending on situation)
-				return tid, keyVersionName, nil, txnWriteSet, nil
+				k.readCacheLock.RLock()
+				if val, ok := k.readCache[keyVersionName]; ok {
+					k.readCacheLock.RUnlock()
+					return tid, keyVersionName, val, txnWriteSet, nil
+				}
+				return tid, keyVersionName, nil, txnCoWritten, nil
 			}
 		}
 	}
