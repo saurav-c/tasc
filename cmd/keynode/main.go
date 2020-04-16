@@ -166,7 +166,7 @@ func (k *KeyNode) endTransaction (tid string, action int, writeBuffer map[string
 
 func main() {
 	ip := ""
-	keyNode, err := NewKeyNode(ip)
+	keyNode, err := NewKeyNode(ip, "dynamo")
 	if err != nil {
 		log.Fatalf("Could not start new Key Node %v\n", err)
 	}

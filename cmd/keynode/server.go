@@ -266,15 +266,15 @@ func endTxnHandler(keyNode *KeyNode, req *pb.FinishRequest) {
 	pusher.SendBytes(data, zmq.DONTWAIT)
 }
 
-func NewKeyNode(KeyNodeIP string) (*KeyNode, error) {
+func NewKeyNode(KeyNodeIP string, storageInstance string) (*KeyNode, error) {
 	// TODO: Integrate this into config manager
 	// Need to change parameters to fit around needs better
 	var storageManager storage.StorageManager
-	switch storageType {
+	switch storageInstance {
 	case "dynamo":
 		storageManager = storage.NewDynamoStorageManager("AftSiData", "AftSiData")
 	default:
-		log.Fatal(fmt.Sprintf("Unrecognized storageType %s. Valid types are: s3, dynamo, redis.", conf.StorageType))
+		log.Fatal(fmt.Sprintf("Unrecognized storageType %s. Valid types are: s3, dynamo, redis.", storageInstance))
 		os.Exit(3)
 	}
 
