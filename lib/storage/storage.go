@@ -1,9 +1,5 @@
 package storage
 
-import (
-	pb "github.com/saurav-c/aftsi/proto/aftsi/api"
-)
-
 const TransactionKey = "transactions/%s-%d"
 
 type StorageManager interface {
@@ -12,31 +8,25 @@ type StorageManager interface {
 	StartTransaction(id string) error
 
 	// Commit all of the changes made in this transaction to the storage engine.
-	CommitTransaction(transaction *pb.TransactionRecord) error
+	CommitTransaction(id string, CommitTS string, writeBuffer map[string][]byte) error
 
-	// Retrieve a transaction record from the storage engine.
-	GetTransaction(transactionKey string) (*pb.TransactionRecord, error)
-
-	// Retrieve a set of transactions from the storage engine.
-	MultiGetTransaction(transactionKeys *[]string) (*[]*pb.TransactionRecord, error)
+	// Retrieve the given key as a part of the transaction tid.
+	Get(key string) ([]byte, error)
 
 	// As a part of the transaction owned by tid, insert a key-value pair into
 	// the storage engine.
-	Put(key string, val *pb.KeyValuePair) error
+	Put(key string, val []byte) error
 
-	// As a part of transaction owned by tid, insert a set of key-value pairs
-	// into the storage engine.
-	MultiPut(*map[string]*pb.KeyValuePair) error
+	// TODO: Implement TransactionWriteSet and TransactionCache Methods
+	// Retrieve a transaction record from the storage engine.
+	//GetTransactionWriteSet(transactionKey string) (*pb.TransactionRecord, error)
+	//
+	//// Retrieve a set of transactions from the storage engine.
+	//MultiGetTransactionWriteSet(transactionKeys *[]string) (*[]*pb.TransactionRecord, error)
 
-	// Retrieve the given key as a part of the transaction tid.
-	Get(key string) (*pb.KeyValuePair, error)
-
-	// Returns a list of the keys that start with the given prefix.
-	List(prefix string) ([]string, error)
-
-	// Deletes the given key from the underlying storage engine.
-	Delete(key string) error
-
-	// Delete multiple keys at once.
-	MultiDelete(*[]string) error
+	//// Deletes the given key from the underlying storage engine.
+	//Delete(key string) error
+	//
+	//// Delete multiple keys at once.
+	//MultiDelete(*[]string) error
 }

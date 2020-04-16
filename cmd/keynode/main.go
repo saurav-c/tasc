@@ -86,13 +86,15 @@ func (k *KeyNode) readKey (tid string, key string, readList []string, begints st
 				k.readCacheLock.RUnlock()
 				val, ok := k.StorageManager.Get(keyVersionName)
 				if ok != nil {
-					return tid, keyVersionName, nil, txnCoWritten, errors.New("Can't fetch value from storage")
+					return tid, keyVersionName, val, txnCoWritten, errors.New("Can't fetch value from storage")
 				}
-				return tid, keyVersionName, nil, txnCoWritten, nil
+				k._evictReadCache(1)
+				k.readCache[keyVersionName] = val
+				return tid, keyVersionName, val, txnCoWritten, nil
 			}
 		}
 	}
-	return tid, "", nil, nil, errors.New("Couldn't locate key!")
+	return tid, "", nil, nil, nil
 }
 
 func (k *KeyNode) validate (tid string, txnBeginTS string, txnCommitTS string, keys []string) (txnid string, action int, writeBuffer map[string][]byte) {

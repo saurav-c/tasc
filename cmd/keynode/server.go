@@ -85,17 +85,13 @@ type KeyNode struct {
 	readCacheLock               *sync.RWMutex
 }
 
-func NewKeyNode(KeyNodeIP string) (*KeyNode, int, error){
+func NewKeyNode(KeyNodeIP string, storageType string) (*KeyNode, int, error){
 	// TODO: Integrate this into config manager
 	// Need to change parameters to fit around needs better
 	var storageManager storage.StorageManager
-	switch storageInstance {
-	case "s3":
-		storageManager = storage.NewS3StorageManager("vsreekanti")
+	switch storageType {
 	case "dynamo":
-		storageManager = storage.NewDynamoStorageManager("AftData", "AftData")
-	case "redis":
-		storageManager = storage.NewRedisStorageManager("aft-test.kxmfgs.clustercfg.use1.cache.amazonaws.com:6379", "")
+		storageManager = storage.NewDynamoStorageManager("AftSiData", "AftSiData")
 	default:
 		log.Fatal(fmt.Sprintf("Unrecognized storageType %s. Valid types are: s3, dynamo, redis.", conf.StorageType))
 		os.Exit(3)

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/pkg/errors"
 	pb "github.com/saurav-c/aftsi/proto/aftsi/api"
-	"hash"
 	"log"
 	"os"
 	"sync"
@@ -13,7 +12,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	zmq "github.com/pebbe/zmq4"
 	storage "github.com/saurav-c/aftsi/lib/storage"
-	rpb "github.com/saurav-c/aftsi/proto/aftsi/replica"
+	// rpb "github.com/saurav-c/aftsi/proto/aftsi/replica"
 	rtr "github.com/saurav-c/aftsi/proto/routing"
 )
 
@@ -51,7 +50,7 @@ type TransactionEntry struct {
 	readSet          map[string]string
 	coWrittenSet     map[string]string
 	status           uint8
-	unverifiedProtos map[hash.Hash]*rpb.TransactionUpdate
+	// unverifiedProtos map[hash.Hash]*rpb.TransactionUpdate
 }
 
 type AftSIServer struct {
@@ -169,14 +168,10 @@ func NewAftSIServer(txnRouterIP string, keyRouterIP string, storageInstance stri
 	// Need to change parameters to fit around needs better
 	var storageManager storage.StorageManager
 	switch storageInstance {
-	case "s3":
-		storageManager = storage.NewS3StorageManager("vsreekanti")
 	case "dynamo":
 		storageManager = storage.NewDynamoStorageManager("AftData", "AftData")
-	case "redis":
-		storageManager = storage.NewRedisStorageManager("aft-test.kxmfgs.clustercfg.use1.cache.amazonaws.com:6379", "")
 	default:
-		log.Fatal(fmt.Sprintf("Unrecognized storageType %s. Valid types are: s3, dynamo, redis.", conf.StorageType))
+		log.Fatal(fmt.Sprintf("Unrecognized storageType %s. Valid types are: s3, dynamo, redis.", storageInstance))
 		os.Exit(3)
 	}
 

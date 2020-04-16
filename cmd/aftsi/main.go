@@ -116,6 +116,13 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 		// Fetch Value From Storage (stored in val)
 		// TODO
 		var val []byte
+		val, err = s.StorageManager.get(versionedKey)
+		if err != nil {
+			return &pb.TransactionResponse{
+				Value: nil,
+				E:     pb.TransactionError_FAILURE,
+			}, nil
+		}
 
 		s.ReadCacheLock.Lock()
 		if len(s.ReadCache) == ReadCacheLimit {
