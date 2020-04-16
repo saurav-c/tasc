@@ -224,7 +224,7 @@ func endTxnHandler(data []byte, keyNodeResponder *KeyNodeResponse) {
 	keyNodeResponder.endTxnChannels[channelID] <- resp
 }
 
-func NewAftSIServer(personalIP string, txnRouterIP string, keyRouterIP string, storageInstance string, testInstance bool) (*AftSIServer, int, error) {
+func NewAftSIServer(personalIP string, txnRouterIP string, keyRouterIP string, keyNodeIP string, storageInstance string, testInstance bool) (*AftSIServer, int, error) {
 	zctx, err := zmq.NewContext()
 	if err != nil {
 		return nil, 0, err
@@ -294,7 +294,7 @@ func NewAftSIServer(personalIP string, txnRouterIP string, keyRouterIP string, s
 		counter:              0,
 		counterMutex:         &sync.Mutex{},
 		IPAddress:            personalIP,
-		KeyNodeIP:            keyRouterIP,
+		KeyNodeIP:            keyNodeIP,
 		serverID:             "",
 		StorageManager:       storageManager,
 		TransactionTable:     make(map[string]*TransactionEntry),

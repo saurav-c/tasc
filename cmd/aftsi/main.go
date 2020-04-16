@@ -35,13 +35,16 @@ func (s *AftSIServer) StartTransaction(ctx context.Context, emp *empty.Empty) (*
 	s.counterMutex.Unlock()
 
 	// Ask router for the IP address of master for this TID
-	txnManagerIP, err := pingTxnRouter(&s.zmqInfo, tid)
-	if err != nil {
-		return &pb.TransactionID{
-			Tid: "",
-			E:   pb.TransactionError_FAILURE,
-		}, nil
-	}
+	//txnManagerIP, err := pingTxnRouter(&s.zmqInfo, tid)
+	//if err != nil {
+	//	return &pb.TransactionID{
+	//		Tid: "",
+	//		E:   pb.TransactionError_FAILURE,
+	//	}, nil
+	//}
+
+	txnManagerIP := s.IPAddress
+	var err error
 
 	// Use ZMQ to make internal request to this TID's Txn Manager
 	createTxnPusher := createSocket(zmq.PUSH, s.zmqInfo.context, fmt.Sprintf(PushTemplate, txnManagerIP, createTxnPortReq), false)
@@ -121,8 +124,7 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 		s.ReadCacheLock.RUnlock()
 		// Fetch Value From Storage (stored in val)
 		// TODO
-		var val []byte
-		val, err := s.StorageManager.Get(versionedKey)
+		val, err := s.StorageManager.get(versionedKey)
 		if err != nil {
 			return &pb.TransactionResponse{
 				Value: nil,
@@ -164,13 +166,16 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 
 	// Fetch Correct Version of Key from KeyNode and read from Storage
 	// Get Key Node for this key
-	keyIP, err := pingKeyRouter(&s.zmqInfo, key)
-	if err != nil {
-		return &pb.TransactionResponse{
-			Value: nil,
-			E:     pb.TransactionError_FAILURE,
-		}, nil
-	}
+	//keyIP, err := pingKeyRouter(&s.zmqInfo, key)
+	//if err != nil {
+	//	return &pb.TransactionResponse{
+	//		Value: nil,
+	//		E:     pb.TransactionError_FAILURE,
+	//	}, nil
+	//}
+
+	keyIP := s.KeyNodeIP
+
 	// Use ZMQ to make a read request to the Key Node at keyIP
 	// TODO
 	readPusher := createSocket(zmq.PUSH, s.zmqInfo.context, fmt.Sprintf(PushTemplate, keyIP, readPullPort), false)
@@ -205,8 +210,8 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 			E:     pb.TransactionError_FAILURE,
 		}, nil
 	}
-	val := readResponse.GetValue()
 	versionedKey = readResponse.GetKeyVersion()
+	val := readResponse.GetValue()
 	coWrites := readResponse.GetCoWrittenSet()
 
 	// Update CoWrittenSet
@@ -272,7 +277,113 @@ func (s *AftSIServer) Write(ctx context.Context, writeReq *pb.WriteRequest) (*pb
 func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.TransactionID) (*pb.TransactionResponse, error) {
 	// send internal validate(TID, writeSet, Begin-TS, Commit-TS) to all keyNodes
 
-	panic("implement me")
+	// Parse request TID
+	tid := req.GetTid()
+
+	// Lock the TxnEntry and Write Buffer
+	s.TransactionTableLock[tid].Lock()
+	s.WriteBufferLock[tid].Lock()
+	defer s.TransactionTableLock[tid].Unlock()
+	defer s.WriteBufferLock[tid].Unlock()
+
+	// Do a "routing" request for keys in writeSet
+	buffer := s.WriteBuffer[tid]
+	writeSet := make([]string, 0, len(buffer))
+	writeVals := make([][]byte, 0, len(buffer))
+	for k, v := range buffer {
+		writeSet = append(writeSet, k)
+		writeVals = append(writeVals, v)
+	}
+
+	// Get Keynode ip
+	ip := s.KeyNodeIP
+
+	// Send a validate request to this KeyNode
+	validatePusher := createSocket(zmq.PUSH, s.zmqInfo.context, fmt.Sprintf(PushTemplate, ip, validatePullPort), false)
+	defer validatePusher.Close()
+
+	s.keyResponder.idMutex.Lock()
+	channelID := s.keyResponder.channelID
+	s.keyResponder.channelID += 1
+	s.keyResponder.idMutex.Unlock()
+
+	commitTS := strconv.FormatInt(time.Now().UnixNano(), 10)
+	s.TransactionTable[tid].endTS = commitTS
+
+	vReq := &keyNode.ValidateRequest{
+		Tid:       tid,
+		BeginTS:   s.TransactionTable[tid].beginTS,
+		CommitTS:  commitTS,
+		Keys:      writeSet,
+		TxnMngrIP: s.IPAddress,
+		ChannelID: channelID,
+	}
+
+	data, _ := proto.Marshal(vReq)
+	validatePusher.SendBytes(data, zmq.DONTWAIT)
+
+	resp := <- s.keyResponder.validateChannels[channelID]
+
+	// Check that it is ok or not
+	commit := resp.GetOk()
+	if commit {
+		// Send writes & transaction set to storage manager
+		for k, v := range s.WriteBuffer[tid] {
+			s.StorageManager.Put(k + keyVersionDelim + commitTS, v)
+		}
+	}
+
+	// Send endTxn's to KeyNode
+	s.keyResponder.idMutex.Lock()
+	channelID = s.keyResponder.channelID
+	s.keyResponder.channelID += 1
+	s.keyResponder.idMutex.Unlock()
+
+	var endReq *keyNode.FinishRequest
+	if commit {
+		endReq = &keyNode.FinishRequest{
+			Tid:         tid,
+			S:           keyNode.TransactionAction_COMMIT,
+			WriteSet:    writeSet,
+			WriteBuffer: writeVals,
+			TxnMngrIP:   s.IPAddress,
+			ChannelID:   channelID,
+		}
+	} else {
+		endReq = &keyNode.FinishRequest{
+			Tid:         tid,
+			S:           keyNode.TransactionAction_ABORT,
+			TxnMngrIP:   s.IPAddress,
+			ChannelID:   channelID,
+		}
+	}
+
+	endPusher := createSocket(zmq.PUSH, s.zmqInfo.context, fmt.Sprintf(PushTemplate, ip, endTxnPort), false)
+	defer endPusher.Close()
+
+	data, _ = proto.Marshal(endReq)
+	endPusher.SendBytes(data, zmq.DONTWAIT)
+
+	// Wait for Ack
+	endResp := <- s.keyResponder.endTxnChannels[channelID]
+
+	// Change commmit status
+	if endResp.GetError() == keyNode.KeyError_FAILURE {
+		return &pb.TransactionResponse{
+			E: pb.TransactionError_FAILURE,
+		}, nil
+	}
+
+	if commit {
+		s.TransactionTable[tid].status = TxnCommitted
+	} else {
+		s.TransactionTable[tid].status = TxnAborted
+	}
+	// Respond to client
+	return &pb.TransactionResponse{
+		E:     pb.TransactionError_SUCCESS,
+	}, nil
+
 }
 
 func (s *AftSIServer) AbortTransaction(ctx context.Context, req *pb.TransactionID) (*pb.TransactionResponse, error) {
@@ -329,14 +440,14 @@ func main() {
 	}
 
 	personalIP := os.Args[1]
-	keyRouterIP := os.Args[2]
+	keyNodeIP := os.Args[2]
 
 	server := grpc.NewServer()
 	// TODO: Lookup router IP Address
 	txnRouter := ""
-	keyRouter := keyRouterIP
+	keyRouter := ""
 
-	aftsi, _, err := NewAftSIServer(personalIP, txnRouter, keyRouter, "dynamo", true)
+	aftsi, _, err := NewAftSIServer(personalIP, txnRouter, keyRouter, keyNodeIP, "dynamo", true)
 	if err != nil {
 		log.Fatal("Could not start server on port %s: %v\n", TxnServerPort, err)
 	}
