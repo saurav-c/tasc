@@ -235,7 +235,7 @@ func NewAftSIServer(personalIP string, txnRouterIP string, keyRouterIP string, k
 	var storageManager storage.StorageManager
 	switch storageInstance {
 	case "dynamo":
-		storageManager = storage.NewDynamoStorageManager("AftData", "AftData")
+		storageManager = storage.NewDynamoStorageManager("Aftsi", "Aftsi")
 	case "testing":
 		storageManager = storage.NewLocalStoreManager()
 	default:

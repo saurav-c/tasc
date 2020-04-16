@@ -81,7 +81,7 @@ func _constructKeyData(key string) *map[string]*awsdynamo.AttributeValue {
 func _constructPutInput(key string, table string, data []byte) *awsdynamo.PutItemInput {
 	return &awsdynamo.PutItemInput{
 		Item: map[string]*awsdynamo.AttributeValue{
-			"DataKey": {
+			"Key": {
 				S: aws.String(key),
 			},
 			"Value": {

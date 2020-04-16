@@ -272,7 +272,7 @@ func NewKeyNode(KeyNodeIP string, storageInstance string) (*KeyNode, error) {
 	var storageManager storage.StorageManager
 	switch storageInstance {
 	case "dynamo":
-		storageManager = storage.NewDynamoStorageManager("AftSiData", "AftSiData")
+		storageManager = storage.NewDynamoStorageManager("Aftsi", "Aftsi")
 	default:
 		log.Fatal(fmt.Sprintf("Unrecognized storageType %s. Valid types are: s3, dynamo, redis.", storageInstance))
 		os.Exit(3)
