@@ -236,6 +236,8 @@ func NewAftSIServer(personalIP string, txnRouterIP string, keyRouterIP string, k
 	switch storageInstance {
 	case "dynamo":
 		storageManager = storage.NewDynamoStorageManager("AftData", "AftData")
+	case "testing":
+		storageManager = storage.NewLocalStoreManager()
 	default:
 		log.Fatal(fmt.Sprintf("Unrecognized storageType %s. Valid types are: s3, dynamo, redis.", storageInstance))
 		os.Exit(3)

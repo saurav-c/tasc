@@ -16,10 +16,8 @@ import (
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/golang/protobuf/proto"
 	pb "github.com/saurav-c/aftsi/proto/aftsi/api"
-	_ "github.com/saurav-c/aftsi/lib/storage"
 	keyNode "github.com/saurav-c/aftsi/proto/keynode/api"
 
-	// rpb "github.com/saurav-c/aftsi/proto/aftsi/replica"
 	"google.golang.org/grpc"
 )
 
@@ -124,7 +122,7 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 		s.ReadCacheLock.RUnlock()
 		// Fetch Value From Storage (stored in val)
 		// TODO
-		val, err := s.StorageManager.get(versionedKey)
+		val, err := s.StorageManager.Get(versionedKey)
 		if err != nil {
 			return &pb.TransactionResponse{
 				Value: nil,
@@ -441,13 +439,14 @@ func main() {
 
 	personalIP := os.Args[1]
 	keyNodeIP := os.Args[2]
+	storage := os.Args[3]
 
 	server := grpc.NewServer()
 	// TODO: Lookup router IP Address
 	txnRouter := ""
 	keyRouter := ""
 
-	aftsi, _, err := NewAftSIServer(personalIP, txnRouter, keyRouter, keyNodeIP, "dynamo", true)
+	aftsi, _, err := NewAftSIServer(personalIP, txnRouter, keyRouter, keyNodeIP, storage, true)
 	if err != nil {
 		log.Fatal("Could not start server on port %s: %v\n", TxnServerPort, err)
 	}
