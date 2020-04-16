@@ -6,6 +6,7 @@ import (
 	zmq "github.com/pebbe/zmq4"
 	"log"
 	"math/rand"
+	"os"
 	"net"
 	"strconv"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/golang/protobuf/proto"
 	pb "github.com/saurav-c/aftsi/proto/aftsi/api"
+	_ "github.com/saurav-c/aftsi/lib/storage"
 	keyNode "github.com/saurav-c/aftsi/proto/keynode/api"
 
 	// rpb "github.com/saurav-c/aftsi/proto/aftsi/replica"
@@ -120,7 +122,7 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 		// Fetch Value From Storage (stored in val)
 		// TODO
 		var val []byte
-		val, err = s.StorageManager.get(versionedKey)
+		val, err := s.StorageManager.get(versionedKey)
 		if err != nil {
 			return &pb.TransactionResponse{
 				Value: nil,
@@ -326,12 +328,15 @@ func main() {
 		log.Fatal("Could not start server on port %s: %v\n", TxnServerPort, err)
 	}
 
+	personalIP := os.Args[1]
+	keyRouterIP := os.Args[2]
+
 	server := grpc.NewServer()
 	// TODO: Lookup router IP Address
 	txnRouter := ""
-	keyRouter := ""
+	keyRouter := keyRouterIP
 
-	aftsi, _, err := NewAftSIServer(txnRouter, keyRouter, "dynamo")
+	aftsi, _, err := NewAftSIServer(personalIP, txnRouter, keyRouter, "dynamo", true)
 	if err != nil {
 		log.Fatal("Could not start server on port %s: %v\n", TxnServerPort, err)
 	}

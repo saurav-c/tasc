@@ -67,6 +67,7 @@ type AftSIServer struct {
 	counter              uint64
 	counterMutex         *sync.Mutex
 	IPAddress            string
+	KeyNodeIP            string
 	serverID             string
 	StorageManager       storage.StorageManager
 	TransactionTable     map[string]*TransactionEntry
@@ -223,7 +224,7 @@ func endTxnHandler(data []byte, keyNodeResponder *KeyNodeResponse) {
 	keyNodeResponder.endTxnChannels[channelID] <- resp
 }
 
-func NewAftSIServer(txnRouterIP string, keyRouterIP string, storageInstance string) (*AftSIServer, int, error) {
+func NewAftSIServer(personalIP string, txnRouterIP string, keyRouterIP string, storageInstance string, testInstance bool) (*AftSIServer, int, error) {
 	zctx, err := zmq.NewContext()
 	if err != nil {
 		return nil, 0, err
@@ -243,13 +244,6 @@ func NewAftSIServer(txnRouterIP string, keyRouterIP string, storageInstance stri
 	// Setup Txn Manager ZMQ sockets
 	createTxnPuller := createSocket(zmq.PULL, zctx, fmt.Sprintf(PullTemplate, createTxnPortReq), true)
 
-	// Setup routing ZMQ sockets
-	txnRouterPuller := createSocket(zmq.PULL, zctx, fmt.Sprintf(PullTemplate, TxnRouterPullPort), true)
-	txnRouterPusher := createSocket(zmq.PUSH, zctx, fmt.Sprintf(PushTemplate, txnRouterIP, TxnRouterPushPort), false)
-
-	keyRouterPuller := createSocket(zmq.PULL, zctx, fmt.Sprintf(PullTemplate, KeyRouterPullPort), true)
-	keyRouterPusher := createSocket(zmq.PUSH, zctx, fmt.Sprintf(PushTemplate, txnRouterIP, KeyRouterPushPort), false)
-
 	// Setup Key Node sockets
 	readPuller := createSocket(zmq.PULL, zctx, fmt.Sprintf(PullTemplate, ReadRespPullPort), true)
 	validatePuller := createSocket(zmq.PULL, zctx, fmt.Sprintf(PullTemplate, ValRespPullPort), true)
@@ -258,13 +252,34 @@ func NewAftSIServer(txnRouterIP string, keyRouterIP string, storageInstance stri
 	zmqInfo := ZMQInfo{
 		context:         zctx,
 		createTxnPuller: createTxnPuller,
-		txnRouterPuller: txnRouterPuller,
-		txnRouterPusher: txnRouterPusher,
-		keyRouterPuller: keyRouterPuller,
-		keyRouterPusher: keyRouterPusher,
+		txnRouterPuller: nil,
+		txnRouterPusher: nil,
+		keyRouterPuller: nil,
+		keyRouterPusher: nil,
 		readPuller:      readPuller,
 		validatePuller:  validatePuller,
 		endTxnPuller:    endTxnPuller,
+	}
+
+	// Setup routing ZMQ sockets
+	if !testInstance {
+		txnRouterPuller := createSocket(zmq.PULL, zctx, fmt.Sprintf(PullTemplate, TxnRouterPullPort), true)
+		txnRouterPusher := createSocket(zmq.PUSH, zctx, fmt.Sprintf(PushTemplate, txnRouterIP, TxnRouterPushPort), false)
+
+		keyRouterPuller := createSocket(zmq.PULL, zctx, fmt.Sprintf(PullTemplate, KeyRouterPullPort), true)
+		keyRouterPusher := createSocket(zmq.PUSH, zctx, fmt.Sprintf(PushTemplate, txnRouterIP, KeyRouterPushPort), false)
+
+		zmqInfo = ZMQInfo{
+			context:         zctx,
+			createTxnPuller: createTxnPuller,
+			txnRouterPuller: txnRouterPuller,
+			txnRouterPusher: txnRouterPusher,
+			keyRouterPuller: keyRouterPuller,
+			keyRouterPusher: keyRouterPusher,
+			readPuller:      readPuller,
+			validatePuller:  validatePuller,
+			endTxnPuller:    endTxnPuller,
+		}
 	}
 
 	keyNodeResponder := KeyNodeResponse{
@@ -278,7 +293,8 @@ func NewAftSIServer(txnRouterIP string, keyRouterIP string, storageInstance stri
 	return &AftSIServer{
 		counter:              0,
 		counterMutex:         &sync.Mutex{},
-		IPAddress:            "",
+		IPAddress:            personalIP,
+		KeyNodeIP:            keyRouterIP,
 		serverID:             "",
 		StorageManager:       storageManager,
 		TransactionTable:     make(map[string]*TransactionEntry),

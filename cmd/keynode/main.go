@@ -1,6 +1,9 @@
 package keynode
 
-import "log"
+import (
+	"fmt"
+	"log"
+)
 
 import (
 	"errors"
@@ -65,6 +68,12 @@ func (k KeyNode) _evictReadCache(n int) {
 }
 
 func (k *KeyNode) readKey (tid string, key string, readList []string, begints string, lowerBound string) (txnid string, keyVersion string, value []byte, coWritten []string, err error) {
+	if _, ok := k.keyVersionIndexLock[key]; !ok {
+		_, _ = k.StorageManager.Get("default")
+		key := fmt.Sprintf("%s:0", key)
+		val, _ := k.StorageManager.Get(key)
+		return tid, key, val, nil, nil
+	}
 	lock := k.keyVersionIndexLock[key]
 	lock.RLock()
 	keyVersions := k.keyVersionIndex[key]
