@@ -8,12 +8,14 @@ import (
 	"math/rand"
 	"net"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/golang/protobuf/proto"
 	pb "github.com/saurav-c/aftsi/proto/aftsi/api"
+	keyNode "github.com/saurav-c/aftsi/proto/keynode/api"
 
 	// rpb "github.com/saurav-c/aftsi/proto/aftsi/replica"
 	"google.golang.org/grpc"
@@ -75,6 +77,7 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 	key := readReq.GetKey()
 
 	// Verify transaction status
+	var beginTS string
 	s.TransactionTableLock[tid].RLock()
 	if entry, ok := s.TransactionTable[tid]; !ok || entry.status != TxnInProgress {
 		s.TransactionTableLock[tid].RUnlock()
@@ -82,6 +85,7 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 			E: pb.TransactionError_FAILURE,
 		}, nil
 	}
+	beginTS = s.TransactionTable[tid].beginTS
 	s.TransactionTableLock[tid].RUnlock()
 
 	// Reading from the Write Buffer
@@ -167,8 +171,53 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 	}
 	// Use ZMQ to make a read request to the Key Node at keyIP
 	// TODO
+	readPusher := createSocket(zmq.PUSH, s.zmqInfo.context, fmt.Sprintf(PushTemplate, keyIP, readPullPort), false)
+	defer readPusher.Close()
 
-	var val []byte
+	s.keyResponder.idMutex.Lock()
+	channelID := s.keyResponder.channelID
+	s.keyResponder.channelID += 1
+	s.keyResponder.idMutex.Unlock()
+
+	rSet := []string{}
+	for _, v := range readSet {
+		rSet = append(rSet, v)
+	}
+
+	keyReq := &keyNode.KeyRequest{
+		Tid:        tid,
+		Key:        key,
+		ReadSet:    rSet,
+		BeginTS:    beginTS,
+		LowerBound: keyLowerBound,
+		TxnMngrIP:  s.IPAddress,
+		ChannelID:  channelID,
+	}
+
+	data, _ := proto.Marshal(keyReq)
+	readPusher.SendBytes(data, zmq.DONTWAIT)
+
+	readResponse := <-s.keyResponder.readChannels[channelID]
+	if readResponse.GetError() != keyNode.KeyError_SUCCESS {
+		return &pb.TransactionResponse{
+			E:     pb.TransactionError_FAILURE,
+		}, nil
+	}
+	val := readResponse.GetValue()
+	versionedKey = readResponse.GetKeyVersion()
+	coWrites := readResponse.GetCoWrittenSet()
+
+	// Update CoWrittenSet
+	s.TransactionTableLock[tid].Lock()
+	for _, keyVersion := range coWrites {
+		split := strings.Split(keyVersion, keyVersionDelim)
+		k, v := split[0], split[1]
+		if currentVersion, ok := s.TransactionTable[tid].coWrittenSet[k]; !ok || v > currentVersion {
+			s.TransactionTable[tid].coWrittenSet[k] = v
+		}
+	}
+	s.TransactionTableLock[tid].Unlock()
+
 	s.ReadCacheLock.Lock()
 	if len(s.ReadCache) == ReadCacheLimit {
 		randInt := rand.Intn(len(s.ReadCache))
@@ -282,7 +331,7 @@ func main() {
 	txnRouter := ""
 	keyRouter := ""
 
-	aftsi, _, err := NewAftSIServer(txnRouter, keyRouter)
+	aftsi, _, err := NewAftSIServer(txnRouter, keyRouter, "dynamo")
 	if err != nil {
 		log.Fatal("Could not start server on port %s: %v\n", TxnServerPort, err)
 	}

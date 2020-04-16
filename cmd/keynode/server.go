@@ -1,15 +1,32 @@
-package main
+package keynode
 
 import (
 	"fmt"
+	zmq "github.com/pebbe/zmq4"
+	pb "github.com/saurav-c/aftsi/proto/keynode/api"
+	"github.com/golang/protobuf/proto"
 	"log"
 	"os"
 	"sync"
 	storage "github.com/saurav-c/aftsi/lib/storage"
+	"time"
 )
 
 const (
 	ReadCacheLimit = 1000
+
+	// Key Node puller ports
+	readPullPort = 6000
+	validatePullPort = 6001
+	endTxnPort = 6002
+
+	// Txn Manager pusher ports
+	readRespPort = 6000
+	valRespPort = 6001
+	endTxnRespPort = 6002
+
+	PullTemplate = "tcp://*:%d"
+	PushTemplate = "tcp://%s:%d"
 )
 
 func findIndex (a []string, e string) (int) {
@@ -61,6 +78,28 @@ func FindIndex(list []*keyVersion, kv *keyVersion) int {
 			endList = midPoint
 		}
 	}
+	return -1
+}
+
+func createSocket(tp zmq.Type, context *zmq.Context, address string, bind bool) *zmq.Socket {
+	sckt, err := context.NewSocket(tp)
+	if err != nil {
+		fmt.Println("Unexpected error while creating new socket:\n", err)
+		os.Exit(1)
+	}
+
+	if bind {
+		err = sckt.Bind(address)
+	} else {
+		err = sckt.Connect(address)
+	}
+
+	if err != nil {
+		fmt.Println("Unexpected error while binding/connecting socket:\n", err)
+		os.Exit(1)
+	}
+
+	return sckt
 }
 
 type keyVersion struct {
@@ -83,9 +122,151 @@ type KeyNode struct {
 	committedTxnCache           map[string][]string
 	readCache                   map[string][]byte
 	readCacheLock               *sync.RWMutex
+	zmqInfo						ZMQInfo
 }
 
-func NewKeyNode(KeyNodeIP string, storageType string) (*KeyNode, int, error){
+type ZMQInfo struct {
+	context         *zmq.Context
+	readPuller *zmq.Socket
+	validatePuller *zmq.Socket
+	endTxnPuller *zmq.Socket
+}
+
+func startKeyNode(keyNode *KeyNode) {
+	poller := zmq.NewPoller()
+	zmqInfo := keyNode.zmqInfo
+
+	poller.Add(zmqInfo.readPuller, zmq.POLLIN)
+	poller.Add(zmqInfo.validatePuller, zmq.POLLIN)
+	poller.Add(zmqInfo.endTxnPuller, zmq.POLLIN)
+
+	for true {
+		sockets, _ := poller.Poll(10 * time.Millisecond)
+
+		for _, socket := range sockets {
+			switch s := socket.Socket; s {
+			case zmqInfo.readPuller:
+				{
+					req := &pb.KeyRequest{}
+					data, _ := zmqInfo.readPuller.RecvBytes(zmq.DONTWAIT)
+					proto.Unmarshal(data, req)
+					go readHandler(keyNode, req)
+				}
+			case zmqInfo.validatePuller:
+				{
+					req := &pb.ValidateRequest{}
+					data, _ := zmqInfo.validatePuller.RecvBytes(zmq.DONTWAIT)
+					proto.Unmarshal(data, req)
+					go validateHandler(keyNode, req)
+				}
+			case zmqInfo.endTxnPuller:
+				{
+					req := &pb.FinishRequest{}
+					data, _ := zmqInfo.endTxnPuller.RecvBytes(zmq.DONTWAIT)
+					proto.Unmarshal(data, req)
+					go endTxnHandler(keyNode, req)
+				}
+			}
+		}
+	}
+
+}
+
+func readHandler(keyNode *KeyNode, req *pb.KeyRequest) {
+	tid, keyVersion, val, coWrites, err := keyNode.readKey(req.GetTid(),
+		req.GetKey(), req.GetReadSet(), req.GetBeginTS(), req.GetLowerBound())
+
+	var resp *pb.KeyResponse
+
+	// Create ZMQ Socket to send response
+	pusher := createSocket(zmq.PUSH, keyNode.zmqInfo.context, fmt.Sprintf(PushTemplate, req.GetTxnMngrIP(), readRespPort), false)
+	defer pusher.Close()
+
+	if err != nil {
+		resp = &pb.KeyResponse{
+			Error: pb.KeyError_FAILURE,
+		}
+	} else {
+		resp = &pb.KeyResponse{
+			Tid:                  tid,
+			KeyVersion:           keyVersion,
+			Value:                val,
+			CoWrittenSet:         coWrites,
+			ChannelID: 			  req.GetChannelID(),
+			Error:                pb.KeyError_SUCCESS,
+		}
+	}
+
+	data, _ := proto.Marshal(resp)
+	pusher.SendBytes(data, zmq.DONTWAIT)
+}
+
+func validateHandler(keyNode *KeyNode, req *pb.ValidateRequest) {
+	tid, action := keyNode.validate(req.GetTid(), req.GetBeginTS(), req.GetCommitTS(), req.GetKeys())
+
+	var resp *pb.ValidateResponse
+
+	// Create ZMQ Socket to send response
+	pusher := createSocket(zmq.PUSH, keyNode.zmqInfo.context, fmt.Sprintf(PushTemplate, req.GetTxnMngrIP(), valRespPort), false)
+	defer pusher.Close()
+
+	var ok bool
+	if action == TRANSACTION_SUCCESS {
+		ok = true
+	} else {
+		ok = false
+	}
+
+	resp = &pb.ValidateResponse{
+		Tid:       tid,
+		Ok:        ok,
+		ChannelID: req.GetChannelID(),
+		Error:     pb.KeyError_SUCCESS,
+	}
+
+	data, _ := proto.Marshal(resp)
+	pusher.SendBytes(data, zmq.DONTWAIT)
+}
+
+func endTxnHandler(keyNode *KeyNode, req *pb.FinishRequest) {
+	var action int
+	if req.GetS() == pb.TransactionAction_COMMIT {
+		action = 0
+	} else {
+		action = 1
+	}
+
+	writeMap := make(map[string][]byte)
+	set := req.GetWriteSet()
+	buffer := req.GetWriteBuffer()
+
+	for i, key := range set {
+		writeMap[key] = buffer[i]
+	}
+
+	err := keyNode.endTransaction(req.GetTid(), action, writeMap)
+
+	var e pb.KeyError
+	if err != nil {
+		e = pb.KeyError_FAILURE
+	} else {
+		e = pb.KeyError_SUCCESS
+	}
+
+	resp := &pb.FinishResponse{
+		Tid:       req.GetTid(),
+		ChannelID: req.GetChannelID(),
+		Error:     e,
+	}
+
+	pusher := createSocket(zmq.PUSH, keyNode.zmqInfo.context, fmt.Sprintf(PushTemplate, req.GetTxnMngrIP(), endTxnRespPort), false)
+	defer pusher.Close()
+
+	data, _ := proto.Marshal(resp)
+	pusher.SendBytes(data, zmq.DONTWAIT)
+}
+
+func NewKeyNode(KeyNodeIP string) (*KeyNode, error) {
 	// TODO: Integrate this into config manager
 	// Need to change parameters to fit around needs better
 	var storageManager storage.StorageManager
@@ -97,15 +278,31 @@ func NewKeyNode(KeyNodeIP string, storageType string) (*KeyNode, int, error){
 		os.Exit(3)
 	}
 
-	// TODO: Need to create ZMQ Connections
+	zctx, err := zmq.NewContext()
+	if err != nil {
+		return nil, err
+	}
+
+	readPuller := createSocket(zmq.PULL, zctx, fmt.Sprintf(PullTemplate, readPullPort), true)
+	validatePuller := createSocket(zmq.PULL, zctx, fmt.Sprintf(PullTemplate, validatePullPort), true)
+	endTxnPuller := createSocket(zmq.PULL, zctx, fmt.Sprintf(PullTemplate, endTxnPort), true)
+
+	zmqInfo := ZMQInfo{
+		context:        zctx,
+		readPuller:     readPuller,
+		validatePuller: validatePuller,
+		endTxnPuller:   endTxnPuller,
+	}
+
 	return &KeyNode{
 		StorageManager:             storageManager,
-		keyVersionIndex:           	make(map[string][]*keyVersion),
+		keyVersionIndex:            make(map[string][]*keyVersion),
 		keyVersionIndexLock:        make(map[string]*sync.RWMutex),
 		pendingKeyVersionIndex:     make(map[string][]*keyVersion),
 		pendingKeyVersionIndexLock: make(map[string]*sync.RWMutex),
 		committedTxnCache:          make(map[string][]string),
 		readCache:                  make(map[string][]byte),
 		readCacheLock:              &sync.RWMutex{},
-	}, 0, nil
+		zmqInfo:					zmqInfo,
+	}, nil
 }

@@ -1,4 +1,6 @@
-package main
+package keynode
+
+import "log"
 
 import (
 	"errors"
@@ -97,13 +99,13 @@ func (k *KeyNode) readKey (tid string, key string, readList []string, begints st
 	return tid, "", nil, nil, nil
 }
 
-func (k *KeyNode) validate (tid string, txnBeginTS string, txnCommitTS string, keys []string) (txnid string, action int, writeBuffer map[string][]byte) {
+func (k *KeyNode) validate (tid string, txnBeginTS string, txnCommitTS string, keys []string) (txnid string, action int) {
 	for _, key := range keys {
 		pendingKeyVersions := k.pendingKeyVersionIndex[key]
 		for _, keyVersion := range pendingKeyVersions {
 			keyCommitTS := keyVersion.CommitTS
 			if txnBeginTS < keyCommitTS && keyCommitTS < txnCommitTS {
-				return tid, TRANSACTION_FAILURE, nil
+				return tid, TRANSACTION_FAILURE
 			}
 		}
 	}
@@ -122,13 +124,13 @@ func (k *KeyNode) validate (tid string, txnBeginTS string, txnCommitTS string, k
 		keys:     keys,
 		commitTS: txnCommitTS,
 	}
-	return tid, TRANSACTION_SUCCESS, nil
+	return tid, TRANSACTION_SUCCESS
 }
 
-func (k *KeyNode) endTransaction (tid string, action int, writeBuffer map[string][]byte) {
+func (k *KeyNode) endTransaction (tid string, action int, writeBuffer map[string][]byte) (error) {
 	pendingTxn, ok := k.pendingTxnCache[tid]
 	if !ok {
-		return
+		return errors.New("Transaction not found")
 	}
 	delete(k.pendingTxnCache, tid)
 	TxnKeys := pendingTxn.keys
@@ -140,7 +142,7 @@ func (k *KeyNode) endTransaction (tid string, action int, writeBuffer map[string
 	if action == TRANSACTION_FAILURE {
 		// Deleting the entries from the Pending Key-Version Index
 		k._deleteFromPendingKVI(TxnKeys, keyEntry, TRANSACTION_FAILURE)
-		return
+		return nil
 	}
 	var writeSet []string
 	for key := range writeBuffer {
@@ -149,4 +151,16 @@ func (k *KeyNode) endTransaction (tid string, action int, writeBuffer map[string
 	// Deleting the entries from the Pending Key-Version Index and storing in Committed Txn Cache
 	k._deleteFromPendingKVI(TxnKeys, keyEntry, TRANSACTION_SUCCESS)
 	k.committedTxnCache[tid] = writeSet
+
+	return nil
+}
+
+func main() {
+	ip := ""
+	keyNode, err := NewKeyNode(ip)
+	if err != nil {
+		log.Fatalf("Could not start new Key Node %v\n", err)
+	}
+
+	go startKeyNode(keyNode)
 }
