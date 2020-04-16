@@ -1,4 +1,4 @@
-package keynode
+package main
 
 import (
 	"fmt"
@@ -120,14 +120,13 @@ func (k *KeyNode) validate (tid string, txnBeginTS string, txnCommitTS string, k
 	}
 	NewKeyVersion := keyVersion{tid: tid, CommitTS: txnCommitTS}
 	for _, key := range keys {
-		lock := k.pendingKeyVersionIndexLock[key]
-		lock.RLock()
+		//k.pendingKeyVersionIndexLock[key].RLock()
 		pendingKeyVersions := k.pendingKeyVersionIndex[key]
-		lock.RUnlock()
+		//k.pendingKeyVersionIndexLock[key].RUnlock()
 		updatedKeyVersions := InsertParticularIndex(pendingKeyVersions, &NewKeyVersion)
-		lock.Lock()
+		//k.pendingKeyVersionIndexLock[key].Lock()
 		k.pendingKeyVersionIndex[key] = updatedKeyVersions
-		lock.Unlock()
+		//k.pendingKeyVersionIndexLock[key].Unlock()
 	}
 	k.pendingTxnCache[tid] = &pendingTxn{
 		keys:     keys,
@@ -170,6 +169,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("Could not start new Key Node %v\n", err)
 	}
+	fmt.Println("hello world")
 
-	go startKeyNode(keyNode)
+	startKeyNode(keyNode)
+	fmt.Println("whats up")
 }

@@ -41,9 +41,9 @@ const (
 	KeyRouterPushPort = 8001
 
 	// Key Node response ports
-	ReadRespPullPort = 6000
-	ValRespPullPort  = 6001
-	EndTxnRespPort   = 6002
+	ReadRespPullPort = 9000
+	ValRespPullPort  = 9001
+	EndTxnRespPort   = 9002
 
 	// Key Node puller ports
 	readPullPort = 6000

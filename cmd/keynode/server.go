@@ -1,4 +1,4 @@
-package keynode
+package main
 
 import (
 	"fmt"
@@ -21,9 +21,9 @@ const (
 	endTxnPort = 6002
 
 	// Txn Manager pusher ports
-	readRespPort = 6000
-	valRespPort = 6001
-	endTxnRespPort = 6002
+	readRespPort = 9000
+	valRespPort = 9001
+	endTxnRespPort = 9002
 
 	PullTemplate = "tcp://*:%d"
 	PushTemplate = "tcp://%s:%d"
