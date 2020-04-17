@@ -199,6 +199,9 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 		ChannelID:  channelID,
 	}
 
+	s.keyResponder.readChannels[channelID] = make(chan *keyNode.KeyResponse)
+
+
 	data, _ := proto.Marshal(keyReq)
 	readPusher.SendBytes(data, zmq.DONTWAIT)
 
@@ -317,8 +320,12 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 		ChannelID: channelID,
 	}
 
+
+	s.keyResponder.validateChannels[channelID] = make(chan *keyNode.ValidateResponse)
+
 	data, _ := proto.Marshal(vReq)
 	validatePusher.SendBytes(data, zmq.DONTWAIT)
+
 
 	resp := <- s.keyResponder.validateChannels[channelID]
 
@@ -358,6 +365,8 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 
 	endPusher := createSocket(zmq.PUSH, s.zmqInfo.context, fmt.Sprintf(PushTemplate, ip, endTxnPort), false)
 	defer endPusher.Close()
+
+	s.keyResponder.endTxnChannels[channelID] = make(chan *keyNode.FinishResponse)
 
 	data, _ = proto.Marshal(endReq)
 	endPusher.SendBytes(data, zmq.DONTWAIT)

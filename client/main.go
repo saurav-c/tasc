@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -91,6 +92,51 @@ func runAft(numRequests int, address string, numWrites int) ([]float64, []float6
 		txnid := txn.GetTid()
 		writeStart := time.Now()
 		for j := 0; j < numWrites; j++ {
+			//writeValue := fmt.Sprintf("%s-%d", "Hello World", j)
+			//update := &pb.WriteRequest{Tid: txnid, Key: "a", Value: []byte(writeValue)}
+			read := &pb.ReadRequest{
+				Tid: txnid,
+				Key: strconv.Itoa(j),
+			}
+			client.Read(context.TODO(), read)
+		}
+		writeEnd := time.Now()
+
+		//resp, err := client.CommitTransaction(context.TODO(), &pb.TransactionID{Tid: txnid})
+		txnEnd := time.Now()
+
+		writeLatencies[i] = writeEnd.Sub(writeStart).Seconds()
+		latencies[i] = txnEnd.Sub(txnStart).Seconds()
+
+		//if err != nil || resp.E != pb.TransactionError_SUCCESS {
+		//	fmt.Printf("Error!\n%v\n", err)
+		//}
+	}
+	return latencies, writeLatencies
+}
+
+func runAft1(numRequests int, address string, numWrites int) ([]float64, []float64) {
+	conn, err := grpc.Dial(fmt.Sprintf("%s:5000", address), grpc.WithInsecure())
+	if err != nil {
+		fmt.Printf("Unexpected error:\n%v\n", err)
+		os.Exit(1)
+	}
+	defer conn.Close()
+
+	client := pb.NewAftSIClient(conn)
+
+	latencies := make([]float64, numRequests)
+	writeLatencies := make([]float64, numRequests)
+
+	writeData := make([]byte, 4096)
+	rand.Read(writeData)
+
+	for i := 0; i < numRequests; i++ {
+		txnStart := time.Now()
+		txn, _ := client.StartTransaction(context.TODO(), &empty.Empty{})
+		txnid := txn.GetTid()
+		writeStart := time.Now()
+		for j := 0; j < numWrites; j++ {
 			writeValue := fmt.Sprintf("%s-%d", "Hello World", j)
 			update := &pb.WriteRequest{Tid: txnid, Key: "a", Value: []byte(writeValue)}
 			client.Write(context.TODO(), update)
@@ -110,7 +156,7 @@ func runAft(numRequests int, address string, numWrites int) ([]float64, []float6
 	return latencies, writeLatencies
 }
 
-func runDirect(numRequests int, numWrites int) []float64 {
+func runDirect1(numRequests int, numWrites int) []float64 {
 	dc := awsdynamo.New(session.New(), &aws.Config{
 		Region: aws.String(endpoints.UsEast1RegionID),
 	})
@@ -121,14 +167,14 @@ func runDirect(numRequests int, numWrites int) []float64 {
 
 	input := &awsdynamo.PutItemInput{
 		Item: map[string]*awsdynamo.AttributeValue{
-			"DataKey": {
+			"Key": {
 				S: aws.String("a"),
 			},
 			"Value": {
 				B: writeData,
 			},
 		},
-		TableName: aws.String("AftSiData"),
+		TableName: aws.String("Aftsi"),
 	}
 
 	for i := 0; i < numRequests; i++ {
@@ -139,6 +185,105 @@ func runDirect(numRequests int, numWrites int) []float64 {
 			if err != nil {
 				fmt.Printf("Error!\n%v\n", err)
 			}
+		}
+
+		txnEnd := time.Now()
+		latencies[i] = txnEnd.Sub(txnStart).Seconds()
+	}
+
+	return latencies
+}
+
+func addWrites(numRequests int, numWrites int) []float64 {
+	dc := awsdynamo.New(session.New(), &aws.Config{
+		Region: aws.String(endpoints.UsEast1RegionID),
+	})
+
+	latencies := make([]float64, numRequests)
+	writeData := make([]byte, 4096)
+	rand.Read(writeData)
+
+
+
+	for i := 0; i < numRequests; i++ {
+		input := &awsdynamo.PutItemInput{
+			Item: map[string]*awsdynamo.AttributeValue{
+				"Key": {
+					S: aws.String(strconv.Itoa(i) + ":0"),
+				},
+				"Value": {
+					B: writeData,
+				},
+			},
+			TableName: aws.String("Aftsi"),
+		}
+
+		inputR := &awsdynamo.GetItemInput{
+			Key:                    map[string]*awsdynamo.AttributeValue{
+				"Key": {
+					S: aws.String(strconv.Itoa(i) + ":0"),
+				},
+			},
+			TableName:              aws.String("Aftsi"),
+		}
+
+		txnStart := time.Now()
+		for j := 0; j < numWrites; j++ {
+			_, err := dc.PutItem(input)
+			dc.GetItem(inputR)
+
+			if err != nil {
+				fmt.Printf("Error!\n%v\n", err)
+			}
+		}
+
+		txnEnd := time.Now()
+		latencies[i] = txnEnd.Sub(txnStart).Seconds()
+	}
+
+	return latencies
+}
+
+func runDirect(numRequests int, numWrites int) []float64 {
+	dc := awsdynamo.New(session.New(), &aws.Config{
+		Region: aws.String(endpoints.UsEast1RegionID),
+	})
+
+	latencies := make([]float64, numRequests)
+	writeData := make([]byte, 4096)
+	rand.Read(writeData)
+
+
+
+	for i := 0; i < numRequests; i++ {
+		//input := &awsdynamo.PutItemInput{
+		//	Item: map[string]*awsdynamo.AttributeValue{
+		//		"Key": {
+		//			S: aws.String(strconv.Itoa(i) + ":0"),
+		//		},
+		//		"Value": {
+		//			B: writeData,
+		//		},
+		//	},
+		//	TableName: aws.String("Aftsi"),
+		//}
+
+		input := &awsdynamo.GetItemInput{
+			Key:                    map[string]*awsdynamo.AttributeValue{
+				"Key": {
+					S: aws.String(strconv.Itoa(i) + ":0"),
+				},
+			},
+			TableName:              aws.String("Aftsi"),
+		}
+
+		txnStart := time.Now()
+		for j := 0; j < numWrites; j++ {
+			dc.GetItem(input)
+
+			//if err != nil {
+			//	fmt.Printf("Error!\n%v\n", err)
+			//}
 		}
 
 		txnEnd := time.Now()
