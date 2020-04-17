@@ -1,4 +1,6 @@
 *.pb.go
 .idea/
 .vscode/
-
+cmd/keynode/keynode
+cmd/aftsi/aftsi
+client/client
