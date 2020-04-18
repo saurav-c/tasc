@@ -4,3 +4,4 @@
 cmd/keynode/keynode
 cmd/aftsi/aftsi
 client/client
+cli/cli
