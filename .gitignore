@@ -1,6 +1,10 @@
 *.pb.go
 .idea/
 .vscode/
+.DS_Store
+
+**/*.go
+
 cmd/keynode/keynode
 cmd/aftsi/aftsi
 client/client

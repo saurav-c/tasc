@@ -321,7 +321,7 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 		ChannelID: channelID,
 	}
 
-
+	
 	s.keyResponder.validateChannels[channelID] = make(chan *keyNode.ValidateResponse)
 
 	data, _ := proto.Marshal(vReq)

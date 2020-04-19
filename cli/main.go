@@ -27,26 +27,30 @@ func main() {
 	}
 	client := pb.NewAftSIClient(conn)
 	reader := bufio.NewReader(os.Stdin)
-	globalTid := ""
 
 	for {
 		fmt.Print("> ")
 		text, _ := reader.ReadString('\n')
 		splitStringInput := strings.Split(text, " ")
 		command := splitStringInput[0]
-		switch command{
+		command = strings.TrimSpace(command)
+		switch command {
 		case "start":
 			tid, err := client.StartTransaction(context.TODO(), &empty.Empty{})
 			if err != nil {
 				fmt.Printf("An error %s has occurred.\n", err)
 				return
 			}
-			globalTid = tid.GetTid()
 			fmt.Printf("The tid we are using is: %s\n", tid.GetTid())
 		case "read":
-			keyToFetch := splitStringInput[1]
+			if len(splitStringInput) != 3 {
+				fmt.Println("Incorrect usage: read <TID> <key>")
+				continue
+			}
+			tid := strings.TrimSpace(splitStringInput[1])
+			keyToFetch := strings.TrimSpace(splitStringInput[2])
 			readReq := &pb.ReadRequest{
-				Tid: globalTid,
+				Tid: tid,
 				Key: keyToFetch,
 			}
 			response, err := client.Read(context.TODO(), readReq)
@@ -54,12 +58,17 @@ func main() {
 				fmt.Printf("An error %s has occurred.\n", err)
 				return
 			}
-			fmt.Printf("The value received is: %s.\n", response.Value)
+			fmt.Printf("The value received is: %s\n", string(response.Value))
 		case "write":
-			keyToWrite := splitStringInput[1]
-			valueToWrite := splitStringInput[2]
+			if len(splitStringInput) != 4 {
+				fmt.Println("Incorrect usage: write <TID> <key> <value>")
+				continue
+			}
+			tid := strings.TrimSpace(splitStringInput[1])
+			keyToWrite := strings.TrimSpace(splitStringInput[2])
+			valueToWrite := strings.TrimSpace(splitStringInput[3])
 			writeReq := &pb.WriteRequest{
-				Tid:   globalTid,
+				Tid:   tid,
 				Key:   keyToWrite,
 				Value: []byte(valueToWrite),
 			}
@@ -70,27 +79,44 @@ func main() {
 			}
 			fmt.Println("The write was successful.")
 		case "commit":
-			tid := &pb.TransactionID{
-				Tid: globalTid,
+			if len(splitStringInput) != 2 {
+				fmt.Println("Incorrect usage: commit <TID>")
+				continue
+			}
+			tid := strings.TrimSpace(splitStringInput[1])
+			TID := &pb.TransactionID{
+				Tid: tid,
 				E:   0,
 			}
-			_, err := client.CommitTransaction(context.TODO(), tid)
+			resp, err := client.CommitTransaction(context.TODO(), TID)
 			if err != nil {
 				fmt.Printf("An error %s has occurred.\n", err)
 				return
 			}
+			if resp.GetE() == pb.TransactionError_FAILURE {
+				fmt.Println("Transaction ABORTED")
+				continue
+			}
+
 			fmt.Println("The commit was successful.")
 		case "abort":
-			tid := &pb.TransactionID{
-				Tid: globalTid,
+			if len(splitStringInput) != 2 {
+				fmt.Println("Incorrect usage: abort <TID>")
+				continue
+			}
+			tid := strings.TrimSpace(splitStringInput[1])
+			TID := &pb.TransactionID{
+				Tid: tid,
 				E:   0,
 			}
-			_, err := client.AbortTransaction(context.TODO(), tid)
+			_, err := client.AbortTransaction(context.TODO(), TID)
 			if err != nil {
 				fmt.Printf("An error %s has occurred.\n", err)
 				return
 			}
 			fmt.Println("The abort was successful.")
+		default:
+			fmt.Println("Not a valid command: " + command)
 		}
 		fmt.Println("")
 	}

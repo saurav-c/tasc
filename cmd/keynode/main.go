@@ -28,7 +28,7 @@ func (k *KeyNode) _deleteFromPendingKVI (keys []string, keyEntry string, action 
 		newPendingKeyVersions := append(pendingKeyVersions[:indexEntry], pendingKeyVersions[indexEntry+1:]...)
 
 		k.pendingKeyVersionIndex[key] = newPendingKeyVersions
-		k.pendingKeyVersionIndexLock[key].Lock()
+		k.pendingKeyVersionIndexLock[key].Unlock()
 	}
 
 	if action == TRANSACTION_FAILURE {
@@ -37,15 +37,13 @@ func (k *KeyNode) _deleteFromPendingKVI (keys []string, keyEntry string, action 
 
 	for _, key := range keys {
 		// Acquire key index lock
-		var lock *sync.Mutex
-		if lock, ok := k.keyVersionIndexLock[key]; !ok {
+		if _, ok := k.keyVersionIndexLock[key]; !ok {
 			k.createLock.Lock()
-			lock = &sync.RWMutex{}
-			k.keyVersionIndexLock[key] = lock
+			k.keyVersionIndexLock[key] = &sync.RWMutex{}
 			k.createLock.Unlock()
 		}
 
-		lock.Lock()
+		k.keyVersionIndexLock[key].Lock()
 
 		// Perform key index insert
 		committedKeyVersions := k.keyVersionIndex[key]
@@ -53,7 +51,8 @@ func (k *KeyNode) _deleteFromPendingKVI (keys []string, keyEntry string, action 
 
 		// Modify key version index
 		k.keyVersionIndex[key] = committedKeyVersions
-		lock.Unlock()
+
+		k.keyVersionIndexLock[key].Unlock()
 	}
 }
 
@@ -252,7 +251,7 @@ func (k *KeyNode) endTransaction (tid string, action int8, writeBuffer map[strin
 
 func main() {
 	ip := ""
-	keyNode, err := NewKeyNode(ip, "dynamo")
+	keyNode, err := NewKeyNode(ip, "local")
 	if err != nil {
 		log.Fatalf("Could not start new Key Node %v\n", err)
 	}

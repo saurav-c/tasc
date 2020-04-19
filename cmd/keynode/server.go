@@ -270,6 +270,8 @@ func NewKeyNode(KeyNodeIP string, storageInstance string) (*KeyNode, error) {
 	switch storageInstance {
 	case "dynamo":
 		storageManager = storage.NewDynamoStorageManager("Aftsi", "Aftsi")
+	case "local":
+		storageManager = storage.NewLocalStoreManager()
 	default:
 		log.Fatal(fmt.Sprintf("Unrecognized storageType %s. Valid types are: s3, dynamo, redis.", storageInstance))
 		os.Exit(3)
@@ -298,6 +300,7 @@ func NewKeyNode(KeyNodeIP string, storageInstance string) (*KeyNode, error) {
 		pendingKeyVersionIndex:     make(map[string][]string),
 		pendingKeyVersionIndexLock: make(map[string]*sync.RWMutex),
 		committedTxnCache:          make(map[string][]string),
+		pendingTxnCache:			make(map[string]*pendingTxn),
 		readCache:                  make(map[string][]byte),
 		readCacheLock:              &sync.RWMutex{},
 		zmqInfo:                    zmqInfo,
