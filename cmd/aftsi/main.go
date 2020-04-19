@@ -215,7 +215,7 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 	val := readResponse.GetValue()
 	coWrites := readResponse.GetCoWrittenSet()
 
-	// Update CoWrittenSet
+	// Update CoWrittenSet and Readset
 	s.TransactionTableLock[tid].Lock()
 	for _, keyVersion := range coWrites {
 		split := strings.Split(keyVersion, keyVersionDelim)
@@ -224,6 +224,7 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 			s.TransactionTable[tid].coWrittenSet[k] = v
 		}
 	}
+	s.TransactionTable[tid].readSet[key] = versionedKey
 	s.TransactionTableLock[tid].Unlock()
 
 	s.ReadCacheLock.Lock()

@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"log"
+	"strings"
+	"sync"
 )
 
 import (
@@ -14,35 +16,44 @@ const (
 	TRANSACTION_SUCCESS = 0;
 	TRANSACTION_FAILURE = 1;
 	KEY_DELIMITER = ":";
+	KEY_VERSION_DELIMITER = "-";
 )
 
-func (k *KeyNode) _deleteFromPendingKVI (keys []string, keyEntry *keyVersion, action int8) {
+func (k *KeyNode) _deleteFromPendingKVI (keys []string, keyEntry string, action int8) {
 	for _, key := range keys {
-		pLock := k.pendingKeyVersionIndexLock[key]
-		pLock.RLock()
+		k.pendingKeyVersionIndexLock[key].Lock()
 		pendingKeyVersions := k.pendingKeyVersionIndex[key]
-		pLock.RUnlock()
 
 		indexEntry := FindIndex(pendingKeyVersions, keyEntry)
 		newPendingKeyVersions := append(pendingKeyVersions[:indexEntry], pendingKeyVersions[indexEntry+1:]...)
-		pLock.Lock()
+
 		k.pendingKeyVersionIndex[key] = newPendingKeyVersions
-		pLock.Unlock()
+		k.pendingKeyVersionIndexLock[key].Lock()
+	}
 
-		// If txn is to be committed, then added to Committed Txn Cache
-		if action == TRANSACTION_SUCCESS {
-			lock := k.keyVersionIndexLock[key]
-			lock.RLock()
-			committedKeyVersions := k.keyVersionIndex[key]
-			lock.RUnlock()
-			// Finding KeyVersion inserted into Pending and adding to Committed
-			keyVersion := pendingKeyVersions[indexEntry]
-			newCommittedKeyVersions := InsertParticularIndex(committedKeyVersions, keyVersion)
+	if action == TRANSACTION_FAILURE {
+		return
+	}
 
-			lock.Lock()
-			k.keyVersionIndex[key] = newCommittedKeyVersions
-			lock.Unlock()
+	for _, key := range keys {
+		// Acquire key index lock
+		var lock *sync.Mutex
+		if lock, ok := k.keyVersionIndexLock[key]; !ok {
+			k.createLock.Lock()
+			lock = &sync.RWMutex{}
+			k.keyVersionIndexLock[key] = lock
+			k.createLock.Unlock()
 		}
+
+		lock.Lock()
+
+		// Perform key index insert
+		committedKeyVersions := k.keyVersionIndex[key]
+		committedKeyVersions = InsertParticularIndex(committedKeyVersions, keyEntry)
+
+		// Modify key version index
+		k.keyVersionIndex[key] = committedKeyVersions
+		lock.Unlock()
 	}
 }
 
@@ -67,98 +78,174 @@ func (k KeyNode) _evictReadCache(n int) {
 
 }
 
-func (k *KeyNode) readKey (tid string, key string, readList []string, begints string, lowerBound string) (txnid string, keyVersion string, value []byte, coWritten []string, err error) {
+func (k *KeyNode) readKey (tid string, key string, readList []string, begints string, lowerBound string) (keyVersion string, value []byte, coWritten []string, err error) {
+	// Check for Index Lock
 	if _, ok := k.keyVersionIndexLock[key]; !ok {
-		_, _ = k.StorageManager.Get("default")
-		key := fmt.Sprintf("%s:0", key)
-		val, _ := k.StorageManager.Get(key)
-		return tid, key, val, nil, nil
+		return "", nil, nil, errors.New("No key version found for: " + key)
 	}
-	lock := k.keyVersionIndexLock[key]
-	lock.RLock()
+
+	k.keyVersionIndexLock[key].RLock()
 	keyVersions := k.keyVersionIndex[key]
-	lock.RUnlock()
-	for _, keyVersion := range(keyVersions) {
-		keyCommitTS := keyVersion.CommitTS
-		if lowerBound < keyCommitTS && keyCommitTS < begints {
-			keyVersionName := key + KEY_DELIMITER + keyCommitTS
-			txnWriteId := keyVersion.tid
-			txnWriteSet := k.committedTxnCache[txnWriteId]
-			ok := intersection(txnWriteSet, readList)
-			if !ok {
-				indexElem := findIndex(txnWriteSet, keyVersionName)
-				txnCoWritten := append(txnWriteSet[:indexElem], txnWriteSet[indexElem+1:]...)
-				// TODO: Fetch Value from Read Cache or Storage (depending on situation)
-				k.readCacheLock.RLock()
-				if val, ok := k.readCache[keyVersionName]; ok {
-					k.readCacheLock.RUnlock()
-					return tid, keyVersionName, val, txnWriteSet, nil
+	k.keyVersionIndexLock[key].RUnlock()
+
+	// TODO Check if the most recent version is older than the lower bound
+	// In this case, we need to block this read because the update has not
+	// yet propagated to this Key Node. This will be done via blocking on channels that get
+	// updated when the Key Node adds entries to the Key Version Index.
+
+	var version string
+	for i := range(keyVersions) {
+		version = keyVersions[len(keyVersions) - 1 - i]
+
+		splits := strings.Split(version, KEY_VERSION_DELIMITER)
+		keyCommitTS, keyTxn := splits[0], splits[1]
+
+		// Check lowerbound
+		if lowerBound != "" && lowerBound > keyCommitTS {
+			continue
+		}
+
+		// Check to make sure this version existed when Txn began
+		if keyCommitTS >= begints {
+			continue
+		}
+
+		// Check compatibility of this txn's readSet with this key's cowrittenset
+		var coWrites []string
+		if writeSet, ok := k.committedTxnCache[keyTxn]; ok {
+			coWrites = writeSet
+			writeVersions := make(map[string]string)
+			for _, wVersion := range writeSet {
+				wSplit := strings.Split(wVersion, KEY_DELIMITER)
+				writeVersions[wSplit[0]] = strings.Split(wSplit[1], KEY_VERSION_DELIMITER)[0]
+			}
+
+			invalidVersion := false
+			for _, readVersion := range readList {
+				rSplit := strings.Split(readVersion, KEY_DELIMITER)
+				if wVers, ok := writeVersions[rSplit[0]]; ok {
+					rCommitTS := strings.Split(rSplit[1], KEY_VERSION_DELIMITER)[0]
+					if wVers > rCommitTS {
+						invalidVersion = true
+						break
+					}
 				}
-				k.readCacheLock.RUnlock()
-				val, ok := k.StorageManager.Get(keyVersionName)
-				if ok != nil {
-					return tid, keyVersionName, val, txnCoWritten, errors.New("Can't fetch value from storage")
-				}
-				k._evictReadCache(1)
-				k.readCache[keyVersionName] = val
-				return tid, keyVersionName, val, txnCoWritten, nil
+			}
+			if invalidVersion {
+				continue
 			}
 		}
+
+		// Reaching this line means the version is valid
+		// Check for version in cache
+		k.readCacheLock.RLock()
+		if val, ok := k.readCache[version]; ok {
+			k.readCacheLock.RUnlock()
+			return version, val, coWrites, nil
+		}
+		k.readCacheLock.RUnlock()
+
+		// Fetch value from storage manager
+		val, err := k.StorageManager.Get(version)
+		if err != nil {
+			return version, val, coWrites, errors.New("Error fetching value from storage")
+		}
+
+
+		k.readCacheLock.Lock()
+		k.readCache[version] = val
+		k.readCacheLock.Unlock()
+
+		return version, val, coWrites, nil
 	}
-	return tid, "", nil, nil, nil
+	return"", nil, nil, errors.New("No valid version found!")
 }
 
-func (k *KeyNode) validate (tid string, txnBeginTS string, txnCommitTS string, keys []string) (txnid string, action int) {
+func (k *KeyNode) validate (tid string, txnBeginTS string, txnCommitTS string, keys []string) (action int8) {
 	for _, key := range keys {
-		pendingKeyVersions := k.pendingKeyVersionIndex[key]
-		for _, keyVersion := range pendingKeyVersions {
-			keyCommitTS := keyVersion.CommitTS
-			if txnBeginTS < keyCommitTS && keyCommitTS < txnCommitTS {
-				return tid, TRANSACTION_FAILURE
+		// Check for write conflicts in pending Key Version Index
+		if lock, ok := k.pendingKeyVersionIndexLock[key]; ok {
+			lock.RLock()
+			pendingKeyVersions := k.pendingKeyVersionIndex[key];
+			for _, keyVersion := range pendingKeyVersions {
+				keyCommitTS := strings.Split(keyVersion, KEY_VERSION_DELIMITER)[0]
+				if txnBeginTS < keyCommitTS && keyCommitTS < txnCommitTS {
+					lock.RUnlock()
+					return TRANSACTION_FAILURE
+				}
 			}
+			lock.RUnlock()
+		} else {
+			// Need to create a new lock for this pending Key and the pending slice
+			k.createPendingLock.Lock()
+			k.pendingKeyVersionIndexLock[key] = &sync.RWMutex{}
+			k.createPendingLock.Unlock()
+
+			k.pendingKeyVersionIndexLock[key].Lock()
+			k.pendingKeyVersionIndex[key] = make([]string, 1)
+			k.pendingKeyVersionIndexLock[key].Unlock()
+		}
+
+		// Check for write conflicts in committed Key Version Index
+		if lock, ok := k.keyVersionIndexLock[key]; ok {
+			lock.RLock()
+			keyVersions := k.keyVersionIndex[key];
+			for _, keyVersion := range keyVersions {
+				keyCommitTS := strings.Split(keyVersion, KEY_VERSION_DELIMITER)[0]
+				if txnBeginTS < keyCommitTS && keyCommitTS < txnCommitTS {
+					lock.RUnlock()
+					return TRANSACTION_FAILURE
+				}
+			}
+			lock.RUnlock()
 		}
 	}
-	NewKeyVersion := keyVersion{tid: tid, CommitTS: txnCommitTS}
+
+	// Insert keys into pending Key Version Index
+	keyVersion := txnCommitTS + KEY_VERSION_DELIMITER + tid
 	for _, key := range keys {
-		//k.pendingKeyVersionIndexLock[key].RLock()
+		k.pendingKeyVersionIndexLock[key].Lock()
 		pendingKeyVersions := k.pendingKeyVersionIndex[key]
-		//k.pendingKeyVersionIndexLock[key].RUnlock()
-		updatedKeyVersions := InsertParticularIndex(pendingKeyVersions, &NewKeyVersion)
-		//k.pendingKeyVersionIndexLock[key].Lock()
+		updatedKeyVersions := InsertParticularIndex(pendingKeyVersions, keyVersion)
 		k.pendingKeyVersionIndex[key] = updatedKeyVersions
-		//k.pendingKeyVersionIndexLock[key].Unlock()
+		k.pendingKeyVersionIndexLock[key].Unlock()
 	}
+
+	// Add entry to pending transaction writeset
 	k.pendingTxnCache[tid] = &pendingTxn{
 		keys:     keys,
-		commitTS: txnCommitTS,
+		keyVersion: keyVersion,
 	}
-	return tid, TRANSACTION_SUCCESS
+	return TRANSACTION_SUCCESS
 }
 
-func (k *KeyNode) endTransaction (tid string, action int, writeBuffer map[string][]byte) (error) {
+func (k *KeyNode) endTransaction (tid string, action int8, writeBuffer map[string][]byte) (error) {
 	pendingTxn, ok := k.pendingTxnCache[tid]
 	if !ok {
 		return errors.New("Transaction not found")
 	}
 	delete(k.pendingTxnCache, tid)
 	TxnKeys := pendingTxn.keys
-	CommitTS := pendingTxn.commitTS
-	keyEntry := &keyVersion{
-		tid:      tid,
-		CommitTS: CommitTS,
-	}
+	keyVersion := pendingTxn.keyVersion
+
 	if action == TRANSACTION_FAILURE {
 		// Deleting the entries from the Pending Key-Version Index
-		k._deleteFromPendingKVI(TxnKeys, keyEntry, TRANSACTION_FAILURE)
+		k._deleteFromPendingKVI(TxnKeys, keyVersion, TRANSACTION_FAILURE)
 		return nil
 	}
+
+
+	// Add to committed Txn Writeset and Read Cache
 	var writeSet []string
 	for key := range writeBuffer {
 		writeSet = append(writeSet, key)
 	}
-	// Deleting the entries from the Pending Key-Version Index and storing in Committed Txn Cache
-	k._deleteFromPendingKVI(TxnKeys, keyEntry, TRANSACTION_SUCCESS)
 	k.committedTxnCache[tid] = writeSet
+
+	// Deleting the entries from the Pending Key-Version Index and storing in Committed Txn Cache
+	k._deleteFromPendingKVI(TxnKeys, keyVersion, TRANSACTION_SUCCESS)
+
+	// TODO: Add to read cache
 
 	return nil
 }

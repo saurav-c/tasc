@@ -2,13 +2,13 @@ package main
 
 import (
 	"fmt"
-	zmq "github.com/pebbe/zmq4"
-	pb "github.com/saurav-c/aftsi/proto/keynode/api"
 	"github.com/golang/protobuf/proto"
+	zmq "github.com/pebbe/zmq4"
+	storage "github.com/saurav-c/aftsi/lib/storage"
+	pb "github.com/saurav-c/aftsi/proto/keynode/api"
 	"log"
 	"os"
 	"sync"
-	storage "github.com/saurav-c/aftsi/lib/storage"
 	"time"
 )
 
@@ -16,20 +16,20 @@ const (
 	ReadCacheLimit = 1000
 
 	// Key Node puller ports
-	readPullPort = 6000
+	readPullPort     = 6000
 	validatePullPort = 6001
-	endTxnPort = 6002
+	endTxnPort       = 6002
 
 	// Txn Manager pusher ports
-	readRespPort = 9000
-	valRespPort = 9001
+	readRespPort   = 9000
+	valRespPort    = 9001
 	endTxnRespPort = 9002
 
 	PullTemplate = "tcp://*:%d"
 	PushTemplate = "tcp://%s:%d"
 )
 
-func findIndex (a []string, e string) (int) {
+func findIndex(a []string, e string) int {
 	for index, elem := range a {
 		if elem == e {
 			return index
@@ -38,7 +38,7 @@ func findIndex (a []string, e string) (int) {
 	return -1
 }
 
-func intersection (a []string, b []string) (bool) {
+func intersection(a []string, b []string) bool {
 	var hash map[string]bool
 	for _, elem := range a {
 		hash[elem] = true
@@ -51,28 +51,28 @@ func intersection (a []string, b []string) (bool) {
 	return false
 }
 
-func InsertParticularIndex(list []*keyVersion, kv *keyVersion) []*keyVersion {
+func InsertParticularIndex(list []string, kv string) []string {
 	if len(list) == 0 {
-		return []*keyVersion{kv}
+		return []string{kv}
 	}
 	index := FindIndex(list, kv)
 	return append(append(list[:index], kv), list[index:]...)
 }
 
-func FindIndex(list []*keyVersion, kv *keyVersion) int {
+func FindIndex(list []string, kv string) int {
 	startList := 0
 	endList := len(list) - 1
 	midPoint := 0
 	for true {
 		midPoint = (startList + endList) / 2
 		midElement := list[midPoint]
-		if midElement.CommitTS == kv.CommitTS {
+		if midElement == kv {
 			return midPoint
-		} else if kv.CommitTS < list[startList].CommitTS {
+		} else if kv < list[startList] {
 			return startList
-		} else if kv.CommitTS > list[endList].CommitTS {
+		} else if kv > list[endList] {
 			return endList
-		} else if midElement.CommitTS > kv.CommitTS {
+		} else if midElement > kv {
 			startList = midPoint
 		} else {
 			endList = midPoint
@@ -102,34 +102,31 @@ func createSocket(tp zmq.Type, context *zmq.Context, address string, bind bool) 
 	return sckt
 }
 
-type keyVersion struct {
-	tid      string
-	CommitTS string
-}
-
 type pendingTxn struct {
-	keys []string
-	commitTS string
+	keys       []string
+	keyVersion string
 }
 
 type KeyNode struct {
-	StorageManager              storage.StorageManager
-	keyVersionIndex             map[string][]*keyVersion
-	keyVersionIndexLock         map[string]*sync.RWMutex
-	pendingKeyVersionIndex      map[string][]*keyVersion
-	pendingKeyVersionIndexLock  map[string]*sync.RWMutex
-	pendingTxnCache             map[string]*pendingTxn
-	committedTxnCache           map[string][]string
-	readCache                   map[string][]byte
-	readCacheLock               *sync.RWMutex
-	zmqInfo						ZMQInfo
+	StorageManager             storage.StorageManager
+	keyVersionIndex            map[string][]string
+	keyVersionIndexLock        map[string]*sync.RWMutex
+	createLock                 *sync.Mutex
+	pendingKeyVersionIndex     map[string][]string
+	pendingKeyVersionIndexLock map[string]*sync.RWMutex
+	createPendingLock          *sync.Mutex
+	pendingTxnCache            map[string]*pendingTxn
+	committedTxnCache          map[string][]string
+	readCache                  map[string][]byte
+	readCacheLock              *sync.RWMutex
+	zmqInfo                    ZMQInfo
 }
 
 type ZMQInfo struct {
-	context         *zmq.Context
-	readPuller *zmq.Socket
+	context        *zmq.Context
+	readPuller     *zmq.Socket
 	validatePuller *zmq.Socket
-	endTxnPuller *zmq.Socket
+	endTxnPuller   *zmq.Socket
 }
 
 func startKeyNode(keyNode *KeyNode) {
@@ -173,7 +170,7 @@ func startKeyNode(keyNode *KeyNode) {
 }
 
 func readHandler(keyNode *KeyNode, req *pb.KeyRequest) {
-	tid, keyVersion, val, coWrites, err := keyNode.readKey(req.GetTid(),
+	keyVersion, val, coWrites, err := keyNode.readKey(req.GetTid(),
 		req.GetKey(), req.GetReadSet(), req.GetBeginTS(), req.GetLowerBound())
 
 	var resp *pb.KeyResponse
@@ -188,12 +185,12 @@ func readHandler(keyNode *KeyNode, req *pb.KeyRequest) {
 		}
 	} else {
 		resp = &pb.KeyResponse{
-			Tid:                  tid,
-			KeyVersion:           keyVersion,
-			Value:                val,
-			CoWrittenSet:         coWrites,
-			ChannelID: 			  req.GetChannelID(),
-			Error:                pb.KeyError_SUCCESS,
+			Tid:          req.GetTid(),
+			KeyVersion:   keyVersion,
+			Value:        val,
+			CoWrittenSet: coWrites,
+			ChannelID:    req.GetChannelID(),
+			Error:        pb.KeyError_SUCCESS,
 		}
 	}
 
@@ -202,7 +199,7 @@ func readHandler(keyNode *KeyNode, req *pb.KeyRequest) {
 }
 
 func validateHandler(keyNode *KeyNode, req *pb.ValidateRequest) {
-	tid, action := keyNode.validate(req.GetTid(), req.GetBeginTS(), req.GetCommitTS(), req.GetKeys())
+	action := keyNode.validate(req.GetTid(), req.GetBeginTS(), req.GetCommitTS(), req.GetKeys())
 
 	var resp *pb.ValidateResponse
 
@@ -218,7 +215,7 @@ func validateHandler(keyNode *KeyNode, req *pb.ValidateRequest) {
 	}
 
 	resp = &pb.ValidateResponse{
-		Tid:       tid,
+		Tid:       req.GetTid(),
 		Ok:        ok,
 		ChannelID: req.GetChannelID(),
 		Error:     pb.KeyError_SUCCESS,
@@ -229,11 +226,11 @@ func validateHandler(keyNode *KeyNode, req *pb.ValidateRequest) {
 }
 
 func endTxnHandler(keyNode *KeyNode, req *pb.FinishRequest) {
-	var action int
+	var action int8
 	if req.GetS() == pb.TransactionAction_COMMIT {
-		action = 0
+		action = TRANSACTION_SUCCESS
 	} else {
-		action = 1
+		action = TRANSACTION_FAILURE
 	}
 
 	writeMap := make(map[string][]byte)
@@ -296,13 +293,15 @@ func NewKeyNode(KeyNodeIP string, storageInstance string) (*KeyNode, error) {
 
 	return &KeyNode{
 		StorageManager:             storageManager,
-		keyVersionIndex:            make(map[string][]*keyVersion),
+		keyVersionIndex:            make(map[string][]string),
 		keyVersionIndexLock:        make(map[string]*sync.RWMutex),
-		pendingKeyVersionIndex:     make(map[string][]*keyVersion),
+		pendingKeyVersionIndex:     make(map[string][]string),
 		pendingKeyVersionIndexLock: make(map[string]*sync.RWMutex),
 		committedTxnCache:          make(map[string][]string),
 		readCache:                  make(map[string][]byte),
 		readCacheLock:              &sync.RWMutex{},
-		zmqInfo:					zmqInfo,
+		zmqInfo:                    zmqInfo,
+		createLock:                 &sync.Mutex{},
+		createPendingLock:          &sync.Mutex{},
 	}, nil
 }
