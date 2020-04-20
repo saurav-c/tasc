@@ -278,6 +278,7 @@ func (s *AftSIServer) Write(ctx context.Context, writeReq *pb.WriteRequest) (*pb
 
 func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.TransactionID) (*pb.TransactionResponse, error) {
 	// send internal validate(TID, writeSet, Begin-TS, Commit-TS) to all keyNodes
+	start := time.Now()
 
 	// Parse request TID
 	tid := req.GetTid()
@@ -325,12 +326,19 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 	s.keyResponder.validateChannels[channelID] = make(chan *keyNode.ValidateResponse)
 
 	data, _ := proto.Marshal(vReq)
+
+	startVal := time.Now()
+
 	validatePusher.SendBytes(data, zmq.DONTWAIT)
 
 
 	resp := <- s.keyResponder.validateChannels[channelID]
 
+	endVal := time.Now()
+	fmt.Printf("Validation time: %f\n", endVal.Sub(startVal).Milliseconds())
+
 	// Check that it is ok or not
+	startWrite := time.Now()
 	commit := resp.GetOk()
 	if commit {
 		// Send writes & transaction set to storage manager
@@ -338,6 +346,8 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 			s.StorageManager.Put(k + keyVersionDelim + commitTS, v)
 		}
 	}
+	endWrite := time.Now()
+	fmt.Printf("Write to storage time: %f\n", endWrite.Sub(startWrite).Milliseconds())
 
 	// Send endTxn's to KeyNode
 	s.keyResponder.idMutex.Lock()
@@ -370,10 +380,16 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 	s.keyResponder.endTxnChannels[channelID] = make(chan *keyNode.FinishResponse)
 
 	data, _ = proto.Marshal(endReq)
+
+	startEnd := time.Now()
+
 	endPusher.SendBytes(data, zmq.DONTWAIT)
 
 	// Wait for Ack
 	endResp := <- s.keyResponder.endTxnChannels[channelID]
+
+	endEnd := time.Now()
+	fmt.Printf("End Txn time: %f\n", endEnd.Sub(startEnd).Milliseconds())
 
 	// Change commmit status
 	if endResp.GetError() == keyNode.KeyError_FAILURE {
@@ -387,6 +403,9 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 	} else {
 		s.TransactionTable[tid].status = TxnAborted
 	}
+
+	end := time.Now()
+	fmt.Printf("Txn Manager Commit API Time: %f\n", end.Sub(start).Milliseconds())
 	// Respond to client
 	return &pb.TransactionResponse{
 		E:     pb.TransactionError_SUCCESS,
