@@ -237,7 +237,7 @@ func (k *KeyNode) endTransaction (tid string, action int8, writeBuffer map[strin
 	// Add to committed Txn Writeset and Read Cache
 	var writeSet []string
 	for key := range writeBuffer {
-		writeSet = append(writeSet, key)
+		writeSet = append(writeSet, key + KEY_DELIMITER + keyVersion)
 	}
 	k.committedTxnCache[tid] = writeSet
 
