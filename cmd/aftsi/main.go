@@ -335,7 +335,7 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 	resp := <- s.keyResponder.validateChannels[channelID]
 
 	endVal := time.Now()
-	fmt.Printf("Validation time: %f\n", endVal.Sub(startVal).Milliseconds())
+	fmt.Printf("Validation time: %d\n", endVal.Sub(startVal).Milliseconds())
 
 	// Check that it is ok or not
 	startWrite := time.Now()
@@ -347,7 +347,7 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 		}
 	}
 	endWrite := time.Now()
-	fmt.Printf("Write to storage time: %f\n", endWrite.Sub(startWrite).Milliseconds())
+	fmt.Printf("Write to storage time: %d\n", endWrite.Sub(startWrite).Milliseconds())
 
 	// Send endTxn's to KeyNode
 	s.keyResponder.idMutex.Lock()
@@ -389,7 +389,7 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 	endResp := <- s.keyResponder.endTxnChannels[channelID]
 
 	endEnd := time.Now()
-	fmt.Printf("End Txn time: %f\n", endEnd.Sub(startEnd).Milliseconds())
+	fmt.Printf("End Txn time: %d\n", endEnd.Sub(startEnd).Milliseconds())
 
 	// Change commmit status
 	if endResp.GetError() == keyNode.KeyError_FAILURE {
@@ -405,7 +405,7 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 	}
 
 	end := time.Now()
-	fmt.Printf("Txn Manager Commit API Time: %f\n", end.Sub(start).Milliseconds())
+	fmt.Printf("Txn Manager Commit API Time: %d\n", end.Sub(start).Milliseconds())
 	// Respond to client
 	return &pb.TransactionResponse{
 		E:     pb.TransactionError_SUCCESS,
