@@ -5,6 +5,7 @@ import (
 	"log"
 	"strings"
 	"sync"
+	"time"
 )
 
 import (
@@ -82,9 +83,15 @@ func (k *KeyNode) readKey (tid string, key string, readList []string, begints st
 	if _, ok := k.keyVersionIndexLock[key]; !ok {
 		// Fetch index from storage
 		// TODO: Implement writing key version index to storage
+		start := time.Now()
 		_, _ = k.StorageManager.Get(key + ":" + "index")
+		end := time.Now()
+		fmt.Printf("Index Read: %f\n", end.Sub(start).Seconds())
 
+		start = time.Now()
 		defVal, _ := k.StorageManager.Get(key + KEY_DELIMITER + "0")
+		end = time.Now()
+		fmt.Printf("Key Read: %f\n", end.Sub(start).Seconds())
 
 		return "default", defVal, nil, nil
 	}
