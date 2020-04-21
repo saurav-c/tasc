@@ -215,6 +215,13 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 	val := readResponse.GetValue()
 	coWrites := readResponse.GetCoWrittenSet()
 
+	if versionedKey == "default" {
+		return &pb.TransactionResponse{
+			Value: val,
+			E:     pb.TransactionError_SUCCESS,
+		}, nil
+	}
+
 	// Update CoWrittenSet and Readset
 	s.TransactionTableLock[tid].Lock()
 	for _, keyVersion := range coWrites {

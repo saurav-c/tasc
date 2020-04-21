@@ -80,7 +80,13 @@ func (k KeyNode) _evictReadCache(n int) {
 func (k *KeyNode) readKey (tid string, key string, readList []string, begints string, lowerBound string) (keyVersion string, value []byte, coWritten []string, err error) {
 	// Check for Index Lock
 	if _, ok := k.keyVersionIndexLock[key]; !ok {
-		return "", nil, nil, errors.New("No key version found for: " + key)
+		// Fetch index from storage
+		// TODO: Implement writing key version index to storage
+		_, _ = k.StorageManager.Get(key + ":" + "index")
+
+		defVal, _ := k.StorageManager.Get(key + KEY_DELIMITER + "0")
+
+		return "default", defVal, nil, nil
 	}
 
 	k.keyVersionIndexLock[key].RLock()
