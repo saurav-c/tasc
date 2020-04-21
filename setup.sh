@@ -1,3 +1,4 @@
+cat 'export GOPATH=~/go' >> ~/.bashrc
 mkdir $GOPATH
 mkdir $GOPATH/bin
 mkdir $GOPATH/src
