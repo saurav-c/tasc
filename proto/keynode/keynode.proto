@@ -7,7 +7,7 @@ message KeyRequest {
     string beginTS = 4;
     string lowerBound = 5;
     string txnMngrIP = 6;
-    uint64 channelID = 7;
+    string port = 7;
 }
 
 message KeyResponse {
@@ -15,8 +15,7 @@ message KeyResponse {
     string keyVersion = 2;
     bytes value = 3;
     repeated string coWrittenSet = 4;
-    uint64 channelID = 5;
-    KeyError error = 6;
+    KeyError error = 5;
 }
 
 message ValidateRequest {
@@ -25,14 +24,13 @@ message ValidateRequest {
     string commitTS = 3;
     repeated string keys = 4;
     string txnMngrIP = 5;
-    uint64 channelID = 6;
+    string port = 6;
 }
 
 message ValidateResponse {
     string tid = 1;
     bool ok = 2;
-    uint64 channelID = 3;
-    KeyError error = 4;
+    KeyError error = 3;
 }
 
 message FinishRequest {
@@ -41,13 +39,12 @@ message FinishRequest {
     repeated string writeSet = 3;
     repeated bytes writeBuffer = 4;
     string txnMngrIP = 5;
-    uint64 channelID = 6;
+    string port = 6;
 }
 
 message FinishResponse {
     string tid = 1;
-    uint64 channelID = 2;
-    KeyError error = 3;
+    KeyError error = 2;
 }
 
 enum TransactionAction {
