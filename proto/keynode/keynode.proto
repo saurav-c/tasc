@@ -7,7 +7,7 @@ message KeyRequest {
     string beginTS = 4;
     string lowerBound = 5;
     string txnMngrIP = 6;
-    string port = 7;
+    int64 port = 7;
 }
 
 message KeyResponse {
@@ -24,7 +24,7 @@ message ValidateRequest {
     string commitTS = 3;
     repeated string keys = 4;
     string txnMngrIP = 5;
-    string port = 6;
+    int64 port = 6;
 }
 
 message ValidateResponse {
@@ -39,7 +39,7 @@ message FinishRequest {
     repeated string writeSet = 3;
     repeated bytes writeBuffer = 4;
     string txnMngrIP = 5;
-    string port = 6;
+    int64 port = 6;
 }
 
 message FinishResponse {
