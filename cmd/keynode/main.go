@@ -108,7 +108,6 @@ func (k *KeyNode) readKey (tid string, key string, readList []string, begints st
 	var version string
 	for i := range(keyVersions) {
 		version = keyVersions[len(keyVersions) - 1 - i]
-		fmt.Println(version)
 
 		splits := strings.Split(version, KEY_VERSION_DELIMITER)
 		keyCommitTS, keyTxn := splits[0], splits[1]
@@ -148,22 +147,21 @@ func (k *KeyNode) readKey (tid string, key string, readList []string, begints st
 				continue
 			}
 		}
-
+		keyToUse := key + KEY_DELIMITER + version
 		// Reaching this line means the version is valid
 		// Check for version in cache
 		k.readCacheLock.RLock()
-		if val, ok := k.readCache[version]; ok {
+		if val, ok := k.readCache[keyToUse]; ok {
 			k.readCacheLock.RUnlock()
 			return version, val, coWrites, nil
 		}
 		k.readCacheLock.RUnlock()
 
 		// Fetch value from storage manager
-		val, err := k.StorageManager.Get(version)
+		val, err := k.StorageManager.Get(keyToUse)
 		if err != nil {
 			return version, val, coWrites, errors.New("Error fetching value from storage")
 		}
-
 
 		k.readCacheLock.Lock()
 		k.readCache[version] = val
@@ -258,7 +256,9 @@ func (k *KeyNode) endTransaction (tid string, action int8, writeBuffer map[strin
 	// Deleting the entries from the Pending Key-Version Index and storing in Committed Txn Cache
 	k._deleteFromPendingKVI(TxnKeys, keyVersion, TRANSACTION_SUCCESS)
 
-	// TODO: Add to read cache
+	for key, value := range writeBuffer {
+		k.readCache[key + KEY_DELIMITER + keyVersion] = value
+	}
 
 	return nil
 }
