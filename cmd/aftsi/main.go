@@ -357,7 +357,7 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 	if commit {
 		// Send writes & transaction set to storage manager
 		for k, v := range s.WriteBuffer[tid] {
-			s.StorageManager.Put(k + keyVersionDelim + commitTS, v)
+			s.StorageManager.Put(k + keyVersionDelim + commitTS + "-" + tid, v)
 		}
 	}
 	endWrite := time.Now()
