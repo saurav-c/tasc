@@ -236,6 +236,7 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 
 	readResponse := &keyNode.KeyResponse{}
 	data, _ = readPuller.RecvBytes(0)
+	proto.Unmarshal(data, readResponse)
 
 	if readResponse.GetError() != keyNode.KeyError_SUCCESS {
 		return &pb.TransactionResponse{

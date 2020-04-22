@@ -41,7 +41,6 @@ func (k *KeyNode) _deleteFromPendingKVI (keys []string, keyEntry string, action 
 		if _, ok := k.keyVersionIndexLock[key]; !ok {
 			k.createLock.Lock()
 			k.keyVersionIndexLock[key] = &sync.RWMutex{}
-			fmt.Println("the lock should be created on the key: " + key)
 			k.createLock.Unlock()
 		}
 
@@ -269,8 +268,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("Could not start new Key Node %v\n", err)
 	}
-	fmt.Println("hello world")
 
 	startKeyNode(keyNode)
-	fmt.Println("whats up")
 }
