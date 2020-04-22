@@ -25,20 +25,25 @@ const (
 	TxnServerPort = ":5000"
 )
 
-func _HelperGetPort() (port string, err error) {
+func _HelperGetPort() (port int, err error) {
 	conn, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		return "", err
+		return -1, err
 	}
 	defer conn.Close()
 
 	addr := conn.Addr().String()
 	_, portString, err := net.SplitHostPort(addr)
 	if err != nil {
-		return "", err
+		return -1, err
 	}
 
-	return portString, nil
+	port, err = strconv.Atoi(portString)
+	if err != nil {
+		return -1, err
+	}
+
+	return port, nil
 }
 
 func (s *AftSIServer) StartTransaction(ctx context.Context, emp *empty.Empty) (*pb.TransactionID, error) {
