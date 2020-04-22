@@ -339,10 +339,17 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 	validatePusher.SendBytes(data, zmq.DONTWAIT)
 
 
-	resp := <- s.keyResponder.validateChannels[channelID]
+	// resp := <- s.keyResponder.validateChannels[channelID]
+	data, _ = s.zmqInfo.validatePuller.RecvBytes(0)
 
 	endVal := time.Now()
 	fmt.Printf("Validation time: %f\n", endVal.Sub(startVal).Seconds())
+
+	startMar := time.Now()
+	resp :=&keyNode.ValidateResponse{}
+	proto.Unmarshal(data, resp)
+	endMar := time.Now()
+	fmt.Printf("Unmarshalling time: %f\n", endMar.Sub(startMar).Seconds())
 
 	// Check that it is ok or not
 	startWrite := time.Now()

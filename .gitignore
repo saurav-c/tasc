@@ -5,6 +5,7 @@
 
 **/*.go
 
+benchmark/*
 cmd/keynode/keynode
 cmd/aftsi/aftsi
 client/client

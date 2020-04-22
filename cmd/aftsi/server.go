@@ -186,11 +186,11 @@ func txnManagerListen(server *AftSIServer) {
 					data, _ := info.readPuller.RecvBytes(zmq.DONTWAIT)
 					go readHandler(data, server.keyResponder)
 				}
-			case info.validatePuller:
-				{
-					data, _ := info.validatePuller.RecvBytes(zmq.DONTWAIT)
-					go validateHandler(data, server.keyResponder)
-				}
+			//case info.validatePuller:
+			//	{
+			//		data, _ := info.validatePuller.RecvBytes(zmq.DONTWAIT)
+			//		go validateHandler(data, server.keyResponder)
+			//	}
 			case info.endTxnPuller:
 				{
 					data, _ := info.endTxnPuller.RecvBytes(zmq.DONTWAIT)
