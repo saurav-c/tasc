@@ -41,6 +41,7 @@ func (k *KeyNode) _deleteFromPendingKVI (keys []string, keyEntry string, action 
 		if _, ok := k.keyVersionIndexLock[key]; !ok {
 			k.createLock.Lock()
 			k.keyVersionIndexLock[key] = &sync.RWMutex{}
+			fmt.Println("the lock should be created on the key: " + key)
 			k.createLock.Unlock()
 		}
 
@@ -244,7 +245,6 @@ func (k *KeyNode) endTransaction (tid string, action int8, writeBuffer map[strin
 		k._deleteFromPendingKVI(TxnKeys, keyVersion, TRANSACTION_FAILURE)
 		return nil
 	}
-
 
 	// Add to committed Txn Writeset and Read Cache
 	var writeSet []string

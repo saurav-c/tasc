@@ -25,7 +25,7 @@ const (
 	TxnServerPort = ":5000"
 )
 
-func _HelperGetPort() (port int, err error) {
+func _HelperGetPort() (port int64, err error) {
 	conn, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return -1, err
@@ -38,11 +38,12 @@ func _HelperGetPort() (port int, err error) {
 		return -1, err
 	}
 
-	port, err = strconv.Atoi(portString)
+	port_og, err := strconv.Atoi(portString)
 	if err != nil {
 		return -1, err
 	}
 
+	port = int64(port_og)
 	return port, nil
 }
 
@@ -234,7 +235,7 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 	readPusher.SendBytes(data, zmq.DONTWAIT)
 
 	readResponse := &keyNode.KeyResponse{}
-	data, _ = readPuller.RecvBytes(zmq.DONTWAIT)
+	data, _ = readPuller.RecvBytes(0)
 
 	if readResponse.GetError() != keyNode.KeyError_SUCCESS {
 		return &pb.TransactionResponse{
@@ -374,7 +375,7 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 
 	validatePusher.SendBytes(data, zmq.DONTWAIT)
 
-	data, _ = validatePuller.RecvBytes(zmq.DONTWAIT)
+	data, _ = validatePuller.RecvBytes(0)
 
 	endVal := time.Now()
 	fmt.Printf("Validation time: %f\n", endVal.Sub(startVal).Seconds())
@@ -441,7 +442,7 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 	endPusher.SendBytes(data, zmq.DONTWAIT)
 
 	// Wait for Ack
-	data, _ = endPuller.RecvBytes(zmq.DONTWAIT)
+	data, _ = endPuller.RecvBytes(0)
 	endEnd := time.Now()
 	fmt.Printf("End Txn time: %f\n", endEnd.Sub(startEnd).Seconds())
 
