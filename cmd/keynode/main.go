@@ -108,6 +108,7 @@ func (k *KeyNode) readKey (tid string, key string, readList []string, begints st
 	var version string
 	for i := range(keyVersions) {
 		version = keyVersions[len(keyVersions) - 1 - i]
+		fmt.Println(version)
 
 		splits := strings.Split(version, KEY_VERSION_DELIMITER)
 		keyCommitTS, keyTxn := splits[0], splits[1]
