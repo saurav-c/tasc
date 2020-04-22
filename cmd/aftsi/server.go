@@ -156,9 +156,6 @@ func txnManagerListen(server *AftSIServer) {
 	info := server.zmqInfo
 
 	poller.Add(info.createTxnPuller, zmq.POLLIN)
-	poller.Add(info.readPuller, zmq.POLLIN)
-	poller.Add(info.validatePuller, zmq.POLLIN)
-	poller.Add(info.endTxnPuller, zmq.POLLIN)
 
 	for true {
 		sockets, _ := poller.Poll(10 * time.Millisecond)
