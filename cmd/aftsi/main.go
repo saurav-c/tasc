@@ -369,7 +369,7 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 
 	validatePusher.SendBytes(data, zmq.DONTWAIT)
 
-	data, _ = s.zmqInfo.validatePuller.RecvBytes(0)
+	data, _ = validatePuller.RecvBytes(zmq.DONTWAIT)
 
 	endVal := time.Now()
 	fmt.Printf("Validation time: %f\n", endVal.Sub(startVal).Seconds())

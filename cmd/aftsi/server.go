@@ -86,9 +86,6 @@ type ZMQInfo struct {
 	txnRouterPusher *zmq.Socket
 	keyRouterPuller *zmq.Socket
 	keyRouterPusher *zmq.Socket
-	readPuller      *zmq.Socket
-	validatePuller  *zmq.Socket
-	endTxnPuller    *zmq.Socket
 }
 
 func createSocket(tp zmq.Type, context *zmq.Context, address string, bind bool) *zmq.Socket {
