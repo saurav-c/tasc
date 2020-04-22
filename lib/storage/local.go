@@ -13,7 +13,7 @@ func NewLocalStoreManager() (*LocalStoreManager) {
 func (local *LocalStoreManager) CommitTransaction(tid string, CommitTS string, writeBuffer map[string][]byte) error {
 	writeSet := make([]string, 0)
 	for key, value := range writeBuffer {
-		newKey := fmt.Sprintf("%s%s%s", key, keyVersionDelim, CommitTS)
+		newKey := fmt.Sprintf("%s%s%s-%s", key, keyVersionDelim, CommitTS, tid)
 		local.Put(newKey, value)
 		writeSet = append(writeSet, newKey)
 	}

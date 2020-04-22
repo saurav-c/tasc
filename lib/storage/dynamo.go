@@ -29,7 +29,7 @@ func NewDynamoStorageManager(dataTable string, transactionTable string) *DynamoS
 func (dynamo *DynamoStorageManager) CommitTransaction(tid string, CommitTS string, writeBuffer map[string][]byte) error {
 	writeSet := make([]string, 0)
 	for key, val := range writeBuffer {
-		newKey := fmt.Sprintf("%s%s%s", key, keyVersionDelim, CommitTS)
+		newKey := fmt.Sprintf("%s%s%s-%s", key, keyVersionDelim, CommitTS, tid)
 		err := dynamo.Put(newKey, val)
 		writeSet = append(writeSet, newKey)
 		if err != nil {
