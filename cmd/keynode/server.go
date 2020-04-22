@@ -176,7 +176,7 @@ func readHandler(keyNode *KeyNode, req *pb.KeyRequest) {
 	var resp *pb.KeyResponse
 
 	// Create ZMQ Socket to send response
-	pusher := createSocket(zmq.PUSH, keyNode.zmqInfo.context, fmt.Sprintf(PushTemplate, req.GetTxnMngrIP(), readRespPort), false)
+	pusher := createSocket(zmq.PUSH, keyNode.zmqInfo.context, fmt.Sprintf(PushTemplate, req.GetTxnMngrIP(), req.GetPort()), false)
 	defer pusher.Close()
 
 	if err != nil {
@@ -189,7 +189,6 @@ func readHandler(keyNode *KeyNode, req *pb.KeyRequest) {
 			KeyVersion:   keyVersion,
 			Value:        val,
 			CoWrittenSet: coWrites,
-			ChannelID:    req.GetChannelID(),
 			Error:        pb.KeyError_SUCCESS,
 		}
 	}
@@ -204,7 +203,7 @@ func validateHandler(keyNode *KeyNode, req *pb.ValidateRequest) {
 	var resp *pb.ValidateResponse
 
 	// Create ZMQ Socket to send response
-	pusher := createSocket(zmq.PUSH, keyNode.zmqInfo.context, fmt.Sprintf(PushTemplate, req.GetTxnMngrIP(), valRespPort), false)
+	pusher := createSocket(zmq.PUSH, keyNode.zmqInfo.context, fmt.Sprintf(PushTemplate, req.GetTxnMngrIP(), req.GetPort()), false)
 	defer pusher.Close()
 
 	var ok bool
@@ -217,7 +216,6 @@ func validateHandler(keyNode *KeyNode, req *pb.ValidateRequest) {
 	resp = &pb.ValidateResponse{
 		Tid:       req.GetTid(),
 		Ok:        ok,
-		ChannelID: req.GetChannelID(),
 		Error:     pb.KeyError_SUCCESS,
 	}
 
@@ -252,11 +250,10 @@ func endTxnHandler(keyNode *KeyNode, req *pb.FinishRequest) {
 
 	resp := &pb.FinishResponse{
 		Tid:       req.GetTid(),
-		ChannelID: req.GetChannelID(),
 		Error:     e,
 	}
 
-	pusher := createSocket(zmq.PUSH, keyNode.zmqInfo.context, fmt.Sprintf(PushTemplate, req.GetTxnMngrIP(), endTxnRespPort), false)
+	pusher := createSocket(zmq.PUSH, keyNode.zmqInfo.context, fmt.Sprintf(PushTemplate, req.GetTxnMngrIP(), req.GetPort()), false)
 	defer pusher.Close()
 
 	data, _ := proto.Marshal(resp)

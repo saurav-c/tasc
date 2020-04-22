@@ -6,15 +6,15 @@ import (
 	zmq "github.com/pebbe/zmq4"
 	"log"
 	"math/rand"
-	"os"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/golang/protobuf/proto"
+	"github.com/golang/protobuf/ptypes/empty"
 	pb "github.com/saurav-c/aftsi/proto/aftsi/api"
 	keyNode "github.com/saurav-c/aftsi/proto/keynode/api"
 
@@ -195,10 +195,20 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 	readPusher := createSocket(zmq.PUSH, s.zmqInfo.context, fmt.Sprintf(PushTemplate, keyIP, readPullPort), false)
 	defer readPusher.Close()
 
-	s.keyResponder.idMutex.Lock()
-	channelID := s.keyResponder.channelID
-	s.keyResponder.channelID += 1
-	s.keyResponder.idMutex.Unlock()
+	// Create a listener ZMQ socket
+	s.portMutex.Lock()
+	port, err := _HelperGetPort()
+	if err != nil {
+		s.portMutex.Unlock()
+		return &pb.TransactionResponse{
+			E: pb.TransactionError_FAILURE,
+		}, nil
+	}
+
+	readPuller := createSocket(zmq.PULL, s.zmqInfo.context, fmt.Sprintf(PullTemplate, port), true)
+	s.portMutex.Unlock()
+
+	defer readPuller.Close()
 
 	rSet := []string{}
 	for _, v := range readSet {
@@ -212,19 +222,18 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 		BeginTS:    beginTS,
 		LowerBound: keyLowerBound,
 		TxnMngrIP:  s.IPAddress,
-		ChannelID:  channelID,
+		Port:       port,
 	}
-
-	s.keyResponder.readChannels[channelID] = make(chan *keyNode.KeyResponse)
-
 
 	data, _ := proto.Marshal(keyReq)
 	readPusher.SendBytes(data, zmq.DONTWAIT)
 
-	readResponse := <-s.keyResponder.readChannels[channelID]
+	readResponse := &keyNode.KeyResponse{}
+	data, _ = readPuller.RecvBytes(zmq.DONTWAIT)
+
 	if readResponse.GetError() != keyNode.KeyError_SUCCESS {
 		return &pb.TransactionResponse{
-			E:     pb.TransactionError_FAILURE,
+			E: pb.TransactionError_FAILURE,
 		}, nil
 	}
 	versionedKey = readResponse.GetKeyVersion()
@@ -328,10 +337,19 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 	validatePusher := createSocket(zmq.PUSH, s.zmqInfo.context, fmt.Sprintf(PushTemplate, ip, validatePullPort), false)
 	defer validatePusher.Close()
 
-	s.keyResponder.idMutex.Lock()
-	channelID := s.keyResponder.channelID
-	s.keyResponder.channelID += 1
-	s.keyResponder.idMutex.Unlock()
+	// Create validate Puller ZMQ socket
+	s.portMutex.Lock()
+	port, err := _HelperGetPort()
+	if err != nil {
+		s.portMutex.Unlock()
+		return &pb.TransactionResponse{
+			E: pb.TransactionError_FAILURE,
+		}, nil
+	}
+	validatePuller := createSocket(zmq.PULL, s.zmqInfo.context, fmt.Sprintf(PullTemplate, port), true)
+	s.portMutex.Unlock()
+
+	defer validatePuller.Close()
 
 	commitTS := strconv.FormatInt(time.Now().UnixNano(), 10)
 	s.TransactionTable[tid].endTS = commitTS
@@ -342,11 +360,8 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 		CommitTS:  commitTS,
 		Keys:      writeSet,
 		TxnMngrIP: s.IPAddress,
-		ChannelID: channelID,
+		Port:      port,
 	}
-
-	
-	s.keyResponder.validateChannels[channelID] = make(chan *keyNode.ValidateResponse)
 
 	data, _ := proto.Marshal(vReq)
 
@@ -354,15 +369,13 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 
 	validatePusher.SendBytes(data, zmq.DONTWAIT)
 
-
-	// resp := <- s.keyResponder.validateChannels[channelID]
 	data, _ = s.zmqInfo.validatePuller.RecvBytes(0)
 
 	endVal := time.Now()
 	fmt.Printf("Validation time: %f\n", endVal.Sub(startVal).Seconds())
 
 	startMar := time.Now()
-	resp :=&keyNode.ValidateResponse{}
+	resp := &keyNode.ValidateResponse{}
 	proto.Unmarshal(data, resp)
 	endMar := time.Now()
 	fmt.Printf("Unmarshalling time: %f\n", endMar.Sub(startMar).Seconds())
@@ -373,17 +386,26 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 	if commit {
 		// Send writes & transaction set to storage manager
 		for k, v := range s.WriteBuffer[tid] {
-			s.StorageManager.Put(k + keyVersionDelim + commitTS + "-" + tid, v)
+			s.StorageManager.Put(k+keyVersionDelim+commitTS+"-"+tid, v)
 		}
 	}
 	endWrite := time.Now()
 	fmt.Printf("Write to storage time: %f\n", endWrite.Sub(startWrite).Seconds())
 
-	// Send endTxn's to KeyNode
-	s.keyResponder.idMutex.Lock()
-	channelID = s.keyResponder.channelID
-	s.keyResponder.channelID += 1
-	s.keyResponder.idMutex.Unlock()
+	// Create end Xact puller Socket
+	s.portMutex.Lock()
+	port, err = _HelperGetPort()
+
+	if err != nil {
+		s.portMutex.Unlock()
+		return &pb.TransactionResponse{
+			E: pb.TransactionError_FAILURE,
+		}, nil
+	}
+	endPuller := createSocket(zmq.PULL, s.zmqInfo.context, fmt.Sprintf(PullTemplate, port), true)
+	s.portMutex.Unlock()
+
+	defer endPuller.Close()
 
 	var endReq *keyNode.FinishRequest
 	if commit {
@@ -393,21 +415,19 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 			WriteSet:    writeSet,
 			WriteBuffer: writeVals,
 			TxnMngrIP:   s.IPAddress,
-			ChannelID:   channelID,
+			Port:        port,
 		}
 	} else {
 		endReq = &keyNode.FinishRequest{
-			Tid:         tid,
-			S:           keyNode.TransactionAction_ABORT,
-			TxnMngrIP:   s.IPAddress,
-			ChannelID:   channelID,
+			Tid:       tid,
+			S:         keyNode.TransactionAction_ABORT,
+			TxnMngrIP: s.IPAddress,
+			Port:      port,
 		}
 	}
 
 	endPusher := createSocket(zmq.PUSH, s.zmqInfo.context, fmt.Sprintf(PushTemplate, ip, endTxnPort), false)
 	defer endPusher.Close()
-
-	s.keyResponder.endTxnChannels[channelID] = make(chan *keyNode.FinishResponse)
 
 	data, _ = proto.Marshal(endReq)
 
@@ -416,10 +436,12 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 	endPusher.SendBytes(data, zmq.DONTWAIT)
 
 	// Wait for Ack
-	endResp := <- s.keyResponder.endTxnChannels[channelID]
-
+	data, _ = endPuller.RecvBytes(zmq.DONTWAIT)
 	endEnd := time.Now()
 	fmt.Printf("End Txn time: %f\n", endEnd.Sub(startEnd).Seconds())
+
+	endResp := &keyNode.FinishResponse{}
+	proto.Unmarshal(data, endResp)
 
 	// Change commmit status
 	if endResp.GetError() == keyNode.KeyError_FAILURE {
@@ -438,7 +460,7 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 	fmt.Printf("Txn Manager Commit API Time: %f\n", end.Sub(start).Seconds())
 	// Respond to client
 	return &pb.TransactionResponse{
-		E:     pb.TransactionError_SUCCESS,
+		E: pb.TransactionError_SUCCESS,
 	}, nil
 
 }
