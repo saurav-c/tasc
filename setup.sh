@@ -25,6 +25,7 @@ sudo go get -u github.com/golang/protobuf/protoc-gen-go
 sudo go get -u github.com/pebbe/zmq4
 sudo go get -u github.com/aws/aws-sdk-go
 sudo go get -u github.com/go-redis/redis
+sudo go get -u github.com/pkg/errors
 
 # Making the directory
 sudo mkdir -p $GOPATH/src/github.com/saurav-c
