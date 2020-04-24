@@ -1,9 +1,9 @@
 # Creating the Directories and Defining ENVVARS
 export GOPATH=~/go
-mkdir $GOPATH
-mkdir $GOPATH/bin
-mkdir $GOPATH/src
-mkdir $GOPATH/pkg
+sudo mkdir $GOPATH
+sudo mkdir $GOPATH/bin
+sudo mkdir $GOPATH/src
+sudo mkdir $GOPATH/pkg
 export PATH=$PATH:$GOPATH/bin
 export GOBIN=$GOPATH/bin
 
