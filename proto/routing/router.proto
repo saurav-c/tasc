@@ -1,11 +1,11 @@
 syntax="proto3";
 
-service KeyRouter{
-    rpc KeyLookUp(KeyRouterReq) returns (RouterResponse) {}
+service Router{
+    rpc LookUp(RouterReq) returns (RouterResponse) {}
 }
 
-message KeyRouterReq {
-    string key = 1;
+message RouterReq {
+    string req = 1;
 }
 
 message RouterResponse {
