@@ -30,6 +30,22 @@ func (r *RouterServer) LookUp(ctx context.Context, req *pb.RouterReq) (*pb.Route
 	}, nil
 }
 
+func (r *RouterServer) MultipleLookUp(ctx context.Context, multi *pb.RouterReqMulti) (*pb.MultiRouterResponse, error) {
+	keyLookups := multi.GetReq()
+	h := sha1.New()
+	ipAddrs := make([]string, len(keyLookups))
+	for indexKey, elem := range keyLookups {
+		keySha := h.Sum([]byte(elem))
+		intSha := binary.BigEndian.Uint64(keySha)
+		index := intSha % uint64(len(r.router))
+		ipAddrs[indexKey] = r.router[index]
+	}
+	return &pb.MultiRouterResponse{
+		Ip: ipAddrs,
+		Error: 0,
+	}, nil
+}
+
 func main() {
 	lis, err := net.Listen("tcp", RouterPort)
 	if err != nil {

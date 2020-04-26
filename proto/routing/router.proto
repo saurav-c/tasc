@@ -2,10 +2,20 @@ syntax="proto3";
 
 service Router{
     rpc LookUp(RouterReq) returns (RouterResponse) {}
+    rpc MultipleLookUp(RouterReqMulti) returns (MultiRouterResponse) {}
+}
+
+message RouterReqMulti {
+    repeated string req = 1;
 }
 
 message RouterReq {
     string req = 1;
+}
+
+message MultiRouterResponse {
+    repeated string ip = 1;
+    RouterError error = 2;
 }
 
 message RouterResponse {

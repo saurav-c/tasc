@@ -2,8 +2,8 @@ package main
 
 import (
 	"fmt"
-	"github.com/pkg/errors"
 	pb "github.com/saurav-c/aftsi/proto/aftsi/api"
+	"google.golang.org/grpc"
 	"log"
 	"os"
 	"sync"
@@ -11,9 +11,9 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	zmq "github.com/pebbe/zmq4"
-	storage "github.com/saurav-c/aftsi/lib/storage"
+	"github.com/saurav-c/aftsi/lib/storage"
 	key "github.com/saurav-c/aftsi/proto/keynode/api"
-	rtr "github.com/saurav-c/aftsi/proto/routing"
+	rtr "github.com/saurav-c/aftsi/proto/routing/api"
 )
 
 const (
@@ -31,14 +31,6 @@ const (
 	// Txn Manager port for creating new entries
 	createTxnPortReq  = 5001
 	createTxnPortResp = 5002
-
-	// Router port for mapping TID to Txn Manager
-	TxnRouterPullPort = 7000
-	TxnRouterPushPort = 8000
-
-	// Router port for mapping Key to Key Node
-	KeyRouterPullPort = 7001
-	KeyRouterPushPort = 8001
 
 	// Key Node response ports
 	ReadRespPullPort = 9000
@@ -69,6 +61,8 @@ type AftSIServer struct {
 	IPAddress            string
 	KeyNodeIP            string
 	serverID             string
+	txnRouterConn        rtr.RouterClient
+	keyRouterConn        rtr.RouterClient
 	StorageManager       storage.StorageManager
 	TransactionTable     map[string]*TransactionEntry
 	TransactionTableLock map[string]*sync.RWMutex
@@ -149,42 +143,6 @@ func createSocket(tp zmq.Type, context *zmq.Context, address string, bind bool) 
 	}
 
 	return sckt
-}
-
-func pingTxnRouter(zmqInfo *ZMQInfo, tid string) (string, error) {
-	req := &rtr.TxnRouterReq{
-		Tid: tid,
-	}
-	data, _ := proto.Marshal(req)
-	zmqInfo.txnRouterPusher.SendBytes(data, zmq.DONTWAIT)
-	data, _ = zmqInfo.txnRouterPuller.RecvBytes(0)
-	resp := &rtr.RouterResponse{}
-	err := proto.Unmarshal(data, resp)
-	if err != nil {
-		return "", err
-	}
-	if resp.GetError() == rtr.RouterError_FAILURE {
-		return resp.GetIp(), errors.New("Transaction router error")
-	}
-	return resp.GetIp(), nil
-}
-
-func pingKeyRouter(info *ZMQInfo, key string) (string, error) {
-	req := &rtr.KeyRouterReq{
-		Key: key,
-	}
-	data, _ := proto.Marshal(req)
-	info.keyRouterPusher.SendBytes(data, zmq.DONTWAIT)
-	data, _ = info.keyRouterPuller.RecvBytes(0)
-	resp := &rtr.RouterResponse{}
-	err := proto.Unmarshal(data, resp)
-	if err != nil {
-		return "", err
-	}
-	if resp.GetError() == rtr.RouterError_FAILURE {
-		return resp.GetIp(), errors.New("Key router error")
-	}
-	return resp.GetIp(), nil
 }
 
 // Listens for incoming requests via ZMQ
@@ -273,6 +231,12 @@ func NewAftSIServer(personalIP string, txnRouterIP string, keyRouterIP string, k
 		os.Exit(3)
 	}
 
+	conn, err := grpc.Dial(txnRouterIP + ":5006", grpc.WithInsecure())
+	txnRouterClient := rtr.NewRouterClient(conn)
+
+	connKey, err := grpc.Dial(keyRouterIP + ":5006", grpc.WithInsecure())
+	KeyRouterClient := rtr.NewRouterClient(connKey)
+
 	// Setup Txn Manager ZMQ sockets
 	createTxnPuller := createSocket(zmq.PULL, zctx, fmt.Sprintf(PullTemplate, createTxnPortReq), true)
 
@@ -307,6 +271,8 @@ func NewAftSIServer(personalIP string, txnRouterIP string, keyRouterIP string, k
 		IPAddress:            personalIP,
 		KeyNodeIP:            keyNodeIP,
 		serverID:             "",
+		txnRouterConn:        txnRouterClient,
+		keyRouterConn:        KeyRouterClient,
 		StorageManager:       storageManager,
 		TransactionTable:     make(map[string]*TransactionEntry),
 		TransactionTableLock: make(map[string]*sync.RWMutex),
