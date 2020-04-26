@@ -66,16 +66,17 @@ func (s *AftSIServer) StartTransaction(ctx context.Context, emp *empty.Empty) (*
 
 	txnManagerIP := s.IPAddress
 
-	txnEntryReq := &pb.CreateTxnEntry{
-		Tid:          tid,
-		TxnManagerIP: s.IPAddress,
-	}
-	data, _ := proto.Marshal(txnEntryReq)
-
 	// Create Channel to listen for response
 	cid := uuid.New().ID()
 	s.Responder.createTxnChannels[cid] = make(chan *pb.CreateTxnEntryResp, 1)
 	defer close(s.Responder.readChannels[cid])
+
+	txnEntryReq := &pb.CreateTxnEntry{
+		Tid:          tid,
+		TxnManagerIP: s.IPAddress,
+		ChannelID:    cid,
+	}
+	data, _ := proto.Marshal(txnEntryReq)
 
 	addr := fmt.Sprintf(PushTemplate, txnManagerIP, createTxnPortReq)
 	s.PusherCache.lock(s.zmqInfo.context, addr)
