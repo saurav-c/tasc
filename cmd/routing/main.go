@@ -32,15 +32,28 @@ func (r *RouterServer) LookUp(ctx context.Context, req *pb.RouterReq) (*pb.Route
 func (r *RouterServer) MultipleLookUp(ctx context.Context, multi *pb.RouterReqMulti) (*pb.MultiRouterResponse, error) {
 	keyLookups := multi.GetReq()
 	h := sha1.New()
-	ipAddrs := make([]string, len(keyLookups))
-	for indexKey, elem := range keyLookups {
+	ipMap := make(map[string][]string)
+	for _, elem := range keyLookups {
 		keySha := h.Sum([]byte(elem))
 		intSha := binary.BigEndian.Uint64(keySha)
 		index := intSha % uint64(len(r.router))
-		ipAddrs[indexKey] = r.router[index]
+		nodeIP := r.router[index]
+
+		if _, ok := ipMap[nodeIP]; !ok {
+			ipMap[nodeIP] = make([]string, 1)
+		}
+		ipMap[nodeIP] = append(ipMap[nodeIP], elem)
 	}
+
+	ipMapResponse := make(map[string]*pb.MultiResponse)
+	for ip, set := range ipMap {
+		ipMapResponse[ip] = &pb.MultiResponse{
+			Resp: set,
+		}
+	}
+
 	return &pb.MultiRouterResponse{
-		Ip: ipAddrs,
+		IpMap: ipMapResponse,
 	}, nil
 }
 

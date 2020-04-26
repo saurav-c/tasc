@@ -14,7 +14,11 @@ message RouterReq {
 }
 
 message MultiRouterResponse {
-    repeated string ip = 1;
+    map<string, MultiResponse> ipMap = 1;
+}
+
+message MultiResponse {
+    repeated string resp = 1;
 }
 
 message RouterResponse {
