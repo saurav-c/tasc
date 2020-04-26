@@ -166,7 +166,7 @@ func txnManagerListen(server *AftSIServer) {
 					req := &pb.CreateTxnEntry{}
 					data, _ := info.createTxnReqPuller.RecvBytes(zmq.DONTWAIT)
 					proto.Unmarshal(data, req)
-					go server.CreateTransactionEntry(req.GetTid(), req.GetTxnManagerIP())
+					go server.CreateTransactionEntry(req.GetTid(), req.GetTxnManagerIP(), req.GetChannelID())
 				}
 			case info.createTxnRespPuller:
 				{

@@ -69,7 +69,7 @@ func (s *AftSIServer) StartTransaction(ctx context.Context, emp *empty.Empty) (*
 	// Create Channel to listen for response
 	cid := uuid.New().ID()
 	s.Responder.createTxnChannels[cid] = make(chan *pb.CreateTxnEntryResp, 1)
-	defer close(s.Responder.readChannels[cid])
+	defer close(s.Responder.createTxnChannels[cid])
 
 	txnEntryReq := &pb.CreateTxnEntry{
 		Tid:          tid,
@@ -462,7 +462,7 @@ func (s *AftSIServer) AbortTransaction(ctx context.Context, req *pb.TransactionI
 	}
 }
 
-func (s *AftSIServer) CreateTransactionEntry(tid string, txnManagerIP string) () {
+func (s *AftSIServer) CreateTransactionEntry(tid string, txnManagerIP string, channelID uint32) () {
 
 	s.TransactionTable[tid] = &TransactionEntry{
 		beginTS:      strconv.FormatInt(time.Now().UnixNano(), 10),
@@ -475,8 +475,9 @@ func (s *AftSIServer) CreateTransactionEntry(tid string, txnManagerIP string) ()
 	s.TransactionTableLock[tid] = &sync.RWMutex{}
 	s.WriteBufferLock[tid] = &sync.RWMutex{}
 
-	resp := &pb.TransactionResponse{
-		E: pb.TransactionError_SUCCESS,
+	resp := &pb.CreateTxnEntryResp{
+		E:         pb.TransactionError_SUCCESS,
+		ChannelID: channelID,
 	}
 	data, _ := proto.Marshal(resp)
 
