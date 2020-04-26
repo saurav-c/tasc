@@ -197,7 +197,7 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 
 	// Fetch Correct Version of Key from KeyNode and read from Storage
 	// Get Key Node for this key
-	resp, err := s.txnRouterConn.LookUp(context.TODO(), &router.RouterReq{Req: key})
+	resp, err := s.keyRouterConn.LookUp(context.TODO(), &router.RouterReq{Req: key})
 	if err != nil {
 		return &pb.TransactionResponse{E: pb.TransactionError_FAILURE}, err
 	}
