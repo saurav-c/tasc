@@ -252,6 +252,7 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 		}, nil
 	}
 	versionedKey = readResponse.GetKeyVersion()
+	fmt.Printf("Reading key version: %s\n", versionedKey)
 	val := readResponse.GetValue()
 	coWrites := readResponse.GetCoWrittenSet()
 
@@ -426,6 +427,7 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 		// Send writes & transaction set to storage manager
 		for k, v := range s.WriteBuffer[tid] {
 			newKey := k+keyVersionDelim+commitTS+"-"+tid
+			fmt.Printf("Wrote key %s\n", newKey)
 			s._addToBuffer(newKey, v)
 			writeSet = append(writeSet, newKey)
 		}
