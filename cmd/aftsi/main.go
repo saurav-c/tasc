@@ -335,6 +335,13 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 	defer s.TransactionTableLock[tid].Unlock()
 	defer s.WriteBufferLock[tid].Unlock()
 
+	if len(s.WriteBuffer[tid]) == 0 {
+		s.TransactionTable[tid].status = TxnCommitted
+		return &pb.TransactionResponse{
+			E: pb.TransactionError_SUCCESS,
+		}, nil
+	}
+
 	// Do a "routing" request for keys in writeSet
 	buffer := s.WriteBuffer[tid]
 	writeSet := make([]string, 0, len(buffer))
