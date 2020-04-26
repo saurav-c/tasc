@@ -63,17 +63,21 @@ func (s *AftSIServer) _flushBuffer() error {
 }
 
 func (s *AftSIServer) StartTransaction(ctx context.Context, emp *empty.Empty) (*pb.TransactionID, error) {
+	start := time.Now()
 	// Generate TID
 	s.counterMutex.Lock()
 	tid := s.serverID + strconv.FormatUint(s.counter, 10)
 	s.counter += 1
 	s.counterMutex.Unlock()
 
+	startRouter := time.Now()
 	// Ask router for the IP address of master for this TID
 	respRouter, err := s.txnRouterConn.LookUp(context.TODO(), &router.RouterReq{Req: tid})
 	if err != nil {
 		return nil, errors.New("Router Lookup Failed.")
 	}
+	endRouter := time.Now()
+	fmt.Printf("Router lookup took: %f ms\n", 1000 * endRouter.Sub(startRouter).Seconds())
 
 	txnManagerIP := respRouter.GetIp()
 
@@ -92,11 +96,18 @@ func (s *AftSIServer) StartTransaction(ctx context.Context, emp *empty.Empty) (*
 	addr := fmt.Sprintf(PushTemplate, txnManagerIP, createTxnPortReq)
 	s.PusherCache.lock(s.zmqInfo.context, addr)
 	pusher := s.PusherCache.getSocket(addr)
+
+	startCreate := time.Now()
 	pusher.SendBytes(data, zmq.DONTWAIT)
 	s.PusherCache.unlock(addr)
 
 	// Wait for response
 	resp := <-s.Responder.createTxnChannels[cid]
+	endCreate := time.Now()
+	fmt.Printf("Create Txn took: %f ms\n", 1000 * endCreate.Sub(startCreate).Seconds())
+
+	end := time.Now()
+	fmt.Printf("Start API Call tokk: %f ms\n\n", 1000 * end.Sub(start).Seconds())
 
 	if resp.GetE() != pb.TransactionError_SUCCESS {
 		return &pb.TransactionID{
@@ -485,19 +496,20 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 		}
 	}
 
+	end := time.Now()
+	fmt.Printf("Txn Manager Commit API Time: %f ms\n\n", 1000 * end.Sub(start).Seconds())
+
 	if commit {
 		s.TransactionTable[tid].status = TxnCommitted
+		return &pb.TransactionResponse{
+			E: pb.TransactionError_SUCCESS,
+		}, nil
 	} else {
 		s.TransactionTable[tid].status = TxnAborted
+		return &pb.TransactionResponse{
+			E: pb.TransactionError_FAILURE,
+		}, nil
 	}
-
-	end := time.Now()
-	fmt.Printf("Txn Manager Commit API Time: %f ms\n", 1000 * end.Sub(start).Seconds())
-
-	// Respond to client
-	return &pb.TransactionResponse{
-		E: pb.TransactionError_SUCCESS,
-	}, nil
 }
 
 func (s *AftSIServer) AbortTransaction(ctx context.Context, req *pb.TransactionID) (*pb.TransactionResponse, error) {
