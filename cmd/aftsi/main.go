@@ -500,7 +500,6 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 		}
 		respCount += 1
 		if respCount == len(keyMap) {
-			commit = true
 			break
 		}
 	}
