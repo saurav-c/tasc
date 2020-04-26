@@ -18,6 +18,7 @@ const (
 )
 
 func (r *RouterServer) LookUp(ctx context.Context, req *pb.RouterReq) (*pb.RouterResponse, error) {
+	fmt.Println("Received request")
 	keyLookup := req.GetReq()
 	h := sha1.New()
 	keySha := h.Sum([]byte(keyLookup))
@@ -30,6 +31,7 @@ func (r *RouterServer) LookUp(ctx context.Context, req *pb.RouterReq) (*pb.Route
 }
 
 func (r *RouterServer) MultipleLookUp(ctx context.Context, multi *pb.RouterReqMulti) (*pb.MultiRouterResponse, error) {
+	fmt.Println("Received request")
 	keyLookups := multi.GetReq()
 	h := sha1.New()
 	ipMap := make(map[string][]string)
@@ -63,6 +65,7 @@ func main() {
 		log.Fatal("Could not start server on port %s: %v\n", RouterPort, err)
 	}
 	IpAddresses := os.Args[1:]
+	fmt.Println(IpAddresses)
 
 	server := grpc.NewServer()
 
