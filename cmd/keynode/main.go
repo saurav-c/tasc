@@ -21,6 +21,11 @@ const (
 	KEY_VERSION_DELIMITER = "-";
 )
 
+func _convertStringToBytes(stringSlice []string) ([]byte) {
+	stringByte := strings.Join(stringSlice, "\x20\x00")
+	return []byte(stringByte)
+}
+
 func (k *KeyNode) _deleteFromPendingKVI (keys []string, keyEntry string, action int8) {
 	for _, key := range keys {
 		k.pendingKeyVersionIndexLock[key].Lock()
@@ -50,6 +55,7 @@ func (k *KeyNode) _deleteFromPendingKVI (keys []string, keyEntry string, action 
 		// Perform key index insert
 		committedKeyVersions := k.keyVersionIndex[key]
 		committedKeyVersions = InsertParticularIndex(committedKeyVersions, keyEntry)
+		k._addToBuffer(key, _convertStringToBytes(committedKeyVersions))
 
 		// Modify key version index
 		k.keyVersionIndex[key] = committedKeyVersions
@@ -76,7 +82,35 @@ func (k KeyNode) _evictReadCache(n int) {
 			delete(k.readCache, key)
 		}
 	}
+}
 
+func (k KeyNode) _addToBuffer(key string, value []byte) {
+	k.commitLock.Lock()
+	k.commitBuffer[key] = value
+	k.commitLock.Unlock()
+}
+
+func (k KeyNode) _flushBuffer() error {
+	k.commitLock.Lock()
+	copyCommitBuffer := k.commitBuffer
+	k.commitLock.Unlock()
+	allKeys := make([]string, 0)
+	allValues := make([][]byte, 0)
+	for k, v := range copyCommitBuffer {
+		allKeys = append(allKeys, k)
+		allValues = append(allValues, v)
+	}
+	keysWritten, err := k.StorageManager.MultiPut(allKeys, allValues)
+	if err != nil {
+		for _, key := range keysWritten {
+			delete(k.commitBuffer, key)
+		}
+		return errors.New("Not all keys have been put")
+	}
+	for key := range copyCommitBuffer {
+		delete(k.commitBuffer, key)
+	}
+	return nil
 }
 
 func (k *KeyNode) readKey (tid string, key string, readList []string, begints string, lowerBound string) (keyVersion string, value []byte, coWritten []string, err error) {

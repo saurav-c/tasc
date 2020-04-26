@@ -71,15 +71,17 @@ func (redis *RedisStorageManager) Put(key string, val []byte) error {
 	return redis.client.Set(key, val, 0).Err()
 }
 
-func (redis *RedisStorageManager) MultiPut(keys []string, vals [][]byte) error {
+func (redis *RedisStorageManager) MultiPut(keys []string, vals [][]byte) ([]string, error) {
+	keysWritten := make([]string, 0)
 	for index, key := range keys {
 		valPerKeys := vals[index]
 		err := redis.Put(key, valPerKeys)
 		if err != nil {
-			return err
+			return keysWritten, err
 		}
+		keysWritten = append(keysWritten, key)
 	}
-	return nil
+	return keysWritten, nil
 }
 
 func (redis *RedisStorageManager) Delete(key string) error {

@@ -70,6 +70,8 @@ type AftSIServer struct {
 	WriteBufferLock      map[string]*sync.RWMutex
 	ReadCache            map[string][]byte
 	ReadCacheLock        *sync.RWMutex
+	commitBuffer               map[string][]byte
+	commitLock                 *sync.Mutex
 	zmqInfo              ZMQInfo
 	Responder            *ResponseHandler
 	PusherCache          *SocketCache
@@ -289,6 +291,8 @@ func NewAftSIServer(personalIP string, txnRouterIP string, keyRouterIP string, k
 		txnRouterConn:        txnRouterClient,
 		keyRouterConn:        KeyRouterClient,
 		StorageManager:       storageManager,
+		commitBuffer:         make(map[string][]byte),
+		commitLock:           &sync.Mutex{},
 		TransactionTable:     make(map[string]*TransactionEntry),
 		TransactionTableLock: make(map[string]*sync.RWMutex),
 		WriteBuffer:          make(map[string]map[string][]byte),

@@ -31,12 +31,14 @@ func (local *LocalStoreManager) Put(key string, val []byte) error {
 	return nil
 }
 
-func (local *LocalStoreManager) MultiPut(keys []string, vals [][]byte) error {
+func (local *LocalStoreManager) MultiPut(keys []string, vals [][]byte) ([]string, error) {
+	writtenKeys := make([]string, 0)
 	for index, key := range keys {
 		valsPerKey := vals[index]
 		local.Put(key, valsPerKey)
+		writtenKeys = append(writtenKeys, key)
 	}
-	return nil
+	return writtenKeys, nil
 }
 
 func (local *LocalStoreManager) GetTransactionWriteSet(transactionKey string) ([]string, error) {

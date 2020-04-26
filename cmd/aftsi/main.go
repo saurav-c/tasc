@@ -28,6 +28,40 @@ const (
 	TxnServerPort = ":5000"
 )
 
+func _convertStringToBytes(stringSlice []string) ([]byte) {
+	stringByte := strings.Join(stringSlice, "\x20\x00")
+	return []byte(stringByte)
+}
+
+func (s *AftSIServer) _addToBuffer(key string, value []byte) {
+	s.commitLock.Lock()
+	s.commitBuffer[key] = value
+	s.commitLock.Unlock()
+}
+
+func (s *AftSIServer) _flushBuffer() error {
+	s.commitLock.Lock()
+	copyCommitBuffer := s.commitBuffer
+	s.commitLock.Unlock()
+	allKeys := make([]string, 0)
+	allValues := make([][]byte, 0)
+	for k, v := range copyCommitBuffer {
+		allKeys = append(allKeys, k)
+		allValues = append(allValues, v)
+	}
+	keysWritten, err := s.StorageManager.MultiPut(allKeys, allValues)
+	if err != nil {
+		for _, key := range keysWritten {
+			delete(s.commitBuffer, key)
+		}
+		return errors.New("Not all keys have been put")
+	}
+	for key := range copyCommitBuffer {
+		delete(s.commitBuffer, key)
+	}
+	return nil
+}
+
 func (s *AftSIServer) StartTransaction(ctx context.Context, emp *empty.Empty) (*pb.TransactionID, error) {
 	// Generate TID
 	s.counterMutex.Lock()
@@ -349,10 +383,10 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 		// Send writes & transaction set to storage manager
 		for k, v := range s.WriteBuffer[tid] {
 			newKey := k+keyVersionDelim+commitTS+"-"+tid
-			s.StorageManager.Put(newKey, v)
+			s._addToBuffer(newKey, v)
 			writeSet = append(writeSet, newKey)
 		}
-		//s.StorageManager.Put(tid, writeSet)
+		s._addToBuffer(tid, _convertStringToBytes(writeSet))
 	}
 	endWrite := time.Now()
 	fmt.Printf("Write to storage time: %f\n", endWrite.Sub(startWrite).Seconds())

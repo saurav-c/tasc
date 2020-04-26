@@ -19,7 +19,7 @@ type StorageManager interface {
 
 	// As a part of the transaction owned by tid, insert multiple key-value pairs into
 	// the storage engine.
-	MultiPut(keys []string, vals [][]byte) error
+	MultiPut(keys []string, vals [][]byte) ([]string, error)
 
 	// Retrieve a transaction record from the storage engine.
 	GetTransactionWriteSet(transactionKey string) ([]string, error)

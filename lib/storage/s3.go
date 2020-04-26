@@ -107,15 +107,17 @@ func (s3 *S3StorageManager) Put(key string, val []byte) error {
 	return err
 }
 
-func (s3 *S3StorageManager) MultiPut(keys []string, vals [][]byte) error {
+func (s3 *S3StorageManager) MultiPut(keys []string, vals [][]byte) ([]string, error) {
+	writtenKeys := make([]string, 0)
 	for index, key := range keys {
 		val := vals[index]
 		err := s3.Put(key, val)
 		if err != nil {
-			return err
+			return writtenKeys, err
 		}
+		writtenKeys = append(writtenKeys, key)
 	}
-	return nil
+	return writtenKeys, nil
 }
 
 func (s3 *S3StorageManager) Delete(key string) error {

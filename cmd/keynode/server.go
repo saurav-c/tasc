@@ -47,6 +47,8 @@ type KeyNode struct {
 	readCache                  map[string][]byte
 	readCacheLock              *sync.RWMutex
 	zmqInfo                    ZMQInfo
+	commitBuffer               map[string][]byte
+	commitLock                 *sync.Mutex
 	pusherCache                *SocketCache
 }
 

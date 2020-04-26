@@ -68,12 +68,15 @@ func (dynamo *DynamoStorageManager) Put(key string, val []byte) error {
 }
 
 
-func (dynamo *DynamoStorageManager) MultiPut(keys []string, vals [][]byte) error {
+func (dynamo *DynamoStorageManager) MultiPut(keys []string, vals [][]byte) ([]string, error) {
 	inputData := map[string][]*awsdynamo.WriteRequest{}
 	inputData[dynamo.dataTable] = []*awsdynamo.WriteRequest{}
+	keysWritten := make([]string, 0)
 
 	numWrites := 0
+	tempList := make([]string, 0)
 	for index, key := range keys {
+		tempList = append(tempList, key)
 		valPerKey := vals[index]
 
 		keyData := map[string]*awsdynamo.AttributeValue{
@@ -94,8 +97,10 @@ func (dynamo *DynamoStorageManager) MultiPut(keys []string, vals [][]byte) error
 		if numWrites == 25 {
 			_, err := dynamo.dynamoClient.BatchWriteItem(&awsdynamo.BatchWriteItemInput{RequestItems: inputData})
 			if err != nil {
-				return err
+				return keysWritten, err
 			}
+			keysWritten = append(keysWritten, tempList...)
+			tempList = make([]string, 0)
 
 			inputData = map[string][]*awsdynamo.WriteRequest{}
 			inputData[dynamo.dataTable] = []*awsdynamo.WriteRequest{}
@@ -105,10 +110,12 @@ func (dynamo *DynamoStorageManager) MultiPut(keys []string, vals [][]byte) error
 
 	if len(inputData[dynamo.dataTable]) > 0 {
 		_, err := dynamo.dynamoClient.BatchWriteItem(&awsdynamo.BatchWriteItemInput{RequestItems: inputData})
-		return err
+		if err == nil {
+			keysWritten = append(keysWritten, tempList...)
+		}
+		return keysWritten, err
 	}
-
-	return nil
+	return keysWritten, nil
 }
 
 
