@@ -384,7 +384,7 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 				validationChannel <- false
 			}
 			endVal := time.Now()
-			fmt.Printf("Validation time: %f\n", endVal.Sub(startVal).Seconds())
+			fmt.Printf("Validation time: %f ms\n", 1000 * endVal.Sub(startVal).Seconds())
 		}(ip, keys)
 	}
 
@@ -414,7 +414,7 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 		s._addToBuffer(tid, _convertStringToBytes(writeSet))
 	}
 	endWrite := time.Now()
-	fmt.Printf("Write to storage time: %f\n", endWrite.Sub(startWrite).Seconds())
+	fmt.Printf("Write to storage time: %f ms\n", 1000 * endWrite.Sub(startWrite).Seconds())
 
 	finishTxnChannel := make(chan bool, len(keyMap))
 	// Phase 2 of 2PC to Send ABORT/COMMIT to all Key Nodes
@@ -468,7 +468,7 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 				finishTxnChannel <- false
 			}
 			endEnd := time.Now()
-			fmt.Printf("End Txn time: %f\n", endEnd.Sub(startEnd).Seconds())
+			fmt.Printf("End Txn time: %f ms\n", 1000 * endEnd.Sub(startEnd).Seconds())
 		}(ip)
 	}
 
@@ -492,7 +492,7 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 	}
 
 	end := time.Now()
-	fmt.Printf("Txn Manager Commit API Time: %f\n", end.Sub(start).Seconds())
+	fmt.Printf("Txn Manager Commit API Time: %f ms\n", 1000 * end.Sub(start).Seconds())
 
 	// Respond to client
 	return &pb.TransactionResponse{
