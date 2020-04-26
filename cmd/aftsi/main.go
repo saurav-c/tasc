@@ -340,7 +340,7 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 	}
 	multiResp := respRouter.GetIpMap()
 	keyMap := make(map[string][]string)
-	for ip, responseSet := range(multiResp) {
+	for ip, responseSet := range multiResp {
 		keyMap[ip] = responseSet.GetResp()
 	}
 
