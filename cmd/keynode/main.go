@@ -302,5 +302,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("Could not start new Key Node %v\n", err)
 	}
-	startKeyNode(keyNode)
+	go startKeyNode(keyNode)
+	go flusher(keyNode)
 }

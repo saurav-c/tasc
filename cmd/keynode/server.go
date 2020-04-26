@@ -27,6 +27,9 @@ const (
 
 	PullTemplate = "tcp://*:%d"
 	PushTemplate = "tcp://%s:%d"
+
+	// In Seconds
+	FlushFrequency = 5
 )
 
 type pendingTxn struct {
@@ -139,6 +142,16 @@ func (cache *SocketCache) unlock(address string) {
 // Lock and Unlock need to be called on the Cache for this address
 func (cache *SocketCache) getSocket(address string) *zmq.Socket {
 	return cache.sockets[address]
+}
+
+func flusher(k *KeyNode) {
+	if len(k.commitBuffer) > 0 {
+		e := k._flushBuffer()
+		if e != nil {
+			fmt.Println(e.Error())
+		}
+	}
+	time.Sleep(FlushFrequency * time.Second)
 }
 
 func startKeyNode(keyNode *KeyNode) {

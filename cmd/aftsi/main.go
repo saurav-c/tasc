@@ -573,6 +573,7 @@ func main() {
 
 	// Start listening for updates
 	go txnManagerListen(aftsi)
+	go flusher(aftsi)
 
 	fmt.Printf("Starting server at %s.\n", time.Now().String())
 	if err = server.Serve(lis); err != nil {
