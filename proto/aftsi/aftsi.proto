@@ -13,6 +13,12 @@ service AftSI {
 message CreateTxnEntry {
     string tid = 1;
     string txnManagerIP = 2;
+    uint32 channelID = 3;
+}
+
+message CreateTxnEntryResp {
+    TransactionError e = 1;
+    uint32 channelID = 2;
 }
 
 message TransactionID {
