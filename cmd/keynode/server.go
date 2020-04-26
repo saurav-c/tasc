@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"github.com/golang/protobuf/proto"
 	zmq "github.com/pebbe/zmq4"
-	storage "github.com/saurav-c/aftsi/lib/storage"
+	"github.com/saurav-c/aftsi/lib/storage"
 	pb "github.com/saurav-c/aftsi/proto/keynode/api"
 	"log"
 	"os"
@@ -29,26 +29,38 @@ const (
 	PushTemplate = "tcp://%s:%d"
 )
 
-func findIndex(a []string, e string) int {
-	for index, elem := range a {
-		if elem == e {
-			return index
-		}
-	}
-	return -1
+type pendingTxn struct {
+	keys       []string
+	keyVersion string
 }
 
-func intersection(a []string, b []string) bool {
-	var hash map[string]bool
-	for _, elem := range a {
-		hash[elem] = true
-	}
-	for _, elem := range b {
-		if hash[elem] {
-			return true
-		}
-	}
-	return false
+type KeyNode struct {
+	StorageManager             storage.StorageManager
+	keyVersionIndex            map[string][]string
+	keyVersionIndexLock        map[string]*sync.RWMutex
+	createLock                 *sync.Mutex
+	pendingKeyVersionIndex     map[string][]string
+	pendingKeyVersionIndexLock map[string]*sync.RWMutex
+	createPendingLock          *sync.Mutex
+	pendingTxnCache            map[string]*pendingTxn
+	committedTxnCache          map[string][]string
+	readCache                  map[string][]byte
+	readCacheLock              *sync.RWMutex
+	zmqInfo                    ZMQInfo
+	pusherCache                *SocketCache
+}
+
+type ZMQInfo struct {
+	context        *zmq.Context
+	readPuller     *zmq.Socket
+	validatePuller *zmq.Socket
+	endTxnPuller   *zmq.Socket
+}
+
+type SocketCache struct {
+	locks        map[string]*sync.Mutex
+	sockets      map[string]*zmq.Socket
+	creatorMutex *sync.Mutex
 }
 
 func InsertParticularIndex(list []string, kv string) []string {
@@ -100,40 +112,6 @@ func createSocket(tp zmq.Type, context *zmq.Context, address string, bind bool) 
 	}
 
 	return sckt
-}
-
-type pendingTxn struct {
-	keys       []string
-	keyVersion string
-}
-
-type KeyNode struct {
-	StorageManager             storage.StorageManager
-	keyVersionIndex            map[string][]string
-	keyVersionIndexLock        map[string]*sync.RWMutex
-	createLock                 *sync.Mutex
-	pendingKeyVersionIndex     map[string][]string
-	pendingKeyVersionIndexLock map[string]*sync.RWMutex
-	createPendingLock          *sync.Mutex
-	pendingTxnCache            map[string]*pendingTxn
-	committedTxnCache          map[string][]string
-	readCache                  map[string][]byte
-	readCacheLock              *sync.RWMutex
-	zmqInfo                    ZMQInfo
-	pusherCache                *SocketCache
-}
-
-type ZMQInfo struct {
-	context        *zmq.Context
-	readPuller     *zmq.Socket
-	validatePuller *zmq.Socket
-	endTxnPuller   *zmq.Socket
-}
-
-type SocketCache struct {
-	locks        map[string]*sync.Mutex
-	sockets      map[string]*zmq.Socket
-	creatorMutex *sync.Mutex
 }
 
 func (cache *SocketCache) lock(ctx *zmq.Context, address string) {
@@ -297,7 +275,7 @@ func endTxnHandler(keyNode *KeyNode, req *pb.FinishRequest) {
 	keyNode.pusherCache.unlock(addr)
 }
 
-func NewKeyNode(KeyNodeIP string, storageInstance string) (*KeyNode, error) {
+func NewKeyNode(storageInstance string) (*KeyNode, error) {
 	// TODO: Integrate this into config manager
 	// Need to change parameters to fit around needs better
 	var storageManager storage.StorageManager

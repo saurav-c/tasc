@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"github.com/google/uuid"
 	zmq "github.com/pebbe/zmq4"
+	"github.com/pkg/errors"
+	router "github.com/saurav-c/aftsi/proto/routing/api"
 	"log"
 	"math/rand"
 	"net"
@@ -26,28 +28,6 @@ const (
 	TxnServerPort = ":5000"
 )
 
-func _HelperGetPort() (port int64, err error) {
-	conn, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return -1, err
-	}
-	defer conn.Close()
-
-	addr := conn.Addr().String()
-	_, portString, err := net.SplitHostPort(addr)
-	if err != nil {
-		return -1, err
-	}
-
-	port_og, err := strconv.Atoi(portString)
-	if err != nil {
-		return -1, err
-	}
-
-	port = int64(port_og)
-	return port, nil
-}
-
 func (s *AftSIServer) StartTransaction(ctx context.Context, emp *empty.Empty) (*pb.TransactionID, error) {
 	// Generate TID
 	s.counterMutex.Lock()
@@ -56,15 +36,12 @@ func (s *AftSIServer) StartTransaction(ctx context.Context, emp *empty.Empty) (*
 	s.counterMutex.Unlock()
 
 	// Ask router for the IP address of master for this TID
-	//txnManagerIP, err := pingTxnRouter(&s.zmqInfo, tid)
-	//if err != nil {
-	//	return &pb.TransactionID{
-	//		Tid: "",
-	//		E:   pb.TransactionError_FAILURE,
-	//	}, nil
-	//}
+	respRouter, err := s.txnRouterConn.LookUp(context.TODO(), &router.RouterReq{Req: tid})
+	if err != nil {
+		return nil, errors.New("Router Lookup Failed.")
+	}
 
-	txnManagerIP := s.IPAddress
+	txnManagerIP := respRouter.GetIp()
 
 	// Create Channel to listen for response
 	cid := uuid.New().ID()
@@ -98,7 +75,6 @@ func (s *AftSIServer) StartTransaction(ctx context.Context, emp *empty.Empty) (*
 	}, nil
 }
 
-// TODO: Fetch from read cache and update read cache
 func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.TransactionResponse, error) {
 	// Parse read request fields
 	tid := readReq.GetTid()
@@ -146,7 +122,6 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 		}
 		s.ReadCacheLock.RUnlock()
 		// Fetch Value From Storage (stored in val)
-		// TODO
 		val, err := s.StorageManager.Get(versionedKey)
 		if err != nil {
 			return &pb.TransactionResponse{
@@ -177,8 +152,7 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 	}
 
 	// Find lower bound for key version in order to maintain an atomic read set
-	// TODO
-	// Go thru each cowritten set and check for this key, find max version and send it to KN
+	// TODO: Go thru each cowritten set and check for this key, find max version and send it to KN
 	s.TransactionTableLock[tid].RLock()
 	coWrittenSet := s.TransactionTable[tid].coWrittenSet
 	s.TransactionTableLock[tid].RUnlock()
@@ -189,15 +163,12 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 
 	// Fetch Correct Version of Key from KeyNode and read from Storage
 	// Get Key Node for this key
-	//keyIP, err := pingKeyRouter(&s.zmqInfo, key)
-	//if err != nil {
-	//	return &pb.TransactionResponse{
-	//		Value: nil,
-	//		E:     pb.TransactionError_FAILURE,
-	//	}, nil
-	//}
+	resp, err := s.txnRouterConn.LookUp(context.TODO(), &router.RouterReq{Req: key})
+	if err != nil {
+		return &pb.TransactionResponse{E: pb.TransactionError_FAILURE}, err
+	}
 
-	keyIP := s.KeyNodeIP
+	keyIP := resp.GetIp()
 
 	// Use ZMQ to make a read request to the Key Node at keyIP
 
@@ -299,8 +270,7 @@ func (s *AftSIServer) Write(ctx context.Context, writeReq *pb.WriteRequest) (*pb
 	s.WriteBuffer[tid][key] = val
 	s.WriteBufferLock[tid].Unlock()
 
-	// Send update to replicas
-	// TODO
+	// TODO: Send update to replicas
 
 	return &pb.TransactionResponse{
 		E: pb.TransactionError_SUCCESS,
@@ -329,7 +299,14 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 		writeVals = append(writeVals, v)
 	}
 
-	// Get Keynode ip
+	// Fetch KeyNode IP addresses
+	respRouter, err := s.keyRouterConn.MultipleLookUp(context.TODO(), &router.RouterReqMulti{Req: writeSet})
+	if err != nil {
+		return &pb.TransactionResponse{E: pb.TransactionError_FAILURE}, err
+	}
+	_ = respRouter.GetIp()
+
+	// TODO: Do 2PC for KeyNodes
 	ip := s.KeyNodeIP
 	addr := fmt.Sprintf(PushTemplate, ip, validatePullPort)
 
@@ -368,10 +345,14 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 	startWrite := time.Now()
 	commit := resp.GetOk()
 	if commit {
+		writeSet := make([]string, 0)
 		// Send writes & transaction set to storage manager
 		for k, v := range s.WriteBuffer[tid] {
-			s.StorageManager.Put(k+keyVersionDelim+commitTS+"-"+tid, v)
+			newKey := k+keyVersionDelim+commitTS+"-"+tid
+			s.StorageManager.Put(newKey, v)
+			writeSet = append(writeSet, newKey)
 		}
+		//s.StorageManager.Put(tid, writeSet)
 	}
 	endWrite := time.Now()
 	fmt.Printf("Write to storage time: %f\n", endWrite.Sub(startWrite).Seconds())

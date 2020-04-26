@@ -26,7 +26,6 @@ func (r *RouterServer) LookUp(ctx context.Context, req *pb.RouterReq) (*pb.Route
 	ipAddress := r.router[index]
 	return &pb.RouterResponse{
 		Ip:    ipAddress,
-		Error: 0,
 	}, nil
 }
 
@@ -42,7 +41,6 @@ func (r *RouterServer) MultipleLookUp(ctx context.Context, multi *pb.RouterReqMu
 	}
 	return &pb.MultiRouterResponse{
 		Ip: ipAddrs,
-		Error: 0,
 	}, nil
 }
 

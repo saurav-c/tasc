@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -263,11 +264,9 @@ func (k *KeyNode) endTransaction (tid string, action int8, writeBuffer map[strin
 }
 
 func main() {
-	ip := ""
-	keyNode, err := NewKeyNode(ip, "local")
+	keyNode, err := NewKeyNode(os.Args[1])
 	if err != nil {
 		log.Fatalf("Could not start new Key Node %v\n", err)
 	}
-
 	startKeyNode(keyNode)
 }

@@ -15,16 +15,9 @@ message RouterReq {
 
 message MultiRouterResponse {
     repeated string ip = 1;
-    RouterError error = 2;
 }
 
 message RouterResponse {
     string ip = 1;
-    RouterError error = 2;
-}
-
-enum RouterError {
-    SUCCESS = 0;
-    FAILURE = 1;
 }
 
