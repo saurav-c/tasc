@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	pb "github.com/saurav-c/aftsi/proto/aftsi/api"
 	"github.com/golang/protobuf/ptypes/empty"
@@ -36,7 +37,10 @@ func main() {
 		command = strings.TrimSpace(command)
 		switch command {
 		case "start":
+			start := time.Now()
 			tid, err := client.StartTransaction(context.TODO(), &empty.Empty{})
+			end := time.Now()
+			fmt.Printf("Start took: %f ms\n", end.Sub(start).Seconds())
 			if err != nil {
 				fmt.Printf("An error %s has occurred.\n", err)
 				return
@@ -53,7 +57,10 @@ func main() {
 				Tid: tid,
 				Key: keyToFetch,
 			}
+			start := time.Now()
 			response, err := client.Read(context.TODO(), readReq)
+			end := time.Now()
+			fmt.Printf("Read took: %f ms\n", end.Sub(start).Seconds())
 			if err != nil {
 				fmt.Printf("An error %s has occurred.\n", err)
 				return
@@ -72,7 +79,10 @@ func main() {
 				Key:   keyToWrite,
 				Value: []byte(valueToWrite),
 			}
+			start := time.Now()
 			_, err := client.Write(context.TODO(), writeReq)
+			end := time.Now()
+			fmt.Printf("Write took: %f ms\n", end.Sub(start).Seconds())
 			if err != nil {
 				fmt.Printf("An error %s has occurred.\n", err)
 				return
@@ -88,7 +98,10 @@ func main() {
 				Tid: tid,
 				E:   0,
 			}
+			start := time.Now()
 			resp, err := client.CommitTransaction(context.TODO(), TID)
+			end := time.Now()
+			fmt.Printf("Commit took: %f ms\n", end.Sub(start).Seconds())
 			if err != nil {
 				fmt.Printf("An error %s has occurred.\n", err)
 				return
