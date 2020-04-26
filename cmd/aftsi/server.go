@@ -12,6 +12,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	zmq "github.com/pebbe/zmq4"
 	storage "github.com/saurav-c/aftsi/lib/storage"
+	key "github.com/saurav-c/aftsi/proto/keynode/api"
 	rtr "github.com/saurav-c/aftsi/proto/routing"
 )
 
@@ -76,7 +77,8 @@ type AftSIServer struct {
 	ReadCache            map[string][]byte
 	ReadCacheLock        *sync.RWMutex
 	zmqInfo              ZMQInfo
-	portMutex            *sync.Mutex
+	KeyResponder         *KeyNodeResponse
+	PusherCache          *SocketCache
 }
 
 type ZMQInfo struct {
@@ -86,6 +88,46 @@ type ZMQInfo struct {
 	txnRouterPusher *zmq.Socket
 	keyRouterPuller *zmq.Socket
 	keyRouterPusher *zmq.Socket
+	readPuller      *zmq.Socket
+	valPuller       *zmq.Socket
+	endTxnPuller    *zmq.Socket
+}
+
+type KeyNodeResponse struct {
+	readChannels     map[uint32](chan *key.KeyResponse)
+	validateChannels map[uint32](chan *key.ValidateResponse)
+	endTxnChannels   map[uint32](chan *key.FinishResponse)
+}
+
+type SocketCache struct {
+	locks        map[string]*sync.Mutex
+	sockets      map[string]*zmq.Socket
+	creatorMutex *sync.Mutex
+}
+
+func (cache *SocketCache) lock(ctx *zmq.Context, address string) {
+	if _, ok := cache.locks[address]; ok {
+		cache.locks[address].Lock()
+		return
+	}
+
+	cache.creatorMutex.Lock()
+	// Check again for race condition
+	if _, ok := cache.locks[address]; !ok {
+		cache.locks[address] = &sync.Mutex{}
+		cache.sockets[address] = createSocket(zmq.PUSH, ctx, address, false)
+	}
+	cache.locks[address].Lock()
+	cache.creatorMutex.Unlock()
+}
+
+func (cache *SocketCache) unlock(address string) {
+	cache.locks[address].Unlock()
+}
+
+// Lock and Unlock need to be called on the Cache for this address
+func (cache *SocketCache) getSocket(address string) *zmq.Socket {
+	return cache.sockets[address]
 }
 
 func createSocket(tp zmq.Type, context *zmq.Context, address string, bind bool) *zmq.Socket {
@@ -166,21 +208,21 @@ func txnManagerListen(server *AftSIServer) {
 					proto.Unmarshal(data, req)
 					go server.CreateTransactionEntry(req.GetTid(), req.GetTxnManagerIP())
 				}
-				//case info.readPuller:
-				//	{
-				//		data, _ := info.readPuller.RecvBytes(zmq.DONTWAIT)
-				//		go readHandler(data, server.keyResponder)
-				//	}
-				//case info.validatePuller:
-				//	{
-				//		data, _ := info.validatePuller.RecvBytes(zmq.DONTWAIT)
-				//		go validateHandler(data, server.keyResponder)
-				//	}
-				//case info.endTxnPuller:
-				//	{
-				//		data, _ := info.endTxnPuller.RecvBytes(zmq.DONTWAIT)
-				//		go endTxnHandler(data, server.keyResponder)
-				//	}
+			case info.readPuller:
+				{
+					data, _ := info.readPuller.RecvBytes(zmq.DONTWAIT)
+					go readHandler(data, server.KeyResponder)
+				}
+			case info.valPuller:
+				{
+					data, _ := info.valPuller.RecvBytes(zmq.DONTWAIT)
+					go validateHandler(data, server.KeyResponder)
+				}
+			case info.endTxnPuller:
+				{
+					data, _ := info.endTxnPuller.RecvBytes(zmq.DONTWAIT)
+					go endTxnHandler(data, server.KeyResponder)
+				}
 			}
 		}
 	}
@@ -188,26 +230,26 @@ func txnManagerListen(server *AftSIServer) {
 
 // Key Node Response Handlers
 
-//func readHandler(data []byte, keyNodeResponder *KeyNodeResponse) {
-//	resp := &key.KeyResponse{}
-//	proto.Unmarshal(data, resp)
-//	channelID := resp.GetChannelID()
-//	keyNodeResponder.readChannels[channelID] <- resp
-//}
-//
-//func validateHandler(data []byte, keyNodeResponder *KeyNodeResponse) {
-//	resp := &key.ValidateResponse{}
-//	proto.Unmarshal(data, resp)
-//	channelID := resp.GetChannelID()
-//	keyNodeResponder.validateChannels[channelID] <- resp
-//}
-//
-//func endTxnHandler(data []byte, keyNodeResponder *KeyNodeResponse) {
-//	resp := &key.FinishResponse{}
-//	proto.Unmarshal(data, resp)
-//	channelID := resp.GetChannelID()
-//	keyNodeResponder.endTxnChannels[channelID] <- resp
-//}
+func readHandler(data []byte, keyNodeResponder *KeyNodeResponse) {
+	resp := &key.KeyResponse{}
+	proto.Unmarshal(data, resp)
+	channelID := resp.GetChannelID()
+	keyNodeResponder.readChannels[channelID] <- resp
+}
+
+func validateHandler(data []byte, keyNodeResponder *KeyNodeResponse) {
+	resp := &key.ValidateResponse{}
+	proto.Unmarshal(data, resp)
+	channelID := resp.GetChannelID()
+	keyNodeResponder.validateChannels[channelID] <- resp
+}
+
+func endTxnHandler(data []byte, keyNodeResponder *KeyNodeResponse) {
+	resp := &key.FinishResponse{}
+	proto.Unmarshal(data, resp)
+	channelID := resp.GetChannelID()
+	keyNodeResponder.endTxnChannels[channelID] <- resp
+}
 
 func NewAftSIServer(personalIP string, txnRouterIP string, keyRouterIP string, keyNodeIP string, storageInstance string, testInstance bool) (*AftSIServer, int, error) {
 	zctx, err := zmq.NewContext()
@@ -232,35 +274,28 @@ func NewAftSIServer(personalIP string, txnRouterIP string, keyRouterIP string, k
 	createTxnPuller := createSocket(zmq.PULL, zctx, fmt.Sprintf(PullTemplate, createTxnPortReq), true)
 
 	// Setup Key Node sockets
-	//readPuller := createSocket(zmq.PULL, zctx, fmt.Sprintf(PullTemplate, ReadRespPullPort), true)
-	//validatePuller := createSocket(zmq.PULL, zctx, fmt.Sprintf(PullTemplate, ValRespPullPort), true)
-	//endTxnPuller := createSocket(zmq.PULL, zctx, fmt.Sprintf(PullTemplate, EndTxnRespPort), true)
+	readPuller := createSocket(zmq.PULL, zctx, fmt.Sprintf(PullTemplate, ReadRespPullPort), true)
+	validatePuller := createSocket(zmq.PULL, zctx, fmt.Sprintf(PullTemplate, ValRespPullPort), true)
+	endTxnPuller := createSocket(zmq.PULL, zctx, fmt.Sprintf(PullTemplate, EndTxnRespPort), true)
 
 	zmqInfo := ZMQInfo{
 		context:         zctx,
 		createTxnPuller: createTxnPuller,
-		txnRouterPuller: nil,
-		txnRouterPusher: nil,
-		keyRouterPuller: nil,
-		keyRouterPusher: nil,
+		readPuller:      readPuller,
+		valPuller:       validatePuller,
+		endTxnPuller:    endTxnPuller,
 	}
 
-	// Setup routing ZMQ sockets
-	if !testInstance {
-		txnRouterPuller := createSocket(zmq.PULL, zctx, fmt.Sprintf(PullTemplate, TxnRouterPullPort), true)
-		txnRouterPusher := createSocket(zmq.PUSH, zctx, fmt.Sprintf(PushTemplate, txnRouterIP, TxnRouterPushPort), false)
+	keyResponder := KeyNodeResponse{
+		readChannels:     make(map[uint32](chan *key.KeyResponse)),
+		validateChannels: make(map[uint32](chan *key.ValidateResponse)),
+		endTxnChannels:   make(map[uint32](chan *key.FinishResponse)),
+	}
 
-		keyRouterPuller := createSocket(zmq.PULL, zctx, fmt.Sprintf(PullTemplate, KeyRouterPullPort), true)
-		keyRouterPusher := createSocket(zmq.PUSH, zctx, fmt.Sprintf(PushTemplate, txnRouterIP, KeyRouterPushPort), false)
-
-		zmqInfo = ZMQInfo{
-			context:         zctx,
-			createTxnPuller: createTxnPuller,
-			txnRouterPuller: txnRouterPuller,
-			txnRouterPusher: txnRouterPusher,
-			keyRouterPuller: keyRouterPuller,
-			keyRouterPusher: keyRouterPusher,
-		}
+	pusherCache := SocketCache{
+		locks:        make(map[string]*sync.Mutex),
+		sockets:      make(map[string]*zmq.Socket),
+		creatorMutex: &sync.Mutex{},
 	}
 
 	return &AftSIServer{
@@ -277,6 +312,7 @@ func NewAftSIServer(personalIP string, txnRouterIP string, keyRouterIP string, k
 		ReadCache:            make(map[string][]byte),
 		ReadCacheLock:        &sync.RWMutex{},
 		zmqInfo:              zmqInfo,
-		portMutex:            &sync.Mutex{},
+		KeyResponder:         &keyResponder,
+		PusherCache:          &pusherCache,
 	}, 0, nil
 }

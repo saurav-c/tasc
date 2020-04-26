@@ -120,6 +120,7 @@ type KeyNode struct {
 	readCache                  map[string][]byte
 	readCacheLock              *sync.RWMutex
 	zmqInfo                    ZMQInfo
+	pusherCache                *SocketCache
 }
 
 type ZMQInfo struct {
@@ -127,6 +128,37 @@ type ZMQInfo struct {
 	readPuller     *zmq.Socket
 	validatePuller *zmq.Socket
 	endTxnPuller   *zmq.Socket
+}
+
+type SocketCache struct {
+	locks        map[string]*sync.Mutex
+	sockets      map[string]*zmq.Socket
+	creatorMutex *sync.Mutex
+}
+
+func (cache *SocketCache) lock(ctx *zmq.Context, address string) {
+	if _, ok := cache.locks[address]; ok {
+		cache.locks[address].Lock()
+		return
+	}
+
+	cache.creatorMutex.Lock()
+	// Check again for race condition
+	if _, ok := cache.locks[address]; !ok {
+		cache.locks[address] = &sync.Mutex{}
+		cache.sockets[address] = createSocket(zmq.PUSH, ctx, address, false)
+	}
+	cache.locks[address].Lock()
+	cache.creatorMutex.Unlock()
+}
+
+func (cache *SocketCache) unlock(address string) {
+	cache.locks[address].Unlock()
+}
+
+// Lock and Unlock need to be called on the Cache for this address
+func (cache *SocketCache) getSocket(address string) *zmq.Socket {
+	return cache.sockets[address]
 }
 
 func startKeyNode(keyNode *KeyNode) {
@@ -166,7 +198,6 @@ func startKeyNode(keyNode *KeyNode) {
 			}
 		}
 	}
-
 }
 
 func readHandler(keyNode *KeyNode, req *pb.KeyRequest) {
@@ -175,13 +206,10 @@ func readHandler(keyNode *KeyNode, req *pb.KeyRequest) {
 
 	var resp *pb.KeyResponse
 
-	// Create ZMQ Socket to send response
-	pusher := createSocket(zmq.PUSH, keyNode.zmqInfo.context, fmt.Sprintf(PushTemplate, req.GetTxnMngrIP(), req.GetPort()), false)
-	defer pusher.Close()
-
 	if err != nil {
 		resp = &pb.KeyResponse{
-			Error: pb.KeyError_FAILURE,
+			Error:     pb.KeyError_FAILURE,
+			ChannelID: req.GetChannelID(),
 		}
 	} else {
 		resp = &pb.KeyResponse{
@@ -190,21 +218,22 @@ func readHandler(keyNode *KeyNode, req *pb.KeyRequest) {
 			Value:        val,
 			CoWrittenSet: coWrites,
 			Error:        pb.KeyError_SUCCESS,
+			ChannelID:    req.GetChannelID(),
 		}
 	}
 
 	data, _ := proto.Marshal(resp)
+	addr := fmt.Sprintf(PushTemplate, req.GetTxnMngrIP(), readRespPort)
+	keyNode.pusherCache.lock(keyNode.zmqInfo.context, addr)
+	pusher := keyNode.pusherCache.getSocket(addr)
 	pusher.SendBytes(data, zmq.DONTWAIT)
+	keyNode.pusherCache.unlock(addr)
 }
 
 func validateHandler(keyNode *KeyNode, req *pb.ValidateRequest) {
 	action := keyNode.validate(req.GetTid(), req.GetBeginTS(), req.GetCommitTS(), req.GetKeys())
 
 	var resp *pb.ValidateResponse
-
-	// Create ZMQ Socket to send response
-	pusher := createSocket(zmq.PUSH, keyNode.zmqInfo.context, fmt.Sprintf(PushTemplate, req.GetTxnMngrIP(), req.GetPort()), false)
-	defer pusher.Close()
 
 	var ok bool
 	if action == TRANSACTION_SUCCESS {
@@ -217,10 +246,15 @@ func validateHandler(keyNode *KeyNode, req *pb.ValidateRequest) {
 		Tid:       req.GetTid(),
 		Ok:        ok,
 		Error:     pb.KeyError_SUCCESS,
+		ChannelID: req.GetChannelID(),
 	}
-
 	data, _ := proto.Marshal(resp)
+
+	addr := fmt.Sprintf(PushTemplate, req.GetTxnMngrIP(), valRespPort)
+	keyNode.pusherCache.lock(keyNode.zmqInfo.context, addr)
+	pusher := keyNode.pusherCache.getSocket(addr)
 	pusher.SendBytes(data, zmq.DONTWAIT)
+	keyNode.pusherCache.unlock(addr)
 }
 
 func endTxnHandler(keyNode *KeyNode, req *pb.FinishRequest) {
@@ -251,13 +285,16 @@ func endTxnHandler(keyNode *KeyNode, req *pb.FinishRequest) {
 	resp := &pb.FinishResponse{
 		Tid:       req.GetTid(),
 		Error:     e,
+		ChannelID: req.GetChannelID(),
 	}
 
-	pusher := createSocket(zmq.PUSH, keyNode.zmqInfo.context, fmt.Sprintf(PushTemplate, req.GetTxnMngrIP(), req.GetPort()), false)
-	defer pusher.Close()
-
 	data, _ := proto.Marshal(resp)
+
+	addr := fmt.Sprintf(PushTemplate, req.GetTxnMngrIP(), endTxnRespPort)
+	keyNode.pusherCache.lock(keyNode.zmqInfo.context, addr)
+	pusher := keyNode.pusherCache.getSocket(addr)
 	pusher.SendBytes(data, zmq.DONTWAIT)
+	keyNode.pusherCache.unlock(addr)
 }
 
 func NewKeyNode(KeyNodeIP string, storageInstance string) (*KeyNode, error) {
@@ -290,6 +327,12 @@ func NewKeyNode(KeyNodeIP string, storageInstance string) (*KeyNode, error) {
 		endTxnPuller:   endTxnPuller,
 	}
 
+	pusherCache := SocketCache{
+		locks:        make(map[string]*sync.Mutex),
+		sockets:      make(map[string]*zmq.Socket),
+		creatorMutex: &sync.Mutex{},
+	}
+
 	return &KeyNode{
 		StorageManager:             storageManager,
 		keyVersionIndex:            make(map[string][]string),
@@ -297,11 +340,12 @@ func NewKeyNode(KeyNodeIP string, storageInstance string) (*KeyNode, error) {
 		pendingKeyVersionIndex:     make(map[string][]string),
 		pendingKeyVersionIndexLock: make(map[string]*sync.RWMutex),
 		committedTxnCache:          make(map[string][]string),
-		pendingTxnCache:			make(map[string]*pendingTxn),
+		pendingTxnCache:            make(map[string]*pendingTxn),
 		readCache:                  make(map[string][]byte),
 		readCacheLock:              &sync.RWMutex{},
 		zmqInfo:                    zmqInfo,
 		createLock:                 &sync.Mutex{},
 		createPendingLock:          &sync.Mutex{},
+		pusherCache:                &pusherCache,
 	}, nil
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/google/uuid"
 	zmq "github.com/pebbe/zmq4"
 	"log"
 	"math/rand"
@@ -197,29 +198,15 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 	keyIP := s.KeyNodeIP
 
 	// Use ZMQ to make a read request to the Key Node at keyIP
-	// TODO
-	readPusher := createSocket(zmq.PUSH, s.zmqInfo.context, fmt.Sprintf(PushTemplate, keyIP, readPullPort), false)
-	defer readPusher.Close()
-
-	// Create a listener ZMQ socket
-	s.portMutex.Lock()
-	port, err := _HelperGetPort()
-	if err != nil {
-		s.portMutex.Unlock()
-		return &pb.TransactionResponse{
-			E: pb.TransactionError_FAILURE,
-		}, nil
-	}
-
-	readPuller := createSocket(zmq.PULL, s.zmqInfo.context, fmt.Sprintf(PullTemplate, port), true)
-	s.portMutex.Unlock()
-
-	defer readPuller.Close()
 
 	rSet := []string{}
 	for _, v := range readSet {
 		rSet = append(rSet, v)
 	}
+
+	cid := uuid.New().ID()
+	s.KeyResponder.readChannels[cid] = make(chan *keyNode.KeyResponse, 1)
+	defer close(s.KeyResponder.readChannels[cid])
 
 	keyReq := &keyNode.KeyRequest{
 		Tid:        tid,
@@ -228,15 +215,18 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 		BeginTS:    beginTS,
 		LowerBound: keyLowerBound,
 		TxnMngrIP:  s.IPAddress,
-		Port:       port,
+		ChannelID:	cid,
 	}
 
 	data, _ := proto.Marshal(keyReq)
-	readPusher.SendBytes(data, zmq.DONTWAIT)
+	addr := fmt.Sprintf(PushTemplate, keyIP, readPullPort)
 
-	readResponse := &keyNode.KeyResponse{}
-	data, _ = readPuller.RecvBytes(0)
-	proto.Unmarshal(data, readResponse)
+	s.PusherCache.lock(s.zmqInfo.context, addr)
+	readPusher := s.PusherCache.getSocket(addr)
+	readPusher.SendBytes(data, zmq.DONTWAIT)
+	s.PusherCache.unlock(addr)
+
+	readResponse := <- s.KeyResponder.readChannels[cid]
 
 	if readResponse.GetError() != keyNode.KeyError_SUCCESS {
 		return &pb.TransactionResponse{
@@ -339,27 +329,14 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 
 	// Get Keynode ip
 	ip := s.KeyNodeIP
-
-	// Send a validate request to this KeyNode
-	validatePusher := createSocket(zmq.PUSH, s.zmqInfo.context, fmt.Sprintf(PushTemplate, ip, validatePullPort), false)
-	defer validatePusher.Close()
-
-	// Create validate Puller ZMQ socket
-	s.portMutex.Lock()
-	port, err := _HelperGetPort()
-	if err != nil {
-		s.portMutex.Unlock()
-		return &pb.TransactionResponse{
-			E: pb.TransactionError_FAILURE,
-		}, nil
-	}
-	validatePuller := createSocket(zmq.PULL, s.zmqInfo.context, fmt.Sprintf(PullTemplate, port), true)
-	s.portMutex.Unlock()
-
-	defer validatePuller.Close()
+	addr := fmt.Sprintf(PushTemplate, ip, validatePullPort)
 
 	commitTS := strconv.FormatInt(time.Now().UnixNano(), 10)
 	s.TransactionTable[tid].endTS = commitTS
+
+	cid := uuid.New().ID()
+	s.KeyResponder.validateChannels[cid] = make(chan *keyNode.ValidateResponse, 1)
+	defer close(s.KeyResponder.validateChannels[cid])
 
 	vReq := &keyNode.ValidateRequest{
 		Tid:       tid,
@@ -367,25 +344,23 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 		CommitTS:  commitTS,
 		Keys:      writeSet,
 		TxnMngrIP: s.IPAddress,
-		Port:      port,
+		ChannelID:      cid,
 	}
 
 	data, _ := proto.Marshal(vReq)
 
+	s.PusherCache.lock(s.zmqInfo.context, addr)
+	validatePusher := s.PusherCache.getSocket(addr)
+
 	startVal := time.Now()
 
 	validatePusher.SendBytes(data, zmq.DONTWAIT)
+	s.PusherCache.unlock(addr)
 
-	data, _ = validatePuller.RecvBytes(0)
+	resp := <- s.KeyResponder.validateChannels[cid]
 
 	endVal := time.Now()
 	fmt.Printf("Validation time: %f\n", endVal.Sub(startVal).Seconds())
-
-	startMar := time.Now()
-	resp := &keyNode.ValidateResponse{}
-	proto.Unmarshal(data, resp)
-	endMar := time.Now()
-	fmt.Printf("Unmarshalling time: %f\n", endMar.Sub(startMar).Seconds())
 
 	// Check that it is ok or not
 	startWrite := time.Now()
@@ -399,20 +374,9 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 	endWrite := time.Now()
 	fmt.Printf("Write to storage time: %f\n", endWrite.Sub(startWrite).Seconds())
 
-	// Create end Xact puller Socket
-	s.portMutex.Lock()
-	port, err = _HelperGetPort()
-
-	if err != nil {
-		s.portMutex.Unlock()
-		return &pb.TransactionResponse{
-			E: pb.TransactionError_FAILURE,
-		}, nil
-	}
-	endPuller := createSocket(zmq.PULL, s.zmqInfo.context, fmt.Sprintf(PullTemplate, port), true)
-	s.portMutex.Unlock()
-
-	defer endPuller.Close()
+	cid = uuid.New().ID()
+	s.KeyResponder.endTxnChannels[cid] = make(chan *keyNode.FinishResponse, 1)
+	defer close(s.KeyResponder.endTxnChannels[cid])
 
 	var endReq *keyNode.FinishRequest
 	if commit {
@@ -422,33 +386,34 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 			WriteSet:    writeSet,
 			WriteBuffer: writeVals,
 			TxnMngrIP:   s.IPAddress,
-			Port:        port,
+			ChannelID:        cid,
 		}
 	} else {
 		endReq = &keyNode.FinishRequest{
 			Tid:       tid,
 			S:         keyNode.TransactionAction_ABORT,
 			TxnMngrIP: s.IPAddress,
-			Port:      port,
+			ChannelID:      cid,
 		}
 	}
 
-	endPusher := createSocket(zmq.PUSH, s.zmqInfo.context, fmt.Sprintf(PushTemplate, ip, endTxnPort), false)
-	defer endPusher.Close()
 
 	data, _ = proto.Marshal(endReq)
+
+	addr = fmt.Sprintf(PushTemplate, ip, endTxnPort)
+	s.PusherCache.lock(s.zmqInfo.context, addr)
+	endPusher := s.PusherCache.getSocket(addr)
 
 	startEnd := time.Now()
 
 	endPusher.SendBytes(data, zmq.DONTWAIT)
+	s.PusherCache.unlock(addr)
 
 	// Wait for Ack
-	data, _ = endPuller.RecvBytes(0)
+	endResp := <- s.KeyResponder.endTxnChannels[cid]
+
 	endEnd := time.Now()
 	fmt.Printf("End Txn time: %f\n", endEnd.Sub(startEnd).Seconds())
-
-	endResp := &keyNode.FinishResponse{}
-	proto.Unmarshal(data, endResp)
 
 	// Change commmit status
 	if endResp.GetError() == keyNode.KeyError_FAILURE {
