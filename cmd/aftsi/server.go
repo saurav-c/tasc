@@ -62,7 +62,6 @@ type AftSIServer struct {
 	counter              uint64
 	counterMutex         *sync.Mutex
 	IPAddress            string
-	KeyNodeIP            string
 	serverID             string
 	txnRouterConn        rtr.RouterClient
 	keyRouterConn        rtr.RouterClient
@@ -239,7 +238,7 @@ func endTxnHandler(data []byte, responder *ResponseHandler) {
 	responder.endTxnChannels[channelID] <- resp
 }
 
-func NewAftSIServer(personalIP string, txnRouterIP string, keyRouterIP string, keyNodeIP string, storageInstance string, testInstance bool) (*AftSIServer, int, error) {
+func NewAftSIServer(personalIP string, txnRouterIP string, keyRouterIP string, storageInstance string, testInstance bool) (*AftSIServer, int, error) {
 	zctx, err := zmq.NewContext()
 	if err != nil {
 		return nil, 0, err
@@ -299,7 +298,6 @@ func NewAftSIServer(personalIP string, txnRouterIP string, keyRouterIP string, k
 		counter:              0,
 		counterMutex:         &sync.Mutex{},
 		IPAddress:            personalIP,
-		KeyNodeIP:            keyNodeIP,
 		serverID:             "",
 		txnRouterConn:        txnRouterClient,
 		keyRouterConn:        KeyRouterClient,

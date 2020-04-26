@@ -557,15 +557,14 @@ func main() {
 	}
 
 	personalIP := os.Args[1]
-	keyNodeIP := os.Args[2]
-	storage := os.Args[3]
+	txnRouter := os.Args[2]
+	keyRouter := os.Args[3]
+	storage := os.Args[4]
 
 	server := grpc.NewServer()
-	// TODO: Lookup router IP Address
-	txnRouter := ""
-	keyRouter := ""
 
-	aftsi, _, err := NewAftSIServer(personalIP, txnRouter, keyRouter, keyNodeIP, storage, true)
+
+	aftsi, _, err := NewAftSIServer(personalIP, txnRouter, keyRouter, storage, true)
 	if err != nil {
 		log.Fatal("Could not start server on port %s: %v\n", TxnServerPort, err)
 	}
