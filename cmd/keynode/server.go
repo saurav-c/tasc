@@ -340,5 +340,7 @@ func NewKeyNode(storageInstance string) (*KeyNode, error) {
 		createLock:                 &sync.Mutex{},
 		createPendingLock:          &sync.Mutex{},
 		pusherCache:                &pusherCache,
+		commitBuffer:               make(map[string][]byte),
+		commitLock:                 &sync.Mutex{},
 	}, nil
 }
