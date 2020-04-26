@@ -1,16 +1,16 @@
 syntax="proto3";
 
-message TxnRouterReq {
-    string tid = 1;
+service KeyRouter{
+    rpc KeyLookUp(KeyRouterReq) returns (RouterResponse) {}
+}
+
+message KeyRouterReq {
+    string key = 1;
 }
 
 message RouterResponse {
     string ip = 1;
     RouterError error = 2;
-}
-
-message KeyRouterReq {
-    string key = 1;
 }
 
 enum RouterError {
