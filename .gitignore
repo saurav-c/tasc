@@ -3,7 +3,6 @@
 .vscode/
 .DS_Store
 
-benchmark/*
 cmd/keynode/keynode
 cmd/aftsi/aftsi
 client/client
