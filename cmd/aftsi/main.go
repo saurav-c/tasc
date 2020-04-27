@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"github.com/google/uuid"
 	zmq "github.com/pebbe/zmq4"
@@ -428,10 +429,19 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 		for k, v := range s.WriteBuffer[tid] {
 			newKey := k+keyVersionDelim+commitTS+"-"+tid
 			fmt.Printf("Wrote key %s\n", newKey)
-			s._addToBuffer(newKey, v)
+
+			if s.batchMode {
+				s._addToBuffer(newKey, v)
+			} else {
+				s.StorageManager.Put(newKey, v)
+			}
 			writeSet = append(writeSet, newKey)
 		}
-		s._addToBuffer(tid, _convertStringToBytes(writeSet))
+		if s.batchMode {
+			s._addToBuffer(tid, _convertStringToBytes(writeSet))
+		} else {
+			s.StorageManager.Put(tid, _convertStringToBytes(writeSet))
+		}
 	}
 	endWrite := time.Now()
 	fmt.Printf("Write to storage time: %f ms\n", 1000 * endWrite.Sub(startWrite).Seconds())
@@ -581,10 +591,12 @@ func main() {
 	keyRouter := os.Args[3]
 	storage := os.Args[4]
 
+	batchMode := flag.Bool("batch", false, "Whether to do batch updates or not")
+
 	server := grpc.NewServer()
 
 
-	aftsi, _, err := NewAftSIServer(personalIP, txnRouter, keyRouter, storage, true)
+	aftsi, _, err := NewAftSIServer(personalIP, txnRouter, keyRouter, storage, *batchMode)
 	if err != nil {
 		log.Fatal("Could not start server on port %s: %v\n", TxnServerPort, err)
 	}
@@ -592,7 +604,9 @@ func main() {
 
 	// Start listening for updates
 	go txnManagerListen(aftsi)
-	go flusher(aftsi)
+	if *batchMode {
+		go flusher(aftsi)
+	}
 
 	fmt.Printf("Starting server at %s.\n", time.Now().String())
 	if err = server.Serve(lis); err != nil {

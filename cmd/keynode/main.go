@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -55,7 +56,11 @@ func (k *KeyNode) _deleteFromPendingKVI (keys []string, keyEntry string, action 
 		// Perform key index insert
 		committedKeyVersions := k.keyVersionIndex[key]
 		committedKeyVersions = InsertParticularIndex(committedKeyVersions, keyEntry)
-		k._addToBuffer(key, _convertStringToBytes(committedKeyVersions))
+		if k.batchMode {
+			k._addToBuffer(key, _convertStringToBytes(committedKeyVersions))
+		} else {
+			k.StorageManager.Put(key, _convertStringToBytes(committedKeyVersions))
+		}
 
 		// Modify key version index
 		k.keyVersionIndex[key] = committedKeyVersions
@@ -298,10 +303,14 @@ func (k *KeyNode) endTransaction (tid string, action int8, writeBuffer map[strin
 }
 
 func main() {
-	keyNode, err := NewKeyNode(os.Args[1])
+	storage := os.Args[1]
+	batchMode := flag.Bool("batch", false, "Whether to do batch updates or not")
+	keyNode, err := NewKeyNode(storage, *batchMode)
 	if err != nil {
 		log.Fatalf("Could not start new Key Node %v\n", err)
 	}
-	go flusher(keyNode)
+	if *batchMode {
+		go flusher(keyNode)
+	}
 	startKeyNode(keyNode)
 }

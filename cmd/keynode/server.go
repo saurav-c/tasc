@@ -53,6 +53,7 @@ type KeyNode struct {
 	commitBuffer               map[string][]byte
 	commitLock                 *sync.Mutex
 	pusherCache                *SocketCache
+	batchMode                  bool
 }
 
 type ZMQInfo struct {
@@ -290,7 +291,7 @@ func endTxnHandler(keyNode *KeyNode, req *pb.FinishRequest) {
 	keyNode.pusherCache.unlock(addr)
 }
 
-func NewKeyNode(storageInstance string) (*KeyNode, error) {
+func NewKeyNode(storageInstance string, batchMode bool) (*KeyNode, error) {
 	// TODO: Integrate this into config manager
 	// Need to change parameters to fit around needs better
 	var storageManager storage.StorageManager
@@ -342,5 +343,6 @@ func NewKeyNode(storageInstance string) (*KeyNode, error) {
 		pusherCache:                &pusherCache,
 		commitBuffer:               make(map[string][]byte),
 		commitLock:                 &sync.Mutex{},
+		batchMode:                  batchMode,
 	}, nil
 }

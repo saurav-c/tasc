@@ -72,11 +72,12 @@ type AftSIServer struct {
 	WriteBufferLock      map[string]*sync.RWMutex
 	ReadCache            map[string][]byte
 	ReadCacheLock        *sync.RWMutex
-	commitBuffer               map[string][]byte
-	commitLock                 *sync.Mutex
+	commitBuffer         map[string][]byte
+	commitLock           *sync.Mutex
 	zmqInfo              ZMQInfo
 	Responder            *ResponseHandler
 	PusherCache          *SocketCache
+	batchMode            bool
 }
 
 type ZMQInfo struct {
@@ -238,7 +239,7 @@ func endTxnHandler(data []byte, responder *ResponseHandler) {
 	responder.endTxnChannels[channelID] <- resp
 }
 
-func NewAftSIServer(personalIP string, txnRouterIP string, keyRouterIP string, storageInstance string, testInstance bool) (*AftSIServer, int, error) {
+func NewAftSIServer(personalIP string, txnRouterIP string, keyRouterIP string, storageInstance string, batchMode bool) (*AftSIServer, int, error) {
 	zctx, err := zmq.NewContext()
 	if err != nil {
 		return nil, 0, err
@@ -257,10 +258,10 @@ func NewAftSIServer(personalIP string, txnRouterIP string, keyRouterIP string, s
 		os.Exit(3)
 	}
 
-	conn, err := grpc.Dial(txnRouterIP + ":5006", grpc.WithInsecure())
+	conn, err := grpc.Dial(txnRouterIP+":5006", grpc.WithInsecure())
 	txnRouterClient := rtr.NewRouterClient(conn)
 
-	connKey, err := grpc.Dial(keyRouterIP + ":5006", grpc.WithInsecure())
+	connKey, err := grpc.Dial(keyRouterIP+":5006", grpc.WithInsecure())
 	KeyRouterClient := rtr.NewRouterClient(connKey)
 
 	// Setup Txn Manager ZMQ sockets
@@ -313,5 +314,6 @@ func NewAftSIServer(personalIP string, txnRouterIP string, keyRouterIP string, s
 		zmqInfo:              zmqInfo,
 		Responder:            &responder,
 		PusherCache:          &pusherCache,
+		batchMode:            batchMode,
 	}, 0, nil
 }
