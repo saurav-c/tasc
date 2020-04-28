@@ -81,6 +81,15 @@ func (s *AftSIServer) StartTransaction(ctx context.Context, emp *empty.Empty) (*
 	fmt.Printf("Router lookup took: %f ms\n", 1000 * endRouter.Sub(startRouter).Seconds())
 
 	txnManagerIP := respRouter.GetIp()
+	// Check if this node is the one responsible for the TID
+	if txnManagerIP == s.IPAddress {
+		s.CreateTransactionEntry(tid, "", -1)
+		return &pb.TransactionID{
+			Tid: tid,
+			E:   pb.TransactionError_SUCCESS,
+		}, nil
+	}
+
 
 	// Create Channel to listen for response
 	cid := uuid.New().ID()
@@ -566,6 +575,10 @@ func (s *AftSIServer) CreateTransactionEntry(tid string, txnManagerIP string, ch
 
 	s.TransactionTableLock[tid] = &sync.RWMutex{}
 	s.WriteBufferLock[tid] = &sync.RWMutex{}
+
+	if txnManagerIP == "" {
+		return
+	}
 
 	resp := &pb.CreateTxnEntryResp{
 		E:         pb.TransactionError_SUCCESS,
