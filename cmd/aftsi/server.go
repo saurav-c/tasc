@@ -45,8 +45,8 @@ const (
 	// Key:Version Encoding
 	keyVersionDelim = ":"
 
-	// In Seconds
-	FlushFrequency = 5
+	// In ms
+	FlushFrequency = 1000
 )
 
 type TransactionEntry struct {
@@ -156,7 +156,7 @@ func flusher(s *AftSIServer) {
 				fmt.Println(e.Error())
 			}
 		}
-		time.Sleep(FlushFrequency * time.Second)
+		time.Sleep(FlushFrequency * time.Millisecond)
 	}
 }
 

@@ -29,7 +29,7 @@ const (
 	PushTemplate = "tcp://%s:%d"
 
 	// In Seconds
-	FlushFrequency = 5
+	FlushFrequency = 1000
 )
 
 type pendingTxn struct {
@@ -153,7 +153,7 @@ func flusher(k *KeyNode) {
 				fmt.Println(e.Error())
 			}
 		}
-		time.Sleep(FlushFrequency * time.Second)
+		time.Sleep(FlushFrequency * time.Millisecond)
 	}
 }
 
