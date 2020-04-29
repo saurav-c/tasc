@@ -11,7 +11,6 @@ import (
 	"log"
 	"math/rand"
 	"net"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -81,6 +80,15 @@ func (s *AftSIServer) StartTransaction(ctx context.Context, emp *empty.Empty) (*
 	fmt.Printf("Router lookup took: %f ms\n", 1000 * endRouter.Sub(startRouter).Seconds())
 
 	txnManagerIP := respRouter.GetIp()
+	// Check if this node is the one responsible for the TID
+	if txnManagerIP == s.IPAddress {
+		s.CreateTransactionEntry(tid, "", 0)
+		return &pb.TransactionID{
+			Tid: tid,
+			E:   pb.TransactionError_SUCCESS,
+		}, nil
+	}
+
 
 	// Create Channel to listen for response
 	cid := uuid.New().ID()
@@ -422,29 +430,41 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 		}
 	}
 
-	startWrite := time.Now()
+	storageChannel := make(chan int, 1)
 	if commit {
-		writeSet := make([]string, 0)
-		// Send writes & transaction set to storage manager
-		for k, v := range s.WriteBuffer[tid] {
-			newKey := k+keyVersionDelim+commitTS+"-"+tid
-			fmt.Printf("Wrote key %s\n", newKey)
+		go func() {
+			startWrite := time.Now()
+			dbKeys := make([]string, len(s.WriteBuffer[tid])+1)
+			dbVals := make([][]byte, len(s.WriteBuffer[tid])+1)
+			// Send writes & transaction set to storage manager
+			i := 0
+			for k, v := range s.WriteBuffer[tid] {
+				newKey := k + keyVersionDelim + commitTS + "-" + tid
+				fmt.Printf("Wrote key %s\n", newKey)
 
-			if s.batchMode {
-				s._addToBuffer(newKey, v)
-			} else {
-				s.StorageManager.Put(newKey, v)
+				dbKeys[i] = newKey
+				if s.batchMode {
+					s._addToBuffer(newKey, v)
+				} else {
+					dbVals[i] = v
+				}
+				i++
 			}
-			writeSet = append(writeSet, newKey)
-		}
-		if s.batchMode {
-			s._addToBuffer(tid, _convertStringToBytes(writeSet))
-		} else {
-			s.StorageManager.Put(tid, _convertStringToBytes(writeSet))
-		}
+			wSet := _convertStringToBytes(dbKeys)
+			if s.batchMode {
+				s._addToBuffer(tid, wSet)
+			} else {
+				dbKeys[i] = tid
+				dbVals[i] = wSet
+				s.StorageManager.MultiPut(dbKeys, dbVals)
+			}
+			endWrite := time.Now()
+			fmt.Printf("Write to storage time: %f ms\n", 1000 * endWrite.Sub(startWrite).Seconds())
+			storageChannel <- 1
+		}()
+	} else {
+		storageChannel <- 1
 	}
-	endWrite := time.Now()
-	fmt.Printf("Write to storage time: %f ms\n", 1000 * endWrite.Sub(startWrite).Seconds())
 
 	finishTxnChannel := make(chan bool, len(keyMap))
 	// Phase 2 of 2PC to Send ABORT/COMMIT to all Key Nodes
@@ -517,6 +537,9 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 	end := time.Now()
 	fmt.Printf("Txn Manager Commit API Time: %f ms\n\n", 1000 * end.Sub(start).Seconds())
 
+	// Wait for storage write to be done
+	<- storageChannel
+
 	if commit {
 		s.TransactionTable[tid].status = TxnCommitted
 		return &pb.TransactionResponse{
@@ -567,6 +590,10 @@ func (s *AftSIServer) CreateTransactionEntry(tid string, txnManagerIP string, ch
 	s.TransactionTableLock[tid] = &sync.RWMutex{}
 	s.WriteBufferLock[tid] = &sync.RWMutex{}
 
+	if txnManagerIP == "" {
+		return
+	}
+
 	resp := &pb.CreateTxnEntryResp{
 		E:         pb.TransactionError_SUCCESS,
 		ChannelID: channelID,
@@ -586,17 +613,21 @@ func main() {
 		log.Fatal("Could not start server on port %s: %v\n", TxnServerPort, err)
 	}
 
-	personalIP := os.Args[1]
-	txnRouter := os.Args[2]
-	keyRouter := os.Args[3]
-	storage := os.Args[4]
+	personalIP := flag.String("addr", "", "Personal IP")
+	txnRouter := flag.String("txnRtr", "", "Txn Router IP")
+	keyRouter := flag.String("keyRtr", "", "Key Router IP")
+	storage := flag.String("storage", "dynamo", "Storage Engine")
 
 	batchMode := flag.Bool("batch", false, "Whether to do batch updates or not")
 
+	flag.Parse()
+
 	server := grpc.NewServer()
 
+	fmt.Printf("Batch Mode: %t\n", *batchMode)
 
-	aftsi, _, err := NewAftSIServer(personalIP, txnRouter, keyRouter, storage, *batchMode)
+
+	aftsi, _, err := NewAftSIServer(*personalIP, *txnRouter, *keyRouter, *storage, *batchMode)
 	if err != nil {
 		log.Fatal("Could not start server on port %s: %v\n", TxnServerPort, err)
 	}

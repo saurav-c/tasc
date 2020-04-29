@@ -17,23 +17,21 @@ import (
 	"google.golang.org/grpc"
 
 	pb "github.com/saurav-c/aftsi/proto/aftsi/api"
+	rtr "github.com/saurav-c/aftsi/proto/routing/api"
 )
 
 const (
-	benchmarks = "aftsiWrites, dynamoWrites, dynamoBatchWrites"
+	benchmarks = "aftsiWrites, aftsiNoRouterWrites dynamoWrites, dynamoBatchWrites"
 )
 
 var address = flag.String("address", "", "The Transaction Manager")
 var benchmarkType = flag.String("type", "", "The type of benchmark to run: " + benchmarks)
 var numRequests = flag.Int("numReq", 1000, "Number of requests to run")
 var numThreads = flag.Int("numThreads", 10, "The total number of parallel threads in the benchmark")
+var rtrAddr = flag.String("rtr", "", "Txn Router Address")
 
 func main() {
 	flag.Parse()
-	if len(*address) == 0 {
-		fmt.Println("Must provide a txn router address")
-		os.Exit(1)
-	}
 	if len(*benchmarkType) == 0 {
 		fmt.Println("Must provide a benchmarkType: " + benchmarks)
 	}
@@ -65,7 +63,13 @@ func main() {
 		}
 	case "aftsiWrites":
 		{
-			latencies, writeLatencies := runAftsiWrites(*address, *numRequests)
+			latencies, writeLatencies := runAftsiWrites(*rtrAddr, *address, *numRequests)
+			printWriteLatencies(latencies, "End to End Latencies")
+			printWriteLatencies(writeLatencies, "Write Latencies")
+		}
+	case "aftsiNRTRWrites":
+		{
+			latencies, writeLatencies := runAftsiNoRouterWrites(*address, *numRequests)
 			printWriteLatencies(latencies, "End to End Latencies")
 			printWriteLatencies(writeLatencies, "Write Latencies")
 		}
@@ -82,9 +86,84 @@ func main() {
 	}
 }
 
-func runAftsiWrites(txnManagerAddr string, numReq int) (map[int][]float64, map[int][]float64) {
+func runAftsiWrites(routerAddr string, defaultTxn string, numReq int) (map[int][]float64, map[int][]float64) {
+	// Establish connection with Router
+	conn, err := grpc.Dial(fmt.Sprintf("%s:5006", routerAddr), grpc.WithInsecure())
+	if err != nil {
+		fmt.Printf("Unexpected error:\n%v\n", err)
+		os.Exit(1)
+	}
+	defer conn.Close()
+	client := rtr.NewRouterClient(conn)
+
+	latencies := make(map[int][]float64, 3)
+	writeLatencies := make(map[int][]float64, 3)
+
+	writeData := make([]byte, 4096)
+	rand.Read(writeData)
+
+	clientConns := make(map[string]pb.AftSIClient)
+
+	// Make the default connection to a Txn Manager
+	tConn, err := grpc.Dial(fmt.Sprintf("%s:5000", defaultTxn), grpc.WithInsecure())
+	if err != nil {
+		fmt.Printf("Unexpected error:\n%v\n", err)
+		os.Exit(1)
+	}
+	defer tConn.Close()
+	clientConns[defaultTxn] = pb.NewAftSIClient(tConn)
+
+	for _, numWrites := range []int{1, 5, 10} {
+		for i := 0; i < numReq; i++ {
+			txnStart := time.Now()
+			txn, _ := clientConns[defaultTxn].StartTransaction(context.TODO(), &empty.Empty{})
+			tid := txn.GetTid()
+
+			// Get Ip Addr of this txns manager
+			rtrResp, _ := client.LookUp(context.TODO(), &rtr.RouterReq{
+				Req: tid,
+			})
+			managerIP := rtrResp.GetIp()
+			if _, ok := clientConns[managerIP]; !ok {
+				c, err := grpc.Dial(fmt.Sprintf("%s:5000", managerIP), grpc.WithInsecure())
+				if err != nil {
+					fmt.Printf("Unexpected error:\n%v\n", err)
+					os.Exit(1)
+				}
+				defer c.Close()
+				clientConns[managerIP] = pb.NewAftSIClient(c)
+			}
+
+			txnConn := clientConns[managerIP]
+
+			writeStart := time.Now()
+			for j := 0; j < numWrites; j++ {
+				key := fmt.Sprintf("aftsiWrite-%s-%s-%s", string(numWrites), string(i), string(j))
+				write := &pb.WriteRequest{
+					Tid:   tid,
+					Key:   key,
+					Value: writeData,
+				}
+				txnConn.Write(context.TODO(), write)
+			}
+			writeEnd := time.Now()
+			resp, _ := txnConn.CommitTransaction(context.TODO(), &pb.TransactionID{
+				Tid: tid,
+			})
+			txnEnd := time.Now()
+			if resp.GetE() != pb.TransactionError_SUCCESS {
+				panic("Commit failed")
+			}
+			writeLatencies[numWrites] = append(writeLatencies[numWrites], 1000 * writeEnd.Sub(writeStart).Seconds())
+			latencies[numWrites] = append(latencies[numWrites], 1000 * txnEnd.Sub(txnStart).Seconds())
+		}
+	}
+	return latencies, writeLatencies
+}
+
+func runAftsiNoRouterWrites(txnManagerAddr string, numReq int) (map[int][]float64, map[int][]float64) {
 	// Establish connection
-	conn, err := grpc.Dial(fmt.Sprintf("%s:5006", txnManagerAddr), grpc.WithInsecure())
+	conn, err := grpc.Dial(fmt.Sprintf("%s:5000", txnManagerAddr), grpc.WithInsecure())
 	if err != nil {
 		fmt.Printf("Unexpected error:\n%v\n", err)
 		os.Exit(1)
@@ -98,7 +177,7 @@ func runAftsiWrites(txnManagerAddr string, numReq int) (map[int][]float64, map[i
 	writeData := make([]byte, 4096)
 	rand.Read(writeData)
 
-	for numWrites := range []int{1, 5, 10} {
+	for _, numWrites := range []int{1, 5, 10} {
 		for i := 0; i < numReq; i++ {
 			txnStart := time.Now()
 			txn, _ := client.StartTransaction(context.TODO(), &empty.Empty{})
@@ -138,7 +217,7 @@ func runDynamoWrites(numRequests int) (map[int][]float64) {
 	writeData := make([]byte, 4096)
 	rand.Read(writeData)
 
-	for numWrites := range []int{1, 5, 10} {
+	for _, numWrites := range []int{1, 5, 10} {
 		for i := 0; i < numRequests; i++ {
 			start := time.Now()
 			for j := 0; j < numWrites; j++ {
@@ -176,7 +255,7 @@ func runDynamoBatchWrites(numRequests int) (map[int][]float64) {
 	rand.Read(writeData)
 
 
-	for numWrites := range []int{1, 5, 10} {
+	for _, numWrites := range []int{1, 5, 10} {
 		for i := 0; i < numRequests; i++ {
 			start := time.Now()
 

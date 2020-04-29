@@ -45,8 +45,8 @@ const (
 	// Key:Version Encoding
 	keyVersionDelim = ":"
 
-	// In Seconds
-	FlushFrequency = 5
+	// In ms
+	FlushFrequency = 1000
 )
 
 type TransactionEntry struct {
@@ -149,13 +149,15 @@ func createSocket(tp zmq.Type, context *zmq.Context, address string, bind bool) 
 }
 
 func flusher(s *AftSIServer) {
-	if len(s.commitBuffer) > 0 {
-		e := s._flushBuffer()
-		if e != nil {
-			fmt.Println(e.Error())
+	for {
+		if len(s.commitBuffer) > 0 {
+			e := s._flushBuffer()
+			if e != nil {
+				fmt.Println(e.Error())
+			}
 		}
+		time.Sleep(FlushFrequency * time.Millisecond)
 	}
-	time.Sleep(FlushFrequency * time.Second)
 }
 
 // Listens for incoming requests via ZMQ

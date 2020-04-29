@@ -42,7 +42,7 @@ func (r *RouterServer) MultipleLookUp(ctx context.Context, multi *pb.RouterReqMu
 		nodeIP := r.router[index]
 
 		if _, ok := ipMap[nodeIP]; !ok {
-			ipMap[nodeIP] = make([]string, 1)
+			ipMap[nodeIP] = make([]string, 0)
 		}
 		ipMap[nodeIP] = append(ipMap[nodeIP], elem)
 	}

@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -27,6 +26,11 @@ func _convertStringToBytes(stringSlice []string) ([]byte) {
 	return []byte(stringByte)
 }
 
+func _convertBytesToString(byteSlice []byte) ([]string) {
+	stringSliceConverted := string(byteSlice)
+	return strings.Split(stringSliceConverted, "\x20\x00")
+}
+
 func (k *KeyNode) _deleteFromPendingKVI (keys []string, keyEntry string, action int8) {
 	for _, key := range keys {
 		k.pendingKeyVersionIndexLock[key].Lock()
@@ -43,7 +47,11 @@ func (k *KeyNode) _deleteFromPendingKVI (keys []string, keyEntry string, action 
 		return
 	}
 
-	for _, key := range keys {
+	kviKeys := make([]string, len(keys))
+	kviVals := make([][]string, len(keys))
+	kviValBytes := make([][]byte, len(keys))
+
+	for i, key := range keys {
 		// Acquire key index lock
 		if _, ok := k.keyVersionIndexLock[key]; !ok {
 			k.createLock.Lock()
@@ -56,16 +64,25 @@ func (k *KeyNode) _deleteFromPendingKVI (keys []string, keyEntry string, action 
 		// Perform key index insert
 		committedKeyVersions := k.keyVersionIndex[key]
 		committedKeyVersions = InsertParticularIndex(committedKeyVersions, keyEntry)
+
+		dbKey := key + ":index"
 		if k.batchMode {
-			k._addToBuffer(key, _convertStringToBytes(committedKeyVersions))
+			k._addToBuffer(dbKey, _convertStringToBytes(committedKeyVersions))
+			k.keyVersionIndex[key] = committedKeyVersions
+			k.keyVersionIndexLock[key].Unlock()
 		} else {
-			k.StorageManager.Put(key, _convertStringToBytes(committedKeyVersions))
+			kviKeys[i] = dbKey
+			kviVals[i] = committedKeyVersions
+			kviValBytes[i] = _convertStringToBytes(committedKeyVersions)
 		}
+	}
 
-		// Modify key version index
-		k.keyVersionIndex[key] = committedKeyVersions
-
-		k.keyVersionIndexLock[key].Unlock()
+	if !k.batchMode {
+		k.StorageManager.MultiPut(kviKeys, kviValBytes)
+		for i, key := range keys {
+			k.keyVersionIndex[key] = kviVals[i]
+			k.keyVersionIndexLock[key].Unlock()
+		}
 	}
 }
 
@@ -122,18 +139,20 @@ func (k *KeyNode) readKey (tid string, key string, readList []string, begints st
 	// Check for Index Lock
 	if _, ok := k.keyVersionIndexLock[key]; !ok {
 		// Fetch index from storage
-		// TODO: Implement writing key version index to storage
 		start := time.Now()
-		_, _ = k.StorageManager.Get(key + ":" + "index")
+		index, err := k.StorageManager.Get(key + ":" + "index")
 		end := time.Now()
+		// No Versions found for this key
+		if err != nil {
+			return "", nil, nil, errors.New("Key not found")
+		}
 		fmt.Printf("Index Read: %f\n", end.Sub(start).Seconds())
-
-		start = time.Now()
-		defVal, _ := k.StorageManager.Get(key + KEY_DELIMITER + "0")
-		end = time.Now()
-		fmt.Printf("Key Read: %f\n", end.Sub(start).Seconds())
-
-		return "default", defVal, nil, nil
+		k.createLock.Lock()
+		k.keyVersionIndexLock[key] = &sync.RWMutex{}
+		k.keyVersionIndexLock[key].Lock()
+		k.createLock.Unlock()
+		k.keyVersionIndex[key] = _convertBytesToString(index)
+		k.keyVersionIndexLock[key].Unlock()
 	}
 
 	k.keyVersionIndexLock[key].RLock()
@@ -286,26 +305,38 @@ func (k *KeyNode) endTransaction (tid string, action int8, writeBuffer map[strin
 	}
 
 	// Add to committed Txn Writeset and Read Cache
+	s := time.Now()
 	var writeSet []string
 	for key := range writeBuffer {
 		writeSet = append(writeSet, key + KEY_DELIMITER + keyVersion)
 	}
 	k.committedTxnCache[tid] = writeSet
+	e := time.Now()
+	fmt.Printf("TxnWrite Time: %f\n\n", 1000 * e.Sub(s).Seconds())
 
-	// Deleting the entries from the Pending Key-Version Index and storing in Committed Txn Cache
-	k._deleteFromPendingKVI(TxnKeys, keyVersion, TRANSACTION_SUCCESS)
-
+	s = time.Now()
 	for key, value := range writeBuffer {
 		k.readCache[key + KEY_DELIMITER + keyVersion] = value
 	}
+	e = time.Now()
+	fmt.Printf("Read Cache Time: %f\n\n", 1000 * e.Sub(s).Seconds())
+
+	// Deleting the entries from the Pending Key-Version Index and storing in Committed Txn Cache
+	s = time.Now()
+	k._deleteFromPendingKVI(TxnKeys, keyVersion, TRANSACTION_SUCCESS)
+	e = time.Now()
+	fmt.Printf("Delete PKVI Time: %f\n\n", 1000 * e.Sub(s).Seconds())
 
 	return nil
 }
 
 func main() {
-	storage := os.Args[1]
+	storage := flag.String("storage", "dynamo", "Storage Engine")
 	batchMode := flag.Bool("batch", false, "Whether to do batch updates or not")
-	keyNode, err := NewKeyNode(storage, *batchMode)
+	flag.Parse()
+	fmt.Printf("Batch Mode: %t\n", *batchMode)
+
+	keyNode, err := NewKeyNode(*storage, *batchMode)
 	if err != nil {
 		log.Fatalf("Could not start new Key Node %v\n", err)
 	}
