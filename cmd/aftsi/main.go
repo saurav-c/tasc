@@ -82,7 +82,7 @@ func (s *AftSIServer) StartTransaction(ctx context.Context, emp *empty.Empty) (*
 	txnManagerIP := respRouter.GetIp()
 	// Check if this node is the one responsible for the TID
 	if txnManagerIP == s.IPAddress {
-		s.CreateTransactionEntry(tid, "", -1)
+		s.CreateTransactionEntry(tid, "", 0)
 		return &pb.TransactionID{
 			Tid: tid,
 			E:   pb.TransactionError_SUCCESS,
@@ -432,23 +432,29 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 
 	startWrite := time.Now()
 	if commit {
-		writeSet := make([]string, 0)
+		dbKeys := make([]string, len(s.WriteBuffer[tid]) + 1)
+		dbVals := make([][]byte, len(s.WriteBuffer[tid]) + 1)
 		// Send writes & transaction set to storage manager
+		i := 0
 		for k, v := range s.WriteBuffer[tid] {
 			newKey := k+keyVersionDelim+commitTS+"-"+tid
 			fmt.Printf("Wrote key %s\n", newKey)
 
+			dbKeys[i] = newKey
 			if s.batchMode {
 				s._addToBuffer(newKey, v)
 			} else {
-				s.StorageManager.Put(newKey, v)
+				dbVals[i] = v
 			}
-			writeSet = append(writeSet, newKey)
+			i++
 		}
+		wSet := _convertStringToBytes(dbKeys)
 		if s.batchMode {
-			s._addToBuffer(tid, _convertStringToBytes(writeSet))
+			s._addToBuffer(tid, wSet)
 		} else {
-			s.StorageManager.Put(tid, _convertStringToBytes(writeSet))
+			dbKeys[i] = tid
+			dbVals[i] = wSet
+			s.StorageManager.MultiPut(dbKeys, dbVals)
 		}
 	}
 	endWrite := time.Now()

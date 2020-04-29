@@ -42,7 +42,11 @@ func (k *KeyNode) _deleteFromPendingKVI (keys []string, keyEntry string, action 
 		return
 	}
 
-	for _, key := range keys {
+	kviKeys := make([]string, len(keys))
+	kviVals := make([][]string, len(keys))
+	kviValBytes := make([][]byte, len(keys))
+
+	for i, key := range keys {
 		// Acquire key index lock
 		if _, ok := k.keyVersionIndexLock[key]; !ok {
 			k.createLock.Lock()
@@ -55,16 +59,25 @@ func (k *KeyNode) _deleteFromPendingKVI (keys []string, keyEntry string, action 
 		// Perform key index insert
 		committedKeyVersions := k.keyVersionIndex[key]
 		committedKeyVersions = InsertParticularIndex(committedKeyVersions, keyEntry)
+
+		dbKey := key + ":index"
 		if k.batchMode {
-			k._addToBuffer(key, _convertStringToBytes(committedKeyVersions))
+			k._addToBuffer(dbKey, _convertStringToBytes(committedKeyVersions))
+			k.keyVersionIndex[key] = committedKeyVersions
+			k.keyVersionIndexLock[key].Unlock()
 		} else {
-			k.StorageManager.Put(key, _convertStringToBytes(committedKeyVersions))
+			kviKeys[i] = dbKey
+			kviVals[i] = committedKeyVersions
+			kviValBytes[i] = _convertStringToBytes(committedKeyVersions)
 		}
+	}
 
-		// Modify key version index
-		k.keyVersionIndex[key] = committedKeyVersions
-
-		k.keyVersionIndexLock[key].Unlock()
+	if !k.batchMode {
+		k.StorageManager.MultiPut(kviKeys, kviValBytes)
+		for i, key := range keys {
+			k.keyVersionIndex[key] = kviVals[i]
+			k.keyVersionIndexLock[key].Unlock()
+		}
 	}
 }
 
@@ -294,18 +307,18 @@ func (k *KeyNode) endTransaction (tid string, action int8, writeBuffer map[strin
 	e := time.Now()
 	fmt.Printf("TxnWrite Time: %f\n\n", 1000 * e.Sub(s).Seconds())
 
-	// Deleting the entries from the Pending Key-Version Index and storing in Committed Txn Cache
-	s = time.Now()
-	k._deleteFromPendingKVI(TxnKeys, keyVersion, TRANSACTION_SUCCESS)
-	e = time.Now()
-	fmt.Printf("Delete PKVI Time: %f\n\n", 1000 * e.Sub(s).Seconds())
-
 	s = time.Now()
 	for key, value := range writeBuffer {
 		k.readCache[key + KEY_DELIMITER + keyVersion] = value
 	}
 	e = time.Now()
 	fmt.Printf("Read Cache Time: %f\n\n", 1000 * e.Sub(s).Seconds())
+
+	// Deleting the entries from the Pending Key-Version Index and storing in Committed Txn Cache
+	s = time.Now()
+	k._deleteFromPendingKVI(TxnKeys, keyVersion, TRANSACTION_SUCCESS)
+	e = time.Now()
+	fmt.Printf("Delete PKVI Time: %f\n\n", 1000 * e.Sub(s).Seconds())
 
 	return nil
 }
