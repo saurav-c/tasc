@@ -26,6 +26,11 @@ func _convertStringToBytes(stringSlice []string) ([]byte) {
 	return []byte(stringByte)
 }
 
+func _convertBytesToString(byteSlice []byte) ([]string) {
+	stringSliceConverted := string(byteSlice)
+	return strings.Split(stringSliceConverted, "\x20\x00")
+}
+
 func (k *KeyNode) _deleteFromPendingKVI (keys []string, keyEntry string, action int8) {
 	for _, key := range keys {
 		k.pendingKeyVersionIndexLock[key].Lock()
@@ -134,18 +139,20 @@ func (k *KeyNode) readKey (tid string, key string, readList []string, begints st
 	// Check for Index Lock
 	if _, ok := k.keyVersionIndexLock[key]; !ok {
 		// Fetch index from storage
-		// TODO: Implement writing key version index to storage
 		start := time.Now()
-		_, _ = k.StorageManager.Get(key + ":" + "index")
+		index, err := k.StorageManager.Get(key + ":" + "index")
 		end := time.Now()
+		// No Versions found for this key
+		if err != nil {
+			return "", nil, nil, errors.New("Key not found")
+		}
 		fmt.Printf("Index Read: %f\n", end.Sub(start).Seconds())
-
-		start = time.Now()
-		defVal, _ := k.StorageManager.Get(key + KEY_DELIMITER + "0")
-		end = time.Now()
-		fmt.Printf("Key Read: %f\n", end.Sub(start).Seconds())
-
-		return "default", defVal, nil, nil
+		k.createLock.Lock()
+		k.keyVersionIndexLock[key] = &sync.RWMutex{}
+		k.keyVersionIndexLock[key].Lock()
+		k.createLock.Unlock()
+		k.keyVersionIndex[key] = _convertBytesToString(index)
+		k.keyVersionIndexLock[key].Unlock()
 	}
 
 	k.keyVersionIndexLock[key].RLock()
