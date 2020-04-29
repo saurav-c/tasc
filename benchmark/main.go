@@ -44,7 +44,7 @@ func main() {
 
 			reqPerThread := (*numRequests) / (*numThreads)
 			for i := 0; i <= *numThreads; i++ {
-				go throughputPerClient(*address, reqPerThread, 4, 2, latency, totalTimeChannel)
+				go throughputPerClient(i, *address, reqPerThread, 4, 2, latency, totalTimeChannel)
 			}
 
 			latencies := []float64{}
@@ -88,7 +88,7 @@ func main() {
 
 func runAftsiWrites(routerAddr string, defaultTxn string, numReq int) (map[int][]float64, map[int][]float64) {
 	// Establish connection with Router
-	conn, err := grpc.Dial(fmt.Sprintf("%s:5006", routerAddr), grpc.WithInsecure())
+	conn, err := grpc.Dial(fmt.Sprintf("%s:5000", routerAddr), grpc.WithInsecure())
 	if err != nil {
 		fmt.Printf("Unexpected error:\n%v\n", err)
 		os.Exit(1)
@@ -293,18 +293,18 @@ func runDynamoBatchWrites(numRequests int) (map[int][]float64) {
 }
 
 func throughputPerClient (
+	uniqueThread int,
 	txnManagerAddr string,
 	numReq int,
 	numWrites int,
 	numReads int,
 	latency chan []float64,
 	totalTime chan float64) () {
-	conn, err := grpc.Dial(fmt.Sprintf("%s:5006", txnManagerAddr), grpc.WithInsecure())
+	conn, err := grpc.Dial(fmt.Sprintf("%s:5000", txnManagerAddr), grpc.WithInsecure())
 	if err != nil {
 		fmt.Printf("Unexpected error:\n%v\n", err)
 		os.Exit(1)
 	}
-	defer conn.Close()
 	client := pb.NewAftSIClient(conn)
 
 	latencies := make([]float64, 0)
@@ -318,29 +318,38 @@ func throughputPerClient (
 		txn, _ := client.StartTransaction(context.TODO(), &empty.Empty{})
 		tid := txn.GetTid()
 		for j := 0; j < numWrites; j++ {
-			key := fmt.Sprintf("aftsiThroughput-%s-%s", string(i), string(j))
+			key := fmt.Sprintf("aftsiThroughput-%d-%d-%d", uniqueThread, i, j)
 			write := &pb.WriteRequest{
 				Tid:   tid,
 				Key:   key,
 				Value: writeData,
 			}
-			client.Write(context.TODO(), write)
+			_, err := client.Write(context.TODO(), write)
+			if err != nil {
+				fmt.Println("Writes are failing")
+				fmt.Println(err)
+			}
 		}
 		for j := 0; j < numReads; j++ {
 			readKey := rand.Intn(numWrites)
-			key := fmt.Sprintf("aftsiThroughput-%s-%s", string(i), string(readKey))
+			key := fmt.Sprintf("aftsiThroughput-%d-%d-%d", uniqueThread, i, readKey)
 			read := &pb.ReadRequest{
 				Tid:   tid,
 				Key:   key,
 			}
-			_, _ = client.Read(context.TODO(), read)
+			_, err = client.Read(context.TODO(), read)
+			if err != nil {
+				fmt.Println("Reads are failing")
+				fmt.Println(err)
+			}
 		}
-		resp, _ := client.CommitTransaction(context.TODO(), &pb.TransactionID{
+		resp, err := client.CommitTransaction(context.TODO(), &pb.TransactionID{
 			Tid: tid,
 		})
 		txnEnd := time.Now()
 		if resp.GetE() != pb.TransactionError_SUCCESS {
-			panic("Commit failed")
+			fmt.Println("Commit failed")
+			fmt.Println(err)
 		}
 		latencies = append(latencies, 1000 * txnEnd.Sub(txnStart).Seconds())
 	}
