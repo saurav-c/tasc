@@ -43,7 +43,7 @@ func main() {
 			totalTimeChannel := make(chan float64)
 
 			reqPerThread := (*numRequests) / (*numThreads)
-			for i := 0; i <= *numThreads; i++ {
+			for i := 0; i < *numThreads; i++ {
 				go throughputPerClient(i, *address, reqPerThread, 4, 2, latency, totalTimeChannel)
 			}
 
@@ -351,11 +351,11 @@ func throughputPerClient (
 			fmt.Println("Commit failed")
 			fmt.Println(err)
 		}
-		latencies = append(latencies, 1000 * txnEnd.Sub(txnStart).Seconds())
+		latencies = append(latencies, txnEnd.Sub(txnStart).Seconds())
 	}
 	benchEnd := time.Now()
 	latency <- latencies
-	totalTime <- 1000 * benchEnd.Sub(benchStart).Seconds()
+	totalTime <- benchEnd.Sub(benchStart).Seconds()
 }
 
 func printWriteLatencies(latencies map[int][]float64, title string) {
