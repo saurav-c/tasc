@@ -146,13 +146,15 @@ func (cache *SocketCache) getSocket(address string) *zmq.Socket {
 }
 
 func flusher(k *KeyNode) {
-	if len(k.commitBuffer) > 0 {
-		e := k._flushBuffer()
-		if e != nil {
-			fmt.Println(e.Error())
+	for {
+		if len(k.commitBuffer) > 0 {
+			e := k._flushBuffer()
+			if e != nil {
+				fmt.Println(e.Error())
+			}
 		}
+		time.Sleep(FlushFrequency * time.Second)
 	}
-	time.Sleep(FlushFrequency * time.Second)
 }
 
 func startKeyNode(keyNode *KeyNode) {
