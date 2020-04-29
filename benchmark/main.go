@@ -26,6 +26,7 @@ const (
 var address = flag.String("address", "", "The Transaction Manager")
 var benchmarkType = flag.String("type", "", "The type of benchmark to run: " + benchmarks)
 var numRequests = flag.Int("numReq", 1000, "Number of requests to run")
+var numThreads = flag.Int("numThreads", 10, "The total number of parallel threads in the benchmark")
 
 func main() {
 	flag.Parse()
@@ -38,21 +39,45 @@ func main() {
 	}
 
 	switch *benchmarkType {
+	case "throughput":
+		{
+			latency := make(chan []float64)
+			totalTimeChannel := make(chan float64)
+
+			reqPerThread := (*numRequests) / (*numThreads)
+			for i := 0; i <= *numThreads; i++ {
+				go throughputPerClient(*address, reqPerThread, 4, 2, latency, totalTimeChannel)
+			}
+
+			latencies := []float64{}
+			throughputs := []float64{}
+
+			for tid := 0; tid < *numThreads; tid++ {
+				latencyArray := <-latency
+				latencies = append(latencies, latencyArray...)
+
+				threadTime := <-totalTimeChannel
+				throughputs = append(throughputs, float64(reqPerThread)/threadTime)
+			}
+
+			printLatencies(latencies, "End to End Latencies")
+			printThroughput(throughputs, *numThreads, "Throughput of the system")
+		}
 	case "aftsiWrites":
 		{
 			latencies, writeLatencies := runAftsiWrites(*address, *numRequests)
-			printLatencies(latencies, "End to End Latencies")
-			printLatencies(writeLatencies, "Write Latencies")
+			printWriteLatencies(latencies, "End to End Latencies")
+			printWriteLatencies(writeLatencies, "Write Latencies")
 		}
 	case "dynamoWrites":
 		{
 			latencies := runDynamoWrites(*numRequests)
-			printLatencies(latencies, "End to End Latencies")
+			printWriteLatencies(latencies, "End to End Latencies")
 		}
 	case "dynamoBatchWrites":
 		{
 			latencies := runDynamoBatchWrites(*numRequests)
-			printLatencies(latencies, "End to End Latencies")
+			printWriteLatencies(latencies, "End to End Latencies")
 		}
 	}
 }
@@ -188,7 +213,64 @@ func runDynamoBatchWrites(numRequests int) (map[int][]float64) {
 	return latencies
 }
 
-func printLatencies(latencies map[int][]float64, title string) {
+func throughputPerClient (
+	txnManagerAddr string,
+	numReq int,
+	numWrites int,
+	numReads int,
+	latency chan []float64,
+	totalTime chan float64) () {
+	conn, err := grpc.Dial(fmt.Sprintf("%s:5006", txnManagerAddr), grpc.WithInsecure())
+	if err != nil {
+		fmt.Printf("Unexpected error:\n%v\n", err)
+		os.Exit(1)
+	}
+	defer conn.Close()
+	client := pb.NewAftSIClient(conn)
+
+	latencies := make([]float64, 0)
+
+	benchStart := time.Now()
+	writeData := make([]byte, 4096)
+	rand.Read(writeData)
+
+	for i := 0; i < numReq; i++ {
+		txnStart := time.Now()
+		txn, _ := client.StartTransaction(context.TODO(), &empty.Empty{})
+		tid := txn.GetTid()
+		for j := 0; j < numWrites; j++ {
+			key := fmt.Sprintf("aftsiThroughput-%s-%s", string(i), string(j))
+			write := &pb.WriteRequest{
+				Tid:   tid,
+				Key:   key,
+				Value: writeData,
+			}
+			client.Write(context.TODO(), write)
+		}
+		for j := 0; j < numReads; j++ {
+			readKey := rand.Intn(numWrites)
+			key := fmt.Sprintf("aftsiThroughput-%s-%s", string(i), string(readKey))
+			read := &pb.ReadRequest{
+				Tid:   tid,
+				Key:   key,
+			}
+			_, _ = client.Read(context.TODO(), read)
+		}
+		resp, _ := client.CommitTransaction(context.TODO(), &pb.TransactionID{
+			Tid: tid,
+		})
+		txnEnd := time.Now()
+		if resp.GetE() != pb.TransactionError_SUCCESS {
+			panic("Commit failed")
+		}
+		latencies = append(latencies, 1000 * txnEnd.Sub(txnStart).Seconds())
+	}
+	benchEnd := time.Now()
+	latency <- latencies
+	totalTime <- 1000 * benchEnd.Sub(benchStart).Seconds()
+}
+
+func printWriteLatencies(latencies map[int][]float64, title string) {
 	fmt.Println(title)
 	for k, lats := range latencies {
 		fmt.Printf("Number of Writes: %d", k)
@@ -203,6 +285,27 @@ func printLatencies(latencies map[int][]float64, title string) {
 		fmt.Println()
 	}
 }
+
+func printLatencies(latencies []float64, title string) {
+	fmt.Println(title)
+	median, _ := stats.Median(latencies)
+	fifth, _ := stats.Percentile(latencies, 5.0)
+	nfifth, _ := stats.Percentile(latencies, 95.0)
+	first, _ := stats.Percentile(latencies, 1.0)
+	nninth, _ := stats.Percentile(latencies, 99.0)
+	fmt.Printf("\tMedian latency: %.6f\n", median)
+	fmt.Printf("\t5th percentile/95th percentile: %.6f, %.6f\n", fifth, nfifth)
+	fmt.Printf("\t1st percentile/99th percentile: %.6f, %.6f\n", first, nninth)
+	fmt.Println()
+}
+
+func printThroughput(throughput []float64, numClients int, title string) {
+	fmt.Println(title)
+	fmt.Printf("Number of Clients: %d", numClients)
+	fmt.Printf("\tTotal Throughput: %.6f\n", stats.Sum(throughput))
+	fmt.Println()
+}
+
 
 
 
