@@ -73,7 +73,7 @@ func runAftsiWrites(txnManagerAddr string, numReq int) (map[int][]float64, map[i
 	writeData := make([]byte, 4096)
 	rand.Read(writeData)
 
-	for numWrites := range []int{1, 5, 10} {
+	for _, numWrites := range []int{1, 5, 10} {
 		for i := 0; i < numReq; i++ {
 			txnStart := time.Now()
 			txn, _ := client.StartTransaction(context.TODO(), &empty.Empty{})
@@ -113,7 +113,7 @@ func runDynamoWrites(numRequests int) (map[int][]float64) {
 	writeData := make([]byte, 4096)
 	rand.Read(writeData)
 
-	for numWrites := range []int{1, 5, 10} {
+	for _, numWrites := range []int{1, 5, 10} {
 		for i := 0; i < numRequests; i++ {
 			start := time.Now()
 			for j := 0; j < numWrites; j++ {
@@ -151,7 +151,7 @@ func runDynamoBatchWrites(numRequests int) (map[int][]float64) {
 	rand.Read(writeData)
 
 
-	for numWrites := range []int{1, 5, 10} {
+	for _, numWrites := range []int{1, 5, 10} {
 		for i := 0; i < numRequests; i++ {
 			start := time.Now()
 
