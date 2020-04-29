@@ -236,7 +236,7 @@ func (k *KeyNode) validate (tid string, txnBeginTS string, txnCommitTS string, k
 		// Check for write conflicts in pending Key Version Index
 		if lock, ok := k.pendingKeyVersionIndexLock[key]; ok {
 			lock.RLock()
-			pendingKeyVersions := k.pendingKeyVersionIndex[key];
+			pendingKeyVersions := k.pendingKeyVersionIndex[key]
 			for _, keyVersion := range pendingKeyVersions {
 				keyCommitTS := strings.Split(keyVersion, KEY_VERSION_DELIMITER)[0]
 				if txnBeginTS < keyCommitTS && keyCommitTS < txnCommitTS {
