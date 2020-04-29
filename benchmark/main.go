@@ -381,7 +381,8 @@ func printLatencies(latencies []float64, title string) {
 func printThroughput(throughput []float64, numClients int, title string) {
 	fmt.Println(title)
 	fmt.Printf("Number of Clients: %d", numClients)
-	fmt.Printf("\tTotal Throughput: %.6f\n", stats.Sum(throughput))
+	throughputVal, _ := stats.Sum(throughput)
+	fmt.Printf("\tTotal Throughput: %.6f\n", throughputVal)
 	fmt.Println()
 }
 
