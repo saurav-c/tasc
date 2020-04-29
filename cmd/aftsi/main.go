@@ -430,35 +430,41 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 		}
 	}
 
-	startWrite := time.Now()
+	storageChannel := make(chan int, 1)
 	if commit {
-		dbKeys := make([]string, len(s.WriteBuffer[tid]) + 1)
-		dbVals := make([][]byte, len(s.WriteBuffer[tid]) + 1)
-		// Send writes & transaction set to storage manager
-		i := 0
-		for k, v := range s.WriteBuffer[tid] {
-			newKey := k+keyVersionDelim+commitTS+"-"+tid
-			fmt.Printf("Wrote key %s\n", newKey)
+		go func() {
+			startWrite := time.Now()
+			dbKeys := make([]string, len(s.WriteBuffer[tid])+1)
+			dbVals := make([][]byte, len(s.WriteBuffer[tid])+1)
+			// Send writes & transaction set to storage manager
+			i := 0
+			for k, v := range s.WriteBuffer[tid] {
+				newKey := k + keyVersionDelim + commitTS + "-" + tid
+				fmt.Printf("Wrote key %s\n", newKey)
 
-			dbKeys[i] = newKey
-			if s.batchMode {
-				s._addToBuffer(newKey, v)
-			} else {
-				dbVals[i] = v
+				dbKeys[i] = newKey
+				if s.batchMode {
+					s._addToBuffer(newKey, v)
+				} else {
+					dbVals[i] = v
+				}
+				i++
 			}
-			i++
-		}
-		wSet := _convertStringToBytes(dbKeys)
-		if s.batchMode {
-			s._addToBuffer(tid, wSet)
-		} else {
-			dbKeys[i] = tid
-			dbVals[i] = wSet
-			s.StorageManager.MultiPut(dbKeys, dbVals)
-		}
+			wSet := _convertStringToBytes(dbKeys)
+			if s.batchMode {
+				s._addToBuffer(tid, wSet)
+			} else {
+				dbKeys[i] = tid
+				dbVals[i] = wSet
+				s.StorageManager.MultiPut(dbKeys, dbVals)
+			}
+			endWrite := time.Now()
+			fmt.Printf("Write to storage time: %f ms\n", 1000 * endWrite.Sub(startWrite).Seconds())
+			storageChannel <- 1
+		}()
+	} else {
+		storageChannel <- 1
 	}
-	endWrite := time.Now()
-	fmt.Printf("Write to storage time: %f ms\n", 1000 * endWrite.Sub(startWrite).Seconds())
 
 	finishTxnChannel := make(chan bool, len(keyMap))
 	// Phase 2 of 2PC to Send ABORT/COMMIT to all Key Nodes
@@ -530,6 +536,9 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 
 	end := time.Now()
 	fmt.Printf("Txn Manager Commit API Time: %f ms\n\n", 1000 * end.Sub(start).Seconds())
+
+	// Wait for storage write to be done
+	<- storageChannel
 
 	if commit {
 		s.TransactionTable[tid].status = TxnCommitted
