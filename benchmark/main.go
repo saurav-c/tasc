@@ -59,7 +59,7 @@ func main() {
 
 func runAftsiWrites(txnManagerAddr string, numReq int) (map[int][]float64, map[int][]float64) {
 	// Establish connection
-	conn, err := grpc.Dial(fmt.Sprintf("%s:5006", txnManagerAddr), grpc.WithInsecure())
+	conn, err := grpc.Dial(fmt.Sprintf("%s:5000", txnManagerAddr), grpc.WithInsecure())
 	if err != nil {
 		fmt.Printf("Unexpected error:\n%v\n", err)
 		os.Exit(1)

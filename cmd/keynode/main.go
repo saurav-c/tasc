@@ -286,18 +286,27 @@ func (k *KeyNode) endTransaction (tid string, action int8, writeBuffer map[strin
 	}
 
 	// Add to committed Txn Writeset and Read Cache
+	s := time.Now()
 	var writeSet []string
 	for key := range writeBuffer {
 		writeSet = append(writeSet, key + KEY_DELIMITER + keyVersion)
 	}
 	k.committedTxnCache[tid] = writeSet
+	e := time.Now()
+	fmt.Printf("TxnWrite Time: %f\n\n", 1000 * e.Sub(s).Seconds())
 
 	// Deleting the entries from the Pending Key-Version Index and storing in Committed Txn Cache
+	s = time.Now()
 	k._deleteFromPendingKVI(TxnKeys, keyVersion, TRANSACTION_SUCCESS)
+	e = time.Now()
+	fmt.Printf("Delete PKVI Time: %f\n\n", 1000 * e.Sub(s).Seconds())
 
+	s = time.Now()
 	for key, value := range writeBuffer {
 		k.readCache[key + KEY_DELIMITER + keyVersion] = value
 	}
+	e = time.Now()
+	fmt.Printf("Read Cache Time: %f\n\n", 1000 * e.Sub(s).Seconds())
 
 	return nil
 }
