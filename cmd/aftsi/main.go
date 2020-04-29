@@ -11,7 +11,6 @@ import (
 	"log"
 	"math/rand"
 	"net"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -599,17 +598,21 @@ func main() {
 		log.Fatal("Could not start server on port %s: %v\n", TxnServerPort, err)
 	}
 
-	personalIP := os.Args[1]
-	txnRouter := os.Args[2]
-	keyRouter := os.Args[3]
-	storage := os.Args[4]
+	personalIP := flag.String("addr", "", "Personal IP")
+	txnRouter := flag.String("txnRtr", "", "Txn Router IP")
+	keyRouter := flag.String("keyRtr", "", "Key Router IP")
+	storage := flag.String("storage", "dynamo", "Storage Engine")
 
 	batchMode := flag.Bool("batch", false, "Whether to do batch updates or not")
 
+	flag.Parse()
+
 	server := grpc.NewServer()
 
+	fmt.Printf("Batch Mode: %t\n", *batchMode)
 
-	aftsi, _, err := NewAftSIServer(personalIP, txnRouter, keyRouter, storage, *batchMode)
+
+	aftsi, _, err := NewAftSIServer(*personalIP, *txnRouter, *keyRouter, *storage, *batchMode)
 	if err != nil {
 		log.Fatal("Could not start server on port %s: %v\n", TxnServerPort, err)
 	}

@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -312,9 +311,12 @@ func (k *KeyNode) endTransaction (tid string, action int8, writeBuffer map[strin
 }
 
 func main() {
-	storage := os.Args[1]
+	storage := flag.String("storage", "dynamo", "Storage Engine")
 	batchMode := flag.Bool("batch", false, "Whether to do batch updates or not")
-	keyNode, err := NewKeyNode(storage, *batchMode)
+	flag.Parse()
+	fmt.Printf("Batch Mode: %t\n", *batchMode)
+
+	keyNode, err := NewKeyNode(*storage, *batchMode)
 	if err != nil {
 		log.Fatalf("Could not start new Key Node %v\n", err)
 	}
