@@ -26,6 +26,7 @@ sudo go get -u github.com/pebbe/zmq4
 sudo go get -u github.com/aws/aws-sdk-go
 sudo go get -u github.com/go-redis/redis
 sudo go get -u github.com/pkg/errors
+sudo go get -u github.com/google/uuid
 sudo go get -u github.com/montanaflynn/stats
 
 # Making the directory
@@ -41,16 +42,20 @@ cd aftsi/proto/
 # Giving Ubuntu User Write Access
 sudo chmod 777 -R /home/ubuntu
 
+protoc -I aftsi/ aftsi/aftsi.proto --go_out=plugins=grpc:aftsi
+sudo mkdir -p aftsi/api
+sudo mv aftsi/aftsi.pb.go aftsi/api
+
+protoc -I keynode/ keynode/keynode.proto --go_out=plugins=grpc:keynode
+sudo mkdir -p keynode/api
+sudo mv keynode/keynode.pb.go keynode/api
+
+protoc -I routing/ routing/router.proto --go_out=plugins=grpc:routing
+sudo mkdir -p routing/api
+sudo mv routing/router.pb.go routing/api
+
 if [[ "$1" = "aftsi" ]]
 then
-  protoc -I aftsi/ aftsi/aftsi.proto --go_out=plugins=grpc:aftsi
-  sudo mkdir -p aftsi/api
-  sudo mv aftsi/aftsi.pb.go aftsi/api
-
-  protoc -I keynode/ keynode/keynode.proto --go_out=plugins=grpc:keynode
-  sudo mkdir -p keynode/api
-  sudo mv keynode/keynode.pb.go keynode/api
-
   # Creating the executable for AFTSI
   cd $GOPATH/src/github.com/saurav-c/aftsi/cmd/aftsi
   sudo go build
@@ -59,14 +64,6 @@ fi
 
 if [[ "$1" = "keynode" ]]
 then
-  protoc -I aftsi/ aftsi/aftsi.proto --go_out=plugins=grpc:aftsi
-  sudo mkdir -p aftsi/api
-  sudo mv aftsi/aftsi.pb.go aftsi/api
-
-  protoc -I keynode/ keynode/keynode.proto --go_out=plugins=grpc:keynode
-  sudo mkdir -p keynode/api
-  sudo mv keynode/keynode.pb.go keynode/api
-
   # Creating the executable for Keynode
   cd $GOPATH/src/github.com/saurav-c/aftsi/cmd/keynode
   sudo go build
@@ -75,14 +72,6 @@ fi
 
 if [[ "$1" = "cli" ]]
 then
-  protoc -I aftsi/ aftsi/aftsi.proto --go_out=plugins=grpc:aftsi
-  sudo mkdir -p aftsi/api
-  sudo mv aftsi/aftsi.pb.go aftsi/api
-
-  protoc -I keynode/ keynode/keynode.proto --go_out=plugins=grpc:keynode
-  sudo mkdir -p keynode/api
-  sudo mv keynode/keynode.pb.go keynode/api
-
   # Creating the executable for CLI
   cd $GOPATH/src/github.com/saurav-c/aftsi/cli
   sudo go build
@@ -91,18 +80,6 @@ fi
 
 if [[ "$1" = "routing" ]]
 then
-  protoc -I aftsi/ aftsi/aftsi.proto --go_out=plugins=grpc:aftsi
-  sudo mkdir -p aftsi/api
-  sudo mv aftsi/aftsi.pb.go aftsi/api
-
-  protoc -I keynode/ keynode/keynode.proto --go_out=plugins=grpc:keynode
-  sudo mkdir -p keynode/api
-  sudo mv keynode/keynode.pb.go keynode/api
-
-  protoc -I routing/ routing/router.proto --go_out=plugins=grpc:routing
-  sudo mkdir -p routing/api
-  sudo mv routing/router.pb.go routing/api
-
   # Creating the executable for Router
   cd $GOPATH/src/github.com/saurav-c/aftsi/cmd/routing
   sudo go build
@@ -112,18 +89,6 @@ fi
 
 if [[ "$1" = "benchmark" ]]
 then
-  protoc -I aftsi/ aftsi/aftsi.proto --go_out=plugins=grpc:aftsi
-  sudo mkdir -p aftsi/api
-  sudo mv aftsi/aftsi.pb.go aftsi/api
-
-  protoc -I keynode/ keynode/keynode.proto --go_out=plugins=grpc:keynode
-  sudo mkdir -p keynode/api
-  sudo mv keynode/keynode.pb.go keynode/api
-
-  protoc -I routing/ routing/router.proto --go_out=plugins=grpc:routing
-  sudo mkdir -p routing/api
-  sudo mv routing/router.pb.go routing/api
-
   # Creating the executable for Router
   cd $GOPATH/src/github.com/saurav-c/aftsi/benchmark
   sudo go build
