@@ -1,3 +1,27 @@
+batch_mode=false
+
+print_help()
+{
+   # Display Help
+   echo "The setup script can setup AFTSI Nodes, Keynodes, Benchmark Nodes, the AFTSI CLI, and the router nodes on AWS EC2 instances."
+   echo
+   echo "To use batch mode, use the flag -b."
+   echo "Syntax for AFTSI: ./aftsi -addr \$2 -txnRtr \$3 -keyrtr \$4 -storage \$5 -batch batch_mode"
+   echo "Syntax for Keynode: ./keynode -storage \$2 -batch batch_mode"
+   echo "Syntax for Routing Node: ./routing \$*"
+   echo "Syntax for Benchmark Node: ./benchmark -address \$2 -type \$3 -numReq \$4 -numThreads \$5 -rtr \$6"
+   echo "Syntax for CLI: ./cli $2"
+}
+
+
+while getopts 'bh' flag; do
+  case "${flag}" in
+    b) batch_mode=true ;;
+    h)  print_help; exit 1;;
+  esac
+done
+shift $((OPTIND -1))
+
 # Creating the Directories and Defining ENVVARS
 export GOPATH=~/go
 sudo mkdir $GOPATH
@@ -59,7 +83,7 @@ then
   # Creating the executable for AFTSI
   cd $GOPATH/src/github.com/saurav-c/aftsi/cmd/aftsi
   sudo go build
-  ./aftsi $2 $3 $4
+  ./aftsi -addr $2 -txnrtr $3 -keyrtr $4 -storage $5 -batch batch_mode
 fi
 
 if [[ "$1" = "keynode" ]]
@@ -67,7 +91,7 @@ then
   # Creating the executable for Keynode
   cd $GOPATH/src/github.com/saurav-c/aftsi/cmd/keynode
   sudo go build
-  ./keynode $2
+  ./keynode -storage $2 -batch batch_mode
 fi
 
 if [[ "$1" = "cli" ]]
@@ -92,6 +116,7 @@ then
   # Creating the executable for Router
   cd $GOPATH/src/github.com/saurav-c/aftsi/benchmark
   sudo go build
+  ./benchmark -address $2 -type $3 -numReq $4 -numThreads $5 -rtr $6
 fi
 
 

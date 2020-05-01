@@ -65,7 +65,6 @@ func main() {
 		log.Fatal("Could not start server on port %s: %v\n", RouterPort, err)
 	}
 	IpAddresses := os.Args[1:]
-	fmt.Println(IpAddresses)
 
 	server := grpc.NewServer()
 
