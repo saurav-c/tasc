@@ -1,9 +1,7 @@
-*.ipynb
-*.jpg
-*.png
 *.pb.go
 .idea/
 .vscode/
+benchmark/.ipynb_checkpoints
 .DS_Store
 
 cmd/keynode/keynode
