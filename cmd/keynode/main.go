@@ -33,14 +33,16 @@ func _convertBytesToString(byteSlice []byte) ([]string) {
 
 func (k *KeyNode) _deleteFromPendingKVI (keys []string, keyEntry string, action int8) {
 	for _, key := range keys {
-		k.pendingKeyVersionIndexLock[key].Lock()
-		pendingKeyVersions := k.pendingKeyVersionIndex[key]
+		k.pendingLock.RLock()
+		keyLock := k.pendingKeysLock[key]
+		k.pendingLock.RUnlock()
 
-		indexEntry := FindIndex(pendingKeyVersions, keyEntry)
-		newPendingKeyVersions := append(pendingKeyVersions[:indexEntry], pendingKeyVersions[indexEntry+1:]...)
-
-		k.pendingKeyVersionIndex[key] = newPendingKeyVersions
-		k.pendingKeyVersionIndexLock[key].Unlock()
+		k.pendingKeyVersionIndexLock.RLock()
+		keyLock.Lock()
+		indexEntry := FindIndex(k.pendingKeyVersionIndex[key].keys, keyEntry)
+		k.pendingKeyVersionIndex[key].keys = append(k.pendingKeyVersionIndex[key].keys[:indexEntry], k.pendingKeyVersionIndex[key].keys[indexEntry+1:]...)
+		keyLock.Unlock()
+		k.pendingKeyVersionIndexLock.RUnlock()
 	}
 
 	if action == TRANSACTION_FAILURE {
@@ -48,41 +50,37 @@ func (k *KeyNode) _deleteFromPendingKVI (keys []string, keyEntry string, action 
 	}
 
 	kviKeys := make([]string, len(keys))
-	kviVals := make([][]string, len(keys))
 	kviValBytes := make([][]byte, len(keys))
 
 	for i, key := range keys {
 		// Acquire key index lock
-		if _, ok := k.keyVersionIndexLock[key]; !ok {
-			k.createLock.Lock()
-			k.keyVersionIndexLock[key] = &sync.RWMutex{}
-			k.createLock.Unlock()
+		k.keyVersionIndexLock.Lock()
+		if _, ok := k.committedKeysLock[key]; !ok {
+			k.committedLock.Lock()
+			k.committedKeysLock[key] = &sync.RWMutex{}
+			k.committedLock.Unlock()
+			k.keyVersionIndex[key] = &keysList{keys: make([]string, 0)}
 		}
+		k.keyVersionIndexLock.Unlock()
 
-		k.keyVersionIndexLock[key].Lock()
-
+		k.committedKeysLock[key].RLock()
 		// Perform key index insert
-		committedKeyVersions := k.keyVersionIndex[key]
-		committedKeyVersions = InsertParticularIndex(committedKeyVersions, keyEntry)
+		k.keyVersionIndexLock.Lock()
+		k.keyVersionIndex[key].keys = InsertParticularIndex(k.keyVersionIndex[key].keys, keyEntry)
+		k.keyVersionIndexLock.Unlock()
 
 		dbKey := key + ":index"
 		if k.batchMode {
-			k._addToBuffer(dbKey, _convertStringToBytes(committedKeyVersions))
-			k.keyVersionIndex[key] = committedKeyVersions
-			k.keyVersionIndexLock[key].Unlock()
+			k._addToBuffer(dbKey, _convertStringToBytes(k.keyVersionIndex[key].keys))
 		} else {
 			kviKeys[i] = dbKey
-			kviVals[i] = committedKeyVersions
-			kviValBytes[i] = _convertStringToBytes(committedKeyVersions)
+			kviValBytes[i] = _convertStringToBytes(k.keyVersionIndex[key].keys)
 		}
+		k.committedKeysLock[key].RUnlock()
 	}
 
 	if !k.batchMode {
 		k.StorageManager.MultiPut(kviKeys, kviValBytes)
-		for i, key := range keys {
-			k.keyVersionIndex[key] = kviVals[i]
-			k.keyVersionIndexLock[key].Unlock()
-		}
 	}
 }
 
@@ -137,27 +135,32 @@ func (k KeyNode) _flushBuffer() error {
 
 func (k *KeyNode) readKey (tid string, key string, readList []string, begints string, lowerBound string) (keyVersion string, value []byte, coWritten []string, err error) {
 	// Check for Index Lock
-	if _, ok := k.keyVersionIndexLock[key]; !ok {
+	k.committedLock.Lock()
+	if _, ok := k.committedKeysLock[key]; !ok {
 		// Fetch index from storage
 		start := time.Now()
 		index, err := k.StorageManager.Get(key + ":" + "index")
 		end := time.Now()
 		// No Versions found for this key
 		if err != nil {
+			k.committedLock.Unlock()
 			return "", nil, nil, errors.New("Key not found")
 		}
 		fmt.Printf("Index Read: %f\n", end.Sub(start).Seconds())
-		k.createLock.Lock()
-		k.keyVersionIndexLock[key] = &sync.RWMutex{}
-		k.keyVersionIndexLock[key].Lock()
-		k.createLock.Unlock()
-		k.keyVersionIndex[key] = _convertBytesToString(index)
-		k.keyVersionIndexLock[key].Unlock()
+		k.committedKeysLock[key] = &sync.RWMutex{}
+		k.keyVersionIndexLock.Lock()
+		k.keyVersionIndex[key] = &keysList{keys: _convertBytesToString(index)}
+		k.keyVersionIndexLock.Unlock()
 	}
+	k.committedLock.Unlock()
 
-	k.keyVersionIndexLock[key].RLock()
-	keyVersions := k.keyVersionIndex[key]
-	k.keyVersionIndexLock[key].RUnlock()
+	k.committedLock.RLock()
+	keyLock := k.committedKeysLock[key]
+	k.keyVersionIndexLock.RUnlock()
+
+	keyLock.RLock()
+	keyVersions := k.keyVersionIndex[key].keys
+	keyLock.RUnlock()
 
 	// TODO Check if the most recent version is older than the lower bound
 	// In this case, we need to block this read because the update has not
@@ -171,7 +174,7 @@ func (k *KeyNode) readKey (tid string, key string, readList []string, begints st
 		splits := strings.Split(version, KEY_VERSION_DELIMITER)
 		keyCommitTS, keyTxn := splits[0], splits[1]
 
-		// Check lowerbound
+		// Check lower bound
 		if lowerBound != "" && lowerBound > keyCommitTS {
 			continue
 		}
@@ -183,6 +186,7 @@ func (k *KeyNode) readKey (tid string, key string, readList []string, begints st
 
 		// Check compatibility of this txn's readSet with this key's cowrittenset
 		var coWrites []string
+		k.committedTxnCacheLock.RLock()
 		if writeSet, ok := k.committedTxnCache[keyTxn]; ok {
 			coWrites = writeSet
 			writeVersions := make(map[string]string)
@@ -206,6 +210,7 @@ func (k *KeyNode) readKey (tid string, key string, readList []string, begints st
 				continue
 			}
 		}
+		k.committedTxnCacheLock.RUnlock()
 		keyToUse := key + KEY_DELIMITER + version
 		// Reaching this line means the version is valid
 		// Check for version in cache
@@ -221,7 +226,6 @@ func (k *KeyNode) readKey (tid string, key string, readList []string, begints st
 		if err != nil {
 			return version, val, coWrites, errors.New("Error fetching value from storage")
 		}
-
 		k.readCacheLock.Lock()
 		k.readCache[version] = val
 		k.readCacheLock.Unlock()
@@ -234,9 +238,10 @@ func (k *KeyNode) readKey (tid string, key string, readList []string, begints st
 func (k *KeyNode) validate (tid string, txnBeginTS string, txnCommitTS string, keys []string) (action int8) {
 	for _, key := range keys {
 		// Check for write conflicts in pending Key Version Index
-		if lock, ok := k.pendingKeyVersionIndexLock[key]; ok {
+		k.pendingLock.Lock()
+		if lock, ok := k.pendingKeysLock[key]; ok {
 			lock.RLock()
-			pendingKeyVersions := k.pendingKeyVersionIndex[key]
+			pendingKeyVersions := k.pendingKeyVersionIndex[key].keys
 			for _, keyVersion := range pendingKeyVersions {
 				keyCommitTS := strings.Split(keyVersion, KEY_VERSION_DELIMITER)[0]
 				if txnBeginTS < keyCommitTS && keyCommitTS < txnCommitTS {
@@ -247,54 +252,69 @@ func (k *KeyNode) validate (tid string, txnBeginTS string, txnCommitTS string, k
 			lock.RUnlock()
 		} else {
 			// Need to create a new lock for this pending Key and the pending slice
-			k.createPendingLock.Lock()
-			k.pendingKeyVersionIndexLock[key] = &sync.RWMutex{}
-			k.createPendingLock.Unlock()
+			k.pendingKeysLock[key] = &sync.RWMutex{}
 
-			k.pendingKeyVersionIndexLock[key].Lock()
-			k.pendingKeyVersionIndex[key] = make([]string, 1)
-			k.pendingKeyVersionIndexLock[key].Unlock()
+			k.pendingKeyVersionIndexLock.Lock()
+			k.pendingKeysLock[key].Lock()
+			k.pendingKeyVersionIndex[key] = &keysList{keys: make([]string, 1)}
+			k.pendingKeysLock[key].Unlock()
+			k.pendingKeyVersionIndexLock.Unlock()
 		}
+		k.pendingKeyVersionIndexLock.Unlock()
 
 		// Check for write conflicts in committed Key Version Index
-		if lock, ok := k.keyVersionIndexLock[key]; ok {
+		k.pendingLock.RLock()
+		if lock, ok := k.pendingKeysLock[key]; ok {
+			k.keyVersionIndexLock.RLock()
 			lock.RLock()
-			keyVersions := k.keyVersionIndex[key];
+			keyVersions := k.keyVersionIndex[key].keys
+			lock.RUnlock()
+			k.keyVersionIndexLock.RUnlock()
+
 			for _, keyVersion := range keyVersions {
 				keyCommitTS := strings.Split(keyVersion, KEY_VERSION_DELIMITER)[0]
 				if txnBeginTS < keyCommitTS && keyCommitTS < txnCommitTS {
-					lock.RUnlock()
 					return TRANSACTION_FAILURE
 				}
 			}
-			lock.RUnlock()
 		}
+		k.pendingLock.RLock()
 	}
 
 	// Insert keys into pending Key Version Index
 	keyVersion := txnCommitTS + KEY_VERSION_DELIMITER + tid
+
 	for _, key := range keys {
-		k.pendingKeyVersionIndexLock[key].Lock()
-		pendingKeyVersions := k.pendingKeyVersionIndex[key]
-		updatedKeyVersions := InsertParticularIndex(pendingKeyVersions, keyVersion)
-		k.pendingKeyVersionIndex[key] = updatedKeyVersions
-		k.pendingKeyVersionIndexLock[key].Unlock()
+		k.pendingKeyVersionIndexLock.RLock()
+		keyLock := k.pendingKeysLock[key]
+		k.pendingKeyVersionIndexLock.RUnlock()
+
+		keyLock.Lock()
+		k.pendingKeyVersionIndex[key].keys = InsertParticularIndex(k.pendingKeyVersionIndex[key].keys, keyVersion)
+		keyLock.Unlock()
 	}
 
 	// Add entry to pending transaction writeset
+	k.pendingTxnCacheLock.Lock()
 	k.pendingTxnCache[tid] = &pendingTxn{
 		keys:     keys,
 		keyVersion: keyVersion,
 	}
+	k.pendingTxnCacheLock.Unlock()
 	return TRANSACTION_SUCCESS
 }
 
 func (k *KeyNode) endTransaction (tid string, action int8, writeBuffer map[string][]byte) (error) {
+	k.pendingTxnCacheLock.RLock()
 	pendingTxn, ok := k.pendingTxnCache[tid]
+	k.pendingTxnCacheLock.RUnlock()
 	if !ok {
 		return errors.New("Transaction not found")
 	}
+	k.pendingTxnCacheLock.Lock()
 	delete(k.pendingTxnCache, tid)
+	k.pendingTxnCacheLock.Unlock()
+
 	TxnKeys := pendingTxn.keys
 	keyVersion := pendingTxn.keyVersion
 
@@ -310,14 +330,18 @@ func (k *KeyNode) endTransaction (tid string, action int8, writeBuffer map[strin
 	for key := range writeBuffer {
 		writeSet = append(writeSet, key + KEY_DELIMITER + keyVersion)
 	}
+	k.committedTxnCacheLock.Lock()
 	k.committedTxnCache[tid] = writeSet
+	k.committedTxnCacheLock.Unlock()
 	e := time.Now()
 	fmt.Printf("TxnWrite Time: %f\n\n", 1000 * e.Sub(s).Seconds())
 
 	s = time.Now()
+	k.readCacheLock.Lock()
 	for key, value := range writeBuffer {
 		k.readCache[key + KEY_DELIMITER + keyVersion] = value
 	}
+	k.readCacheLock.Unlock()
 	e = time.Now()
 	fmt.Printf("Read Cache Time: %f\n\n", 1000 * e.Sub(s).Seconds())
 

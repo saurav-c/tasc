@@ -37,21 +37,29 @@ type pendingTxn struct {
 	keyVersion string
 }
 
+type keysList struct {
+	keys []string
+}
+
 type KeyNode struct {
 	StorageManager             storage.StorageManager
-	keyVersionIndex            map[string][]string
-	keyVersionIndexLock        map[string]*sync.RWMutex
-	createLock                 *sync.Mutex
-	pendingKeyVersionIndex     map[string][]string
-	pendingKeyVersionIndexLock map[string]*sync.RWMutex
-	createPendingLock          *sync.Mutex
+	keyVersionIndex            map[string]*keysList
+	keyVersionIndexLock        *sync.RWMutex
+	committedKeysLock          map[string]*sync.RWMutex
+	committedLock              *sync.RWMutex
+	pendingKeyVersionIndex     map[string]*keysList
+	pendingKeyVersionIndexLock *sync.RWMutex
+	pendingKeysLock            map[string]*sync.RWMutex
+	pendingLock                *sync.RWMutex
 	pendingTxnCache            map[string]*pendingTxn
+	pendingTxnCacheLock        *sync.RWMutex
 	committedTxnCache          map[string][]string
+	committedTxnCacheLock      *sync.RWMutex
 	readCache                  map[string][]byte
 	readCacheLock              *sync.RWMutex
-	zmqInfo                    ZMQInfo
 	commitBuffer               map[string][]byte
 	commitLock                 *sync.Mutex
+	zmqInfo                    ZMQInfo
 	pusherCache                *SocketCache
 	batchMode                  bool
 }
@@ -331,20 +339,24 @@ func NewKeyNode(storageInstance string, batchMode bool) (*KeyNode, error) {
 
 	return &KeyNode{
 		StorageManager:             storageManager,
-		keyVersionIndex:            make(map[string][]string),
-		keyVersionIndexLock:        make(map[string]*sync.RWMutex),
-		pendingKeyVersionIndex:     make(map[string][]string),
-		pendingKeyVersionIndexLock: make(map[string]*sync.RWMutex),
+		keyVersionIndex:            make(map[string]*keysList),
+		keyVersionIndexLock:        &sync.RWMutex{},
+		committedKeysLock:          make(map[string]*sync.RWMutex),
+		committedLock:              &sync.RWMutex{},
+		pendingKeyVersionIndex:     make(map[string]*keysList),
+		pendingKeyVersionIndexLock: &sync.RWMutex{},
+		pendingKeysLock:            make(map[string]*sync.RWMutex),
+		pendingLock:                &sync.RWMutex{},
 		committedTxnCache:          make(map[string][]string),
+		committedTxnCacheLock:      &sync.RWMutex{},
 		pendingTxnCache:            make(map[string]*pendingTxn),
+		pendingTxnCacheLock:        &sync.RWMutex{},
 		readCache:                  make(map[string][]byte),
 		readCacheLock:              &sync.RWMutex{},
-		zmqInfo:                    zmqInfo,
-		createLock:                 &sync.Mutex{},
-		createPendingLock:          &sync.Mutex{},
-		pusherCache:                &pusherCache,
 		commitBuffer:               make(map[string][]byte),
 		commitLock:                 &sync.Mutex{},
+		zmqInfo:                    zmqInfo,
+		pusherCache:                &pusherCache,
 		batchMode:                  batchMode,
 	}, nil
 }
