@@ -609,6 +609,10 @@ func (s *AftSIServer) CreateTransactionEntry(tid string, txnManagerIP string, ch
 	s.TransactionTable[tid] = entry
 	s.TransactionMutex.RUnlock()
 
+	if txnManagerIP == "" {
+		return
+	}
+
 	resp := &pb.CreateTxnEntryResp{
 		E:         pb.TransactionError_SUCCESS,
 		ChannelID: channelID,
