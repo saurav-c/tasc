@@ -6,5 +6,7 @@ benchmark/.ipynb_checkpoints
 
 cmd/keynode/keynode
 cmd/aftsi/aftsi
+cmd/routing/routing
 client/client
 cli/cli
+benchmark/benchmark

@@ -263,7 +263,7 @@ func NewAftSIServer(personalIP string, txnRouterIP string, keyRouterIP string, s
 	conn, err := grpc.Dial(txnRouterIP+":5006", grpc.WithInsecure())
 	txnRouterClient := rtr.NewRouterClient(conn)
 
-	connKey, err := grpc.Dial(keyRouterIP+":5006", grpc.WithInsecure())
+	connKey, err := grpc.Dial(keyRouterIP+":5007", grpc.WithInsecure())
 	KeyRouterClient := rtr.NewRouterClient(connKey)
 
 	// Setup Txn Manager ZMQ sockets

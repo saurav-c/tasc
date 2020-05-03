@@ -4,17 +4,18 @@ import (
 	"context"
 	"crypto/sha1"
 	"encoding/binary"
+	"flag"
 	"fmt"
 	pb "github.com/saurav-c/aftsi/proto/routing/api"
 	"google.golang.org/grpc"
 	"log"
 	"net"
-	"os"
 	"time"
 )
 
 const (
-	RouterPort = ":5006"
+	TxnRouterPort = ":5006"
+	KeyRouterPort = ":5007"
 )
 
 func (r *RouterServer) LookUp(ctx context.Context, req *pb.RouterReq) (*pb.RouterResponse, error) {
@@ -60,11 +61,25 @@ func (r *RouterServer) MultipleLookUp(ctx context.Context, multi *pb.RouterReqMu
 }
 
 func main() {
+	mode := flag.String("mode", "", "Router mode")
+	flag.Parse()
+
+	RouterPort := ""
+	if *mode == "txn" {
+		RouterPort = ":5006"
+	} else if *mode == "key" {
+		RouterPort = ":5007"
+	} else {
+		fmt.Println(*mode)
+		log.Fatal("Wrong mode")
+	}
+
+	IpAddresses := flag.Args()
+
 	lis, err := net.Listen("tcp", RouterPort)
 	if err != nil {
 		log.Fatal("Could not start server on port %s: %v\n", RouterPort, err)
 	}
-	IpAddresses := os.Args[1:]
 
 	server := grpc.NewServer()
 
