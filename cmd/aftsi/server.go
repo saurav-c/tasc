@@ -58,6 +58,10 @@ type TransactionEntry struct {
 	// unverifiedProtos map[hash.Hash]*rpb.TransactionUpdate
 }
 
+type WriteBufferEntry struct {
+	buffer map[string][]byte
+}
+
 type AftSIServer struct {
 	counter              uint64
 	counterMutex         *sync.Mutex
@@ -67,9 +71,9 @@ type AftSIServer struct {
 	keyRouterConn        rtr.RouterClient
 	StorageManager       storage.StorageManager
 	TransactionTable     map[string]*TransactionEntry
-	TransactionTableLock map[string]*sync.RWMutex
-	WriteBuffer          map[string]map[string][]byte
-	WriteBufferLock      map[string]*sync.RWMutex
+	TransactionMutex     *sync.RWMutex
+	WriteBuffer          map[string]*WriteBufferEntry
+	WriteBufferMutex     *sync.RWMutex
 	ReadCache            map[string][]byte
 	ReadCacheLock        *sync.RWMutex
 	commitBuffer         map[string][]byte
@@ -91,9 +95,13 @@ type ZMQInfo struct {
 
 type ResponseHandler struct {
 	readChannels      map[uint32](chan *key.KeyResponse)
+	readMutex         *sync.RWMutex
 	validateChannels  map[uint32](chan *key.ValidateResponse)
+	valMutex          *sync.RWMutex
 	endTxnChannels    map[uint32](chan *key.FinishResponse)
+	endMutex          *sync.RWMutex
 	createTxnChannels map[uint32](chan *pb.CreateTxnEntryResp)
+	createMutex       *sync.RWMutex
 }
 
 type SocketCache struct {
@@ -289,6 +297,10 @@ func NewAftSIServer(personalIP string, txnRouterIP string, keyRouterIP string, s
 		validateChannels:  make(map[uint32](chan *key.ValidateResponse)),
 		endTxnChannels:    make(map[uint32](chan *key.FinishResponse)),
 		createTxnChannels: make(map[uint32](chan *pb.CreateTxnEntryResp)),
+		readMutex:         &sync.RWMutex{},
+		valMutex:          &sync.RWMutex{},
+		endMutex:          &sync.RWMutex{},
+		createMutex:       &sync.RWMutex{},
 	}
 
 	pusherCache := SocketCache{
@@ -308,9 +320,9 @@ func NewAftSIServer(personalIP string, txnRouterIP string, keyRouterIP string, s
 		commitBuffer:         make(map[string][]byte),
 		commitLock:           &sync.Mutex{},
 		TransactionTable:     make(map[string]*TransactionEntry),
-		TransactionTableLock: make(map[string]*sync.RWMutex),
-		WriteBuffer:          make(map[string]map[string][]byte),
-		WriteBufferLock:      make(map[string]*sync.RWMutex),
+		TransactionMutex:     &sync.RWMutex{},
+		WriteBuffer:          make(map[string]*WriteBufferEntry),
+		WriteBufferMutex:     &sync.RWMutex{},
 		ReadCache:            make(map[string][]byte),
 		ReadCacheLock:        &sync.RWMutex{},
 		zmqInfo:              zmqInfo,

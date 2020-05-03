@@ -13,7 +13,6 @@ import (
 	"net"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/golang/protobuf/proto"
@@ -92,7 +91,10 @@ func (s *AftSIServer) StartTransaction(ctx context.Context, emp *empty.Empty) (*
 
 	// Create Channel to listen for response
 	cid := uuid.New().ID()
-	s.Responder.createTxnChannels[cid] = make(chan *pb.CreateTxnEntryResp, 1)
+	cChan := make(chan *pb.CreateTxnEntryResp, 1)
+	s.Responder.createMutex.Lock()
+	s.Responder.createTxnChannels[cid] = cChan
+	s.Responder.createMutex.Unlock()
 	defer close(s.Responder.createTxnChannels[cid])
 
 	txnEntryReq := &pb.CreateTxnEntry{
@@ -111,7 +113,7 @@ func (s *AftSIServer) StartTransaction(ctx context.Context, emp *empty.Empty) (*
 	s.PusherCache.unlock(addr)
 
 	// Wait for response
-	resp := <-s.Responder.createTxnChannels[cid]
+	resp := <-cChan
 	endCreate := time.Now()
 	fmt.Printf("Create Txn took: %f ms\n", 1000 * endCreate.Sub(startCreate).Seconds())
 
@@ -134,36 +136,34 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 	tid := readReq.GetTid()
 	key := readReq.GetKey()
 
-	// Verify transaction status
-	var beginTS string
-	s.TransactionTableLock[tid].RLock()
-	if entry, ok := s.TransactionTable[tid]; !ok || entry.status != TxnInProgress {
-		s.TransactionTableLock[tid].RUnlock()
+	s.TransactionMutex.RLock()
+	txnEntry, ok := s.TransactionTable[tid]
+	s.TransactionMutex.RUnlock()
+
+	// No Transaction Found
+	if !ok || txnEntry.status != TxnInProgress {
 		return &pb.TransactionResponse{
 			E: pb.TransactionError_FAILURE,
 		}, nil
 	}
-	beginTS = s.TransactionTable[tid].beginTS
-	s.TransactionTableLock[tid].RUnlock()
+
+	s.WriteBufferMutex.RLock()
+	bufferEntry := s.WriteBuffer[tid]
+	s.WriteBufferMutex.RUnlock()
+
+	// Verify transaction status
+	beginTS := txnEntry.beginTS
 
 	// Reading from the Write Buffer
-	s.WriteBufferLock[tid].RLock()
-	if writeBuf, ok := s.WriteBuffer[tid]; ok {
-		if val, ok := writeBuf[key]; ok {
-			s.WriteBufferLock[tid].RUnlock()
-			return &pb.TransactionResponse{
-				Value: val,
-				E:     pb.TransactionError_SUCCESS,
-			}, nil
-		}
+	if val, ok := bufferEntry.buffer[key]; ok {
+		return &pb.TransactionResponse{
+			Value: val,
+			E:     pb.TransactionError_SUCCESS,
+		}, nil
 	}
-	s.WriteBufferLock[tid].RUnlock()
 
 	// Reading from the ReadSet
-	s.TransactionTableLock[tid].RLock()
-	readSet := s.TransactionTable[tid].readSet
-	s.TransactionTableLock[tid].RUnlock()
-	versionedKey, ok := readSet[key]
+	versionedKey, ok := txnEntry.readSet[key]
 	if ok {
 		// Fetch correct version from ReadSet, check for version in ReadCache
 		s.ReadCacheLock.RLock()
@@ -207,9 +207,7 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 
 	// Find lower bound for key version in order to maintain an atomic read set
 	// TODO: Go thru each cowritten set and check for this key, find max version and send it to KN
-	s.TransactionTableLock[tid].RLock()
-	coWrittenSet := s.TransactionTable[tid].coWrittenSet
-	s.TransactionTableLock[tid].RUnlock()
+	coWrittenSet := txnEntry.coWrittenSet
 	keyLowerBound := ""
 	if version, ok := coWrittenSet[key]; ok {
 		keyLowerBound = version
@@ -227,12 +225,15 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 	// Use ZMQ to make a read request to the Key Node at keyIP
 
 	rSet := []string{}
-	for _, v := range readSet {
+	for _, v := range txnEntry.readSet {
 		rSet = append(rSet, v)
 	}
 
 	cid := uuid.New().ID()
-	s.Responder.readChannels[cid] = make(chan *keyNode.KeyResponse, 1)
+	rChan := make(chan *keyNode.KeyResponse, 1)
+	s.Responder.readMutex.Lock()
+	s.Responder.readChannels[cid] = rChan
+	s.Responder.readMutex.Unlock()
 	defer close(s.Responder.readChannels[cid])
 
 	keyReq := &keyNode.KeyRequest{
@@ -253,7 +254,7 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 	readPusher.SendBytes(data, zmq.DONTWAIT)
 	s.PusherCache.unlock(addr)
 
-	readResponse := <-s.Responder.readChannels[cid]
+	readResponse := <-rChan
 
 	if readResponse.GetError() != keyNode.KeyError_SUCCESS {
 		return &pb.TransactionResponse{
@@ -273,17 +274,16 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 	}
 
 	// Update CoWrittenSet and Readset
-	s.TransactionTableLock[tid].Lock()
 	for _, keyVersion := range coWrites {
 		split := strings.Split(keyVersion, keyVersionDelim)
 		k, v := split[0], split[1]
-		if currentVersion, ok := s.TransactionTable[tid].coWrittenSet[k]; !ok || v > currentVersion {
-			s.TransactionTable[tid].coWrittenSet[k] = v
+		if currentVersion, ok := txnEntry.coWrittenSet[k]; !ok || v > currentVersion {
+			txnEntry.coWrittenSet[k] = v
 		}
 	}
-	s.TransactionTable[tid].readSet[key] = versionedKey
-	s.TransactionTableLock[tid].Unlock()
+	txnEntry.readSet[key] = versionedKey
 
+	// Cache value
 	s.ReadCacheLock.Lock()
 	if len(s.ReadCache) == ReadCacheLimit {
 		randInt := rand.Intn(len(s.ReadCache))
@@ -311,19 +311,22 @@ func (s *AftSIServer) Write(ctx context.Context, writeReq *pb.WriteRequest) (*pb
 	key := writeReq.GetKey()
 	val := writeReq.GetValue()
 
-	// Verify transaction status
-	s.TransactionTableLock[tid].RLock()
-	if entry, ok := s.TransactionTable[tid]; !ok || entry.status != TxnInProgress {
-		s.TransactionTableLock[tid].RUnlock()
+	s.TransactionMutex.RLock()
+	txnEntry, ok := s.TransactionTable[tid]
+	s.TransactionMutex.RUnlock()
+
+	// No Transaction Found
+	if !ok || txnEntry.status != TxnInProgress {
 		return &pb.TransactionResponse{
 			E: pb.TransactionError_FAILURE,
 		}, nil
 	}
-	s.TransactionTableLock[tid].RUnlock()
 
-	s.WriteBufferLock[tid].Lock()
-	s.WriteBuffer[tid][key] = val
-	s.WriteBufferLock[tid].Unlock()
+	s.WriteBufferMutex.RLock()
+	bufferEntry := s.WriteBuffer[tid]
+	s.WriteBufferMutex.RUnlock()
+
+	bufferEntry.buffer[key] = val
 
 	// TODO: Send update to replicas
 
@@ -339,24 +342,32 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 	// Parse request TID
 	tid := req.GetTid()
 
-	// Lock the TxnEntry and Write Buffer
-	s.TransactionTableLock[tid].Lock()
-	s.WriteBufferLock[tid].Lock()
-	defer s.TransactionTableLock[tid].Unlock()
-	defer s.WriteBufferLock[tid].Unlock()
+	s.TransactionMutex.RLock()
+	txnEntry, ok := s.TransactionTable[tid]
+	s.TransactionMutex.RUnlock()
 
-	if len(s.WriteBuffer[tid]) == 0 {
-		s.TransactionTable[tid].status = TxnCommitted
+	// No Transaction Found
+	if !ok || txnEntry.status != TxnInProgress {
+		return &pb.TransactionResponse{
+			E: pb.TransactionError_FAILURE,
+		}, nil
+	}
+
+	s.WriteBufferMutex.RLock()
+	bufferEntry := s.WriteBuffer[tid]
+	s.WriteBufferMutex.RUnlock()
+
+	if len(bufferEntry.buffer) == 0 {
+		txnEntry.status = TxnCommitted
 		return &pb.TransactionResponse{
 			E: pb.TransactionError_SUCCESS,
 		}, nil
 	}
 
 	// Do a "routing" request for keys in writeSet
-	buffer := s.WriteBuffer[tid]
-	writeSet := make([]string, 0, len(buffer))
-	writeVals := make([][]byte, 0, len(buffer))
-	for k, v := range buffer {
+	writeSet := make([]string, 0, len(bufferEntry.buffer))
+	writeVals := make([][]byte, 0, len(bufferEntry.buffer))
+	for k, v := range bufferEntry.buffer {
 		writeSet = append(writeSet, k)
 		writeVals = append(writeVals, v)
 	}
@@ -374,21 +385,23 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 
 	validationChannel := make(chan bool, len(keyMap))
 
-	commitTS := strconv.FormatInt(time.Now().UnixNano(), 10)
-	s.TransactionTable[tid].endTS = commitTS
+	txnEntry.endTS = strconv.FormatInt(time.Now().UnixNano(), 10)
 
 	// TODO: Do 2PC for KeyNodes
 	for ip, keys := range keyMap {
 		go func(ip string, keys []string){
 			addr := fmt.Sprintf(PushTemplate, ip, validatePullPort)
 			cid := uuid.New().ID()
-			s.Responder.validateChannels[cid] = make(chan *keyNode.ValidateResponse, 1)
+			vChan := make(chan *keyNode.ValidateResponse, 1)
+			s.Responder.valMutex.Lock()
+			s.Responder.validateChannels[cid] = vChan
+			s.Responder.valMutex.Unlock()
 			defer close(s.Responder.validateChannels[cid])
 
 			vReq := &keyNode.ValidateRequest{
 				Tid:       tid,
-				BeginTS:   s.TransactionTable[tid].beginTS,
-				CommitTS:  commitTS,
+				BeginTS:   txnEntry.beginTS,
+				CommitTS:  txnEntry.endTS,
 				Keys:      keys,
 				TxnMngrIP: s.IPAddress,
 				ChannelID: cid,
@@ -405,7 +418,7 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 
 			// Timeout if no response heard
 			select {
-			case resp := <-s.Responder.validateChannels[cid]:
+			case resp := <-vChan:
 				validationChannel <- resp.GetOk()
 			case <-time.After(1 * time.Second):
 				fmt.Printf("Timeout waiting for Key Node Phase 1: %s\n", ip)
@@ -434,12 +447,12 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 	if commit {
 		go func() {
 			startWrite := time.Now()
-			dbKeys := make([]string, len(s.WriteBuffer[tid])+1)
-			dbVals := make([][]byte, len(s.WriteBuffer[tid])+1)
+			dbKeys := make([]string, len(bufferEntry.buffer)+1)
+			dbVals := make([][]byte, len(bufferEntry.buffer)+1)
 			// Send writes & transaction set to storage manager
 			i := 0
-			for k, v := range s.WriteBuffer[tid] {
-				newKey := k + keyVersionDelim + commitTS + "-" + tid
+			for k, v := range bufferEntry.buffer {
+				newKey := k + keyVersionDelim + txnEntry.endTS + "-" + tid
 				fmt.Printf("Wrote key %s\n", newKey)
 
 				dbKeys[i] = newKey
@@ -472,7 +485,10 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 		go func(ip string) {
 			addr := fmt.Sprintf(PushTemplate, ip, endTxnPort)
 			cid := uuid.New().ID()
-			s.Responder.endTxnChannels[cid] = make(chan *keyNode.FinishResponse, 1)
+			eChan := make(chan *keyNode.FinishResponse, 1)
+			s.Responder.createMutex.Lock()
+			s.Responder.endTxnChannels[cid] = eChan
+			s.Responder.createMutex.Unlock()
 			defer close(s.Responder.endTxnChannels[cid])
 
 			// Create Finish Request
@@ -507,7 +523,7 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 
 			// Timeout if no response heard
 			select {
-			case resp := <-s.Responder.endTxnChannels[cid]:
+			case resp := <-eChan:
 				if resp.GetError() == keyNode.KeyError_FAILURE {
 					finishTxnChannel <- false
 				} else {
@@ -541,12 +557,12 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 	<- storageChannel
 
 	if commit {
-		s.TransactionTable[tid].status = TxnCommitted
+		txnEntry.status = TxnCommitted
 		return &pb.TransactionResponse{
 			E: pb.TransactionError_SUCCESS,
 		}, nil
 	} else {
-		s.TransactionTable[tid].status = TxnAborted
+		txnEntry.status = TxnAborted
 		return &pb.TransactionResponse{
 			E: pb.TransactionError_FAILURE,
 		}, nil
@@ -555,44 +571,43 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 
 func (s *AftSIServer) AbortTransaction(ctx context.Context, req *pb.TransactionID) (*pb.TransactionResponse, error) {
 	tid := req.GetTid()
-	if tidLock, ok := s.TransactionTableLock[tid]; ok {
-		tidLock.Lock()
-		defer tidLock.Unlock()
-		if entry, ok := s.TransactionTable[tid]; ok && entry.status == TxnInProgress {
-			entry.status = TxnAborted
-			return &pb.TransactionResponse{
-				E: pb.TransactionError_SUCCESS,
-			}, nil
-		} else {
-			// Transaction Entry does not exist or Txn was not In Progress
-			return &pb.TransactionResponse{
-				E: pb.TransactionError_FAILURE,
-			}, nil
-		}
-	} else {
-		// Transaction does not exist
+
+	s.TransactionMutex.RLock()
+	txnEntry, ok := s.TransactionTable[tid]
+	s.TransactionMutex.RUnlock()
+
+	// No Transaction Found
+	if !ok || txnEntry.status != TxnInProgress {
 		return &pb.TransactionResponse{
 			E: pb.TransactionError_FAILURE,
 		}, nil
 	}
+
+	txnEntry.status = TxnAborted
+	return &pb.TransactionResponse{
+		E: pb.TransactionError_SUCCESS,
+	}, nil
 }
 
 func (s *AftSIServer) CreateTransactionEntry(tid string, txnManagerIP string, channelID uint32) () {
+	s.TransactionMutex.Lock()
+	s.TransactionTable[tid] = &TransactionEntry{}
+	s.TransactionMutex.Unlock()
 
-	s.TransactionTable[tid] = &TransactionEntry{
+	s.WriteBufferMutex.Lock()
+	s.WriteBuffer[tid] = &WriteBufferEntry{buffer: make(map[string][]byte)}
+	s.WriteBufferMutex.Unlock()
+
+	entry := &TransactionEntry{
 		beginTS:      strconv.FormatInt(time.Now().UnixNano(), 10),
 		readSet:      make(map[string]string),
 		coWrittenSet: make(map[string]string),
 		status:       TxnInProgress,
 	}
-	s.WriteBuffer[tid] = make(map[string][]byte)
 
-	s.TransactionTableLock[tid] = &sync.RWMutex{}
-	s.WriteBufferLock[tid] = &sync.RWMutex{}
-
-	if txnManagerIP == "" {
-		return
-	}
+	s.TransactionMutex.RLock()
+	s.TransactionTable[tid] = entry
+	s.TransactionMutex.RUnlock()
 
 	resp := &pb.CreateTxnEntryResp{
 		E:         pb.TransactionError_SUCCESS,
