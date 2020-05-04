@@ -238,61 +238,99 @@ func (k *KeyNode) readKey (tid string, key string, readList []string, begints st
 func (k *KeyNode) validate (tid string, txnBeginTS string, txnCommitTS string, keys []string) (action int8) {
 	for _, key := range keys {
 		// Check for write conflicts in pending Key Version Index
-		k.pendingLock.Lock()
-		if _, ok := k.pendingKeysLock[key]; !ok {
-			k.pendingKeysLock[key] = &sync.RWMutex{}
-
-			k.pendingKeyVersionIndexLock.Lock()
-			k.pendingKeyVersionIndex[key] = &keysList{keys: make([]string, 1)}
-			k.pendingKeyVersionIndexLock.Unlock()
-		}
-		k.pendingLock.Unlock()
-
+		// Acquire a Read Lock on map that stores pending locks
 		k.pendingLock.RLock()
-		lock := k.pendingKeysLock[key]
+
+		// Check if the pending lock for this key exists
+		pLock, ok := k.pendingKeysLock[key]
+
+		// Release the Read Lock on map that stores pending locks
 		k.pendingLock.RUnlock()
 
-		lock.RLock()
-		pendingKeyVersions := k.pendingKeyVersionIndex[key].keys
-		lock.RUnlock()
+		if ok {
+			// Acquire read lock for this key's pending version lock
+			pLock.RLock()
 
-		for _, keyVersion := range pendingKeyVersions {
-			keyCommitTS := strings.Split(keyVersion, KEY_VERSION_DELIMITER)[0]
-			if txnBeginTS < keyCommitTS && keyCommitTS < txnCommitTS {
-				lock.RUnlock()
-				return TRANSACTION_FAILURE
-			}
-		}
+			// Acquire a read lock to read the pending KVI entry, then release it
+			k.pendingKeyVersionIndexLock.RLock()
+			pendingEntry := k.pendingKeyVersionIndex[key]
+			k.pendingKeyVersionIndexLock.RUnlock()
 
-		// Check for write conflicts in committed Key Version Index
-		k.committedLock.RLock()
-		if lock, ok := k.committedKeysLock[key]; ok {
-			k.keyVersionIndexLock.RLock()
-			lock.RLock()
-			keyVersions := k.keyVersionIndex[key].keys
-			lock.RUnlock()
-			k.keyVersionIndexLock.RUnlock()
-
-			for _, keyVersion := range keyVersions {
+			for _, keyVersion := range pendingEntry.keys {
 				keyCommitTS := strings.Split(keyVersion, KEY_VERSION_DELIMITER)[0]
 				if txnBeginTS < keyCommitTS && keyCommitTS < txnCommitTS {
+					pLock.RUnlock()
 					return TRANSACTION_FAILURE
 				}
 			}
+
+			// Release read lock for this key's pending version lock
+			pLock.RUnlock()
 		}
+
+		// Check for write conflicts in committed Key Version Index
+		// Acquire a read lock on map that stores committed locks
+		k.committedLock.RLock()
+
+		// Check if committed lock for this key exists
+		cLock, ok := k.committedKeysLock[key]
+
+		// Release read lock on map that stores committed locks
 		k.committedLock.RUnlock()
+
+		if ok {
+			// Acquire read lock for this key's committed version lock
+			cLock.RLock()
+
+			// Acquire a read lock to read committed KVI entry, then release it
+			k.keyVersionIndexLock.RLock()
+			entry := k.keyVersionIndex[key]
+			k.keyVersionIndexLock.RUnlock()
+
+			for _, keyVersion := range entry.keys {
+				keyCommitTS := strings.Split(keyVersion, KEY_VERSION_DELIMITER)[0]
+				if txnBeginTS < keyCommitTS && keyCommitTS < txnCommitTS {
+					cLock.RUnlock()
+					return TRANSACTION_FAILURE
+				}
+			}
+			cLock.RUnlock()
+		}
 	}
+
+	// No conflicts found in pending or committed KVI
 
 	// Insert keys into pending Key Version Index
 	keyVersion := txnCommitTS + KEY_VERSION_DELIMITER + tid
 
 	for _, key := range keys {
+		// Get read lock on map that holds pending locks
 		k.pendingLock.RLock()
-		keyLock := k.pendingKeysLock[key]
+		keyLock, ok := k.pendingKeysLock[key]
 		k.pendingLock.RUnlock()
 
+		var pendingEntry *keysList
+		// Check if pending lock exists for this key, if not create the entries
+		if !ok {
+			k.pendingLock.Lock()
+			k.pendingKeyVersionIndexLock.Lock()
+
+			keyLock = &sync.RWMutex{}
+			k.pendingKeysLock[key] = keyLock
+
+			pendingEntry = &keysList{keys: make([]string, 1)}
+			k.pendingKeyVersionIndex[key] = pendingEntry
+
+			k.pendingLock.Unlock()
+			k.pendingKeyVersionIndexLock.Unlock()
+		} else {
+			k.pendingKeyVersionIndexLock.RLock()
+			pendingEntry = k.pendingKeyVersionIndex[key]
+			k.pendingKeyVersionIndexLock.RUnlock()
+		}
+
 		keyLock.Lock()
-		k.pendingKeyVersionIndex[key].keys = InsertParticularIndex(k.pendingKeyVersionIndex[key].keys, keyVersion)
+		pendingEntry.keys = InsertParticularIndex(pendingEntry.keys, keyVersion)
 		keyLock.Unlock()
 	}
 
