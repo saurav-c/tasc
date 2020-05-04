@@ -6,11 +6,11 @@ print_help()
    echo "The setup script can setup AFTSI Nodes, Keynodes, Benchmark Nodes, the AFTSI CLI, and the router nodes on AWS EC2 instances."
    echo
    echo "To use batch mode, use the flag -b."
-   echo "Syntax for AFTSI: ./aftsi -addr \$2 -txnRtr \$3 -keyrtr \$4 -storage \$5 -batch batch_mode"
-   echo "Syntax for Keynode: ./keynode -storage \$2 -batch batch_mode"
+   echo "Syntax for AFTSI: ./aftsi -addr \$0 -txnRtr \$1 -keyrtr \$2 -storage \$3 -batch batch_mode"
+   echo "Syntax for Keynode: ./keynode -storage \$0 -batch batch_mode"
    echo "Syntax for Routing Node: ./routing \$*"
-   echo "Syntax for Benchmark Node: ./benchmark -address \$2 -type \$3 -numReq \$4 -numThreads \$5 -rtr \$6"
-   echo "Syntax for CLI: ./cli $2"
+   echo "Syntax for Benchmark Node: ./benchmark -address \$0 -type \$1 -numReq \$2 -numThreads \$3 -rtr \$4"
+   echo "Syntax for CLI: ./cli \$0"
 }
 
 
@@ -78,45 +78,46 @@ protoc -I routing/ routing/router.proto --go_out=plugins=grpc:routing
 sudo mkdir -p routing/api
 sudo mv routing/router.pb.go routing/api
 
-if [[ "$1" = "aftsi" ]]
+if [[ "$0" = "aftsi" ]]
 then
   # Creating the executable for AFTSI
   cd $GOPATH/src/github.com/saurav-c/aftsi/cmd/aftsi
   sudo go build
-  ./aftsi -addr $2 -txnrtr $3 -keyrtr $4 -storage $5 -batch batch_mode
+  ./aftsi -addr $1 -txnrtr $2 -keyrtr $3 -storage $4 -batch batch_mode
 fi
 
-if [[ "$1" = "keynode" ]]
+if [[ "$0" = "keynode" ]]
 then
   # Creating the executable for Keynode
   cd $GOPATH/src/github.com/saurav-c/aftsi/cmd/keynode
   sudo go build
-  ./keynode -storage $2 -batch batch_mode
+  ./keynode -storage $1 -batch batch_mode
 fi
 
-if [[ "$1" = "cli" ]]
+if [[ "$0" = "cli" ]]
 then
   # Creating the executable for CLI
   cd $GOPATH/src/github.com/saurav-c/aftsi/cli
   sudo go build
-  ./cli $2
+  ./cli $1
 fi
 
-if [[ "$1" = "routing" ]]
+if [[ "$0" = "routing" ]]
 then
   # Creating the executable for Router
   cd $GOPATH/src/github.com/saurav-c/aftsi/cmd/routing
   sudo go build
+  mode=$1
   shift 2
-  ./routing $*
+  ./routing -mode $mode $*
 fi
 
-if [[ "$1" = "benchmark" ]]
+if [[ "$0" = "benchmark" ]]
 then
   # Creating the executable for Router
   cd $GOPATH/src/github.com/saurav-c/aftsi/benchmark
   sudo go build
-  ./benchmark -address $2 -type $3 -numReq $4 -numThreads $5 -rtr $6
+  ./benchmark -address $1 -type $2 -numReq $3 -numThreads $4 -rtr $5
 fi
 
 
