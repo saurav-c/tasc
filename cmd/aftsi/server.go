@@ -223,7 +223,10 @@ func createTxnRespHandler(data []byte, responder *ResponseHandler) {
 	resp := &pb.CreateTxnEntryResp{}
 	proto.Unmarshal(data, resp)
 	channelID := resp.GetChannelID()
-	responder.createTxnChannels[channelID] <- resp
+	responder.createMutex.RLock()
+	channel := responder.createTxnChannels[channelID]
+	responder.createMutex.RUnlock()
+	channel <- resp
 }
 
 // Key Node Response Handlers
@@ -232,21 +235,30 @@ func readHandler(data []byte, responder *ResponseHandler) {
 	resp := &key.KeyResponse{}
 	proto.Unmarshal(data, resp)
 	channelID := resp.GetChannelID()
-	responder.readChannels[channelID] <- resp
+	responder.readMutex.RLock()
+	channel := responder.readChannels[channelID]
+	responder.readMutex.RUnlock()
+	channel <- resp
 }
 
 func validateHandler(data []byte, responder *ResponseHandler) {
 	resp := &key.ValidateResponse{}
 	proto.Unmarshal(data, resp)
 	channelID := resp.GetChannelID()
-	responder.validateChannels[channelID] <- resp
+	responder.valMutex.RLock()
+	channel := responder.validateChannels[channelID]
+	responder.valMutex.RUnlock()
+	channel <- resp
 }
 
 func endTxnHandler(data []byte, responder *ResponseHandler) {
 	resp := &key.FinishResponse{}
 	proto.Unmarshal(data, resp)
 	channelID := resp.GetChannelID()
-	responder.endTxnChannels[channelID] <- resp
+	responder.endMutex.RLock()
+	channel := responder.endTxnChannels[channelID]
+	responder.endMutex.RUnlock()
+	channel <- resp
 }
 
 func NewAftSIServer(personalIP string, txnRouterIP string, keyRouterIP string, storageInstance string, batchMode bool) (*AftSIServer, int, error) {
