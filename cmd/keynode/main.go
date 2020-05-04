@@ -38,11 +38,13 @@ func (k *KeyNode) _deleteFromPendingKVI (keys []string, keyEntry string, action 
 		k.pendingLock.RUnlock()
 
 		k.pendingKeyVersionIndexLock.RLock()
-		keyLock.Lock()
-		indexEntry := FindIndex(k.pendingKeyVersionIndex[key].keys, keyEntry)
-		k.pendingKeyVersionIndex[key].keys = append(k.pendingKeyVersionIndex[key].keys[:indexEntry], k.pendingKeyVersionIndex[key].keys[indexEntry+1:]...)
-		keyLock.Unlock()
+		pendingEntry := k.pendingKeyVersionIndex[key]
 		k.pendingKeyVersionIndexLock.RUnlock()
+
+		keyLock.Lock()
+		indexEntry := FindIndex(pendingEntry.keys, keyEntry)
+		pendingEntry.keys = append(pendingEntry.keys[:indexEntry], pendingEntry.keys[indexEntry+1:]...)
+		keyLock.Unlock()
 	}
 
 	if action == TRANSACTION_FAILURE {
@@ -53,30 +55,40 @@ func (k *KeyNode) _deleteFromPendingKVI (keys []string, keyEntry string, action 
 	kviValBytes := make([][]byte, len(keys))
 
 	for i, key := range keys {
-		// Acquire key index lock
-		k.keyVersionIndexLock.Lock()
-		if _, ok := k.committedKeysLock[key]; !ok {
-			k.committedLock.Lock()
-			k.committedKeysLock[key] = &sync.RWMutex{}
-			k.committedLock.Unlock()
-			k.keyVersionIndex[key] = &keysList{keys: make([]string, 0)}
-		}
-		k.keyVersionIndexLock.Unlock()
+		// Acquire read lock on map that stores committed locks, and check if it exists
+		k.committedLock.RLock()
+		cLock, ok := k.committedKeysLock[key]
+		k.committedLock.RUnlock()
 
-		k.committedKeysLock[key].RLock()
-		// Perform key index insert
-		k.keyVersionIndexLock.Lock()
-		k.keyVersionIndex[key].keys = InsertParticularIndex(k.keyVersionIndex[key].keys, keyEntry)
-		k.keyVersionIndexLock.Unlock()
+		var entry *keysList
+		if !ok {
+			k.committedLock.Lock()
+			k.keyVersionIndexLock.Lock()
+
+			cLock = &sync.RWMutex{}
+			k.committedKeysLock[key] = cLock
+			entry = &keysList{keys: make([]string, 0)}
+			k.keyVersionIndex[key] = entry
+
+			k.committedLock.Unlock()
+			k.keyVersionIndexLock.Unlock()
+		} else {
+			k.keyVersionIndexLock.RLock()
+			entry = k.keyVersionIndex[key]
+			k.keyVersionIndexLock.RUnlock()
+		}
+
+		cLock.Lock()
+		entry.keys = InsertParticularIndex(entry.keys, keyEntry)
+		cLock.Unlock()
 
 		dbKey := key + ":index"
 		if k.batchMode {
-			k._addToBuffer(dbKey, _convertStringToBytes(k.keyVersionIndex[key].keys))
+			k._addToBuffer(dbKey, _convertStringToBytes(entry.keys))
 		} else {
 			kviKeys[i] = dbKey
-			kviValBytes[i] = _convertStringToBytes(k.keyVersionIndex[key].keys)
+			kviValBytes[i] = _convertStringToBytes(entry.keys)
 		}
-		k.committedKeysLock[key].RUnlock()
 	}
 
 	if !k.batchMode {
@@ -345,15 +357,18 @@ func (k *KeyNode) validate (tid string, txnBeginTS string, txnCommitTS string, k
 }
 
 func (k *KeyNode) endTransaction (tid string, action int8, writeBuffer map[string][]byte) (error) {
+	// Acquire read lock on pending Txn Cache, return error if not found
 	k.pendingTxnCacheLock.RLock()
 	pendingTxn, ok := k.pendingTxnCache[tid]
 	k.pendingTxnCacheLock.RUnlock()
 	if !ok {
 		return errors.New("Transaction not found")
 	}
-	k.pendingTxnCacheLock.Lock()
-	delete(k.pendingTxnCache, tid)
-	k.pendingTxnCacheLock.Unlock()
+
+	// TODO: Turn this into gc, add some state to indicate no longer pending
+	//k.pendingTxnCacheLock.Lock()
+	//delete(k.pendingTxnCache, tid)
+	//k.pendingTxnCacheLock.Unlock()
 
 	TxnKeys := pendingTxn.keys
 	keyVersion := pendingTxn.keyVersion
@@ -376,6 +391,9 @@ func (k *KeyNode) endTransaction (tid string, action int8, writeBuffer map[strin
 	e := time.Now()
 	fmt.Printf("TxnWrite Time: %f\n\n", 1000 * e.Sub(s).Seconds())
 
+
+	// TODO: Adding to read cache and deleting from pendingKVI can be done with goroutines, if
+	// TODO: we block if value not in read cache yet
 	s = time.Now()
 	k.readCacheLock.Lock()
 	for key, value := range writeBuffer {
