@@ -40,7 +40,7 @@ func main() {
 			start := time.Now()
 			tid, err := client.StartTransaction(context.TODO(), &empty.Empty{})
 			end := time.Now()
-			fmt.Printf("Start took: %f ms\n", end.Sub(start).Seconds())
+			fmt.Printf("Start took: %f ms\n", 1000 * end.Sub(start).Seconds())
 			if err != nil {
 				fmt.Printf("An error %s has occurred.\n", err)
 				return
@@ -60,7 +60,7 @@ func main() {
 			start := time.Now()
 			response, err := client.Read(context.TODO(), readReq)
 			end := time.Now()
-			fmt.Printf("Read took: %f ms\n", end.Sub(start).Seconds())
+			fmt.Printf("Read took: %f ms\n", 1000 * end.Sub(start).Seconds())
 			if err != nil {
 				fmt.Printf("An error %s has occurred.\n", err)
 				return
@@ -82,7 +82,7 @@ func main() {
 			start := time.Now()
 			_, err := client.Write(context.TODO(), writeReq)
 			end := time.Now()
-			fmt.Printf("Write took: %f ms\n", end.Sub(start).Seconds())
+			fmt.Printf("Write took: %f ms\n", 1000 * end.Sub(start).Seconds())
 			if err != nil {
 				fmt.Printf("An error %s has occurred.\n", err)
 				return
@@ -101,7 +101,7 @@ func main() {
 			start := time.Now()
 			resp, err := client.CommitTransaction(context.TODO(), TID)
 			end := time.Now()
-			fmt.Printf("Commit took: %f ms\n", end.Sub(start).Seconds())
+			fmt.Printf("Commit took: %f ms\n", 1000 * end.Sub(start).Seconds())
 			if err != nil {
 				fmt.Printf("An error %s has occurred.\n", err)
 				return
