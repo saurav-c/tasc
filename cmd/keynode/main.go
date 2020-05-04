@@ -260,11 +260,11 @@ func (k *KeyNode) validate (tid string, txnBeginTS string, txnCommitTS string, k
 			k.pendingKeysLock[key].Unlock()
 			k.pendingKeyVersionIndexLock.Unlock()
 		}
-		k.pendingKeyVersionIndexLock.Unlock()
+		k.pendingLock.Unlock()
 
 		// Check for write conflicts in committed Key Version Index
-		k.pendingLock.RLock()
-		if lock, ok := k.pendingKeysLock[key]; ok {
+		k.committedLock.RLock()
+		if lock, ok := k.committedKeysLock[key]; ok {
 			k.keyVersionIndexLock.RLock()
 			lock.RLock()
 			keyVersions := k.keyVersionIndex[key].keys
@@ -278,7 +278,7 @@ func (k *KeyNode) validate (tid string, txnBeginTS string, txnCommitTS string, k
 				}
 			}
 		}
-		k.pendingLock.RLock()
+		k.committedLock.RUnlock()
 	}
 
 	// Insert keys into pending Key Version Index
