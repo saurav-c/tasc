@@ -42,9 +42,8 @@ func main() {
 			latency := make(chan []float64)
 			totalTimeChannel := make(chan float64)
 
-			reqPerThread := (*numRequests) / (*numThreads)
 			for i := 0; i < *numThreads; i++ {
-				go throughputPerClient(i, *address, reqPerThread, 4, 2, latency, totalTimeChannel)
+				go throughputPerClient(i, *address, *numRequests, 4, 2, latency, totalTimeChannel)
 			}
 
 			latencies := []float64{}
@@ -55,7 +54,7 @@ func main() {
 				latencies = append(latencies, latencyArray...)
 
 				threadTime := <-totalTimeChannel
-				throughputs = append(throughputs, float64(reqPerThread)/threadTime)
+				throughputs = append(throughputs, float64(*numRequests)/threadTime)
 			}
 
 			printLatencies(latencies, "End to End Latencies")
