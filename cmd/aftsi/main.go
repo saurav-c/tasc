@@ -605,9 +605,9 @@ func (s *AftSIServer) CreateTransactionEntry(tid string, txnManagerIP string, ch
 		status:       TxnInProgress,
 	}
 
-	s.TransactionMutex.RLock()
+	s.TransactionMutex.Lock()
 	s.TransactionTable[tid] = entry
-	s.TransactionMutex.RUnlock()
+	s.TransactionMutex.Unlock()
 
 	if txnManagerIP == "" {
 		return
