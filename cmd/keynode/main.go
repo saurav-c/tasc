@@ -239,28 +239,30 @@ func (k *KeyNode) validate (tid string, txnBeginTS string, txnCommitTS string, k
 	for _, key := range keys {
 		// Check for write conflicts in pending Key Version Index
 		k.pendingLock.Lock()
-		if lock, ok := k.pendingKeysLock[key]; ok {
-			lock.RLock()
-			pendingKeyVersions := k.pendingKeyVersionIndex[key].keys
-			for _, keyVersion := range pendingKeyVersions {
-				keyCommitTS := strings.Split(keyVersion, KEY_VERSION_DELIMITER)[0]
-				if txnBeginTS < keyCommitTS && keyCommitTS < txnCommitTS {
-					lock.RUnlock()
-					return TRANSACTION_FAILURE
-				}
-			}
-			lock.RUnlock()
-		} else {
-			// Need to create a new lock for this pending Key and the pending slice
+		if _, ok := k.pendingKeysLock[key]; !ok {
 			k.pendingKeysLock[key] = &sync.RWMutex{}
 
 			k.pendingKeyVersionIndexLock.Lock()
-			k.pendingKeysLock[key].Lock()
 			k.pendingKeyVersionIndex[key] = &keysList{keys: make([]string, 1)}
-			k.pendingKeysLock[key].Unlock()
 			k.pendingKeyVersionIndexLock.Unlock()
 		}
 		k.pendingLock.Unlock()
+
+		k.pendingLock.RLock()
+		lock := k.pendingKeysLock[key]
+		k.pendingLock.RUnlock()
+
+		lock.RLock()
+		pendingKeyVersions := k.pendingKeyVersionIndex[key].keys
+		lock.RUnlock()
+
+		for _, keyVersion := range pendingKeyVersions {
+			keyCommitTS := strings.Split(keyVersion, KEY_VERSION_DELIMITER)[0]
+			if txnBeginTS < keyCommitTS && keyCommitTS < txnCommitTS {
+				lock.RUnlock()
+				return TRANSACTION_FAILURE
+			}
+		}
 
 		// Check for write conflicts in committed Key Version Index
 		k.committedLock.RLock()
@@ -285,9 +287,9 @@ func (k *KeyNode) validate (tid string, txnBeginTS string, txnCommitTS string, k
 	keyVersion := txnCommitTS + KEY_VERSION_DELIMITER + tid
 
 	for _, key := range keys {
-		k.pendingKeyVersionIndexLock.RLock()
+		k.pendingLock.RLock()
 		keyLock := k.pendingKeysLock[key]
-		k.pendingKeyVersionIndexLock.RUnlock()
+		k.pendingLock.RUnlock()
 
 		keyLock.Lock()
 		k.pendingKeyVersionIndex[key].keys = InsertParticularIndex(k.pendingKeyVersionIndex[key].keys, keyVersion)
