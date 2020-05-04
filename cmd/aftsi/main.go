@@ -486,9 +486,9 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 			addr := fmt.Sprintf(PushTemplate, ip, endTxnPort)
 			cid := uuid.New().ID()
 			eChan := make(chan *keyNode.FinishResponse, 1)
-			s.Responder.createMutex.Lock()
+			s.Responder.endMutex.Lock()
 			s.Responder.endTxnChannels[cid] = eChan
-			s.Responder.createMutex.Unlock()
+			s.Responder.endMutex.Unlock()
 			defer close(s.Responder.endTxnChannels[cid])
 
 			// Create Finish Request
