@@ -71,63 +71,10 @@ func (s *AftSIServer) StartTransaction(ctx context.Context, emp *empty.Empty) (*
 	tid := s.serverID + strconv.FormatUint(s.counter, 10)
 	s.counter += 1
 	s.counterMutex.Unlock()
-
-	startRouter := time.Now()
-	// Ask router for the IP address of master for this TID
-	respRouter, err := s.txnRouterConn.LookUp(context.TODO(), &router.RouterReq{Req: tid})
-	if err != nil {
-		return nil, errors.New("Router Lookup Failed.")
-	}
-	endRouter := time.Now()
-	fmt.Printf("Router lookup took: %f ms\n", 1000 * endRouter.Sub(startRouter).Seconds())
-
-	txnManagerIP := respRouter.GetIp()
-	// Check if this node is the one responsible for the TID
-	if txnManagerIP == s.IPAddress {
-		s.CreateTransactionEntry(tid, "", 0)
-		return &pb.TransactionID{
-			Tid: tid,
-			E:   pb.TransactionError_SUCCESS,
-		}, nil
-	}
-
-
-	// Create Channel to listen for response
-	cid := uuid.New().ID()
-	cChan := make(chan *pb.CreateTxnEntryResp, 1)
-	s.Responder.createMutex.Lock()
-	s.Responder.createTxnChannels[cid] = cChan
-	s.Responder.createMutex.Unlock()
-	// defer close(s.Responder.createTxnChannels[cid])
-
-	txnEntryReq := &pb.CreateTxnEntry{
-		Tid:          tid,
-		TxnManagerIP: s.IPAddress,
-		ChannelID:    cid,
-	}
-	data, _ := proto.Marshal(txnEntryReq)
-
-	addr := fmt.Sprintf(PushTemplate, txnManagerIP, createTxnPortReq)
-	s.PusherCache.lock(s.zmqInfo.context, addr)
-	pusher := s.PusherCache.getSocket(addr)
-
-	startCreate := time.Now()
-	pusher.SendBytes(data, zmq.DONTWAIT)
-	s.PusherCache.unlock(addr)
-
-	// Wait for response
-	resp := <-cChan
-	endCreate := time.Now()
-	fmt.Printf("Create Txn took: %f ms\n", 1000 * endCreate.Sub(startCreate).Seconds())
-
 	end := time.Now()
-	fmt.Printf("Start API Call tokk: %f ms\n\n", 1000 * end.Sub(start).Seconds())
+	fmt.Printf("Start API Call took: %f ms\n\n", 1000 * end.Sub(start).Seconds())
 
-	if resp.GetE() != pb.TransactionError_SUCCESS {
-		return &pb.TransactionID{
-			E: pb.TransactionError_FAILURE,
-		}, nil
-	}
+	s.CreateTransactionEntry(tid, "", 0)
 	return &pb.TransactionID{
 		Tid: tid,
 		E:   pb.TransactionError_SUCCESS,
@@ -636,7 +583,6 @@ func main() {
 	}
 
 	personalIP := flag.String("addr", "", "Personal IP")
-	txnRouter := flag.String("txnRtr", "", "Txn Router IP")
 	keyRouter := flag.String("keyRtr", "", "Key Router IP")
 	storage := flag.String("storage", "dynamo", "Storage Engine")
 
@@ -649,7 +595,7 @@ func main() {
 	fmt.Printf("Batch Mode: %t\n", *batchMode)
 
 
-	aftsi, _, err := NewAftSIServer(*personalIP, *txnRouter, *keyRouter, *storage, *batchMode)
+	aftsi, _, err := NewAftSIServer(*personalIP, *keyRouter, *storage, *batchMode)
 	if err != nil {
 		log.Fatal("Could not start server on port %s: %v\n", TxnServerPort, err)
 	}

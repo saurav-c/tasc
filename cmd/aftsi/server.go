@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	pb "github.com/saurav-c/aftsi/proto/aftsi/api"
+	"github.com/saurav-c/aftsi/config"
 	"google.golang.org/grpc"
 	"log"
 	"os"
@@ -63,25 +64,24 @@ type WriteBufferEntry struct {
 }
 
 type AftSIServer struct {
-	counter          uint64
-	counterMutex     *sync.Mutex
-	IPAddress        string
-	serverID         string
-	txnRouterConn    rtr.RouterClient
-	keyRouterConn    rtr.RouterClient
-	StorageManager   storage.StorageManager
-	TransactionTable map[string]*TransactionEntry
-	TransactionMutex *sync.RWMutex
-	WriteBuffer      map[string]*WriteBufferEntry
-	WriteBufferMutex *sync.RWMutex
-	ReadCache        map[string][]byte
-	ReadCacheLock    *sync.RWMutex
-	commitBuffer     map[string][]byte
-	commitLock       *sync.RWMutex
-	zmqInfo          ZMQInfo
-	Responder        *ResponseHandler
-	PusherCache      *SocketCache
-	batchMode        bool
+	counter              uint64
+	counterMutex         *sync.Mutex
+	IPAddress            string
+	serverID             string
+	keyRouterConn        rtr.RouterClient
+	StorageManager       storage.StorageManager
+	TransactionTable     map[string]*TransactionEntry
+	TransactionMutex     *sync.RWMutex
+	WriteBuffer          map[string]*WriteBufferEntry
+	WriteBufferMutex     *sync.RWMutex
+	ReadCache            map[string][]byte
+	ReadCacheLock        *sync.RWMutex
+	commitBuffer         map[string][]byte
+	commitLock           *sync.Mutex
+	zmqInfo              ZMQInfo
+	Responder            *ResponseHandler
+	PusherCache          *SocketCache
+	batchMode            bool
 }
 
 type ZMQInfo struct {
@@ -265,16 +265,16 @@ func endTxnHandler(data []byte, responder *ResponseHandler) {
 	channel <- resp
 }
 
-func NewAftSIServer(personalIP string, txnRouterIP string, keyRouterIP string, storageInstance string, batchMode bool) (*AftSIServer, int, error) {
+func NewAftSIServer(personalIP string, keyRouterIP string, storageInstance string, batchMode bool) (*AftSIServer, int, error) {
 	zctx, err := zmq.NewContext()
 	if err != nil {
 		return nil, 0, err
 	}
-
 	// TODO: Integrate this into config manager
 	// Need to change parameters to fit around needs better
+	configValue := config.ParseConfig()
 	var storageManager storage.StorageManager
-	switch storageInstance {
+	switch configValue.StorageType {
 	case "dynamo":
 		storageManager = storage.NewDynamoStorageManager("Aftsi", "Aftsi")
 	case "local":
@@ -284,8 +284,7 @@ func NewAftSIServer(personalIP string, txnRouterIP string, keyRouterIP string, s
 		os.Exit(3)
 	}
 
-	conn, err := grpc.Dial(txnRouterIP+":5006", grpc.WithInsecure())
-	txnRouterClient := rtr.NewRouterClient(conn)
+	keyRouterIP = configValue.KeyRouterIP
 
 	connKey, err := grpc.Dial(keyRouterIP+":5007", grpc.WithInsecure())
 	KeyRouterClient := rtr.NewRouterClient(connKey)
@@ -327,24 +326,23 @@ func NewAftSIServer(personalIP string, txnRouterIP string, keyRouterIP string, s
 	}
 
 	return &AftSIServer{
-		counter:          0,
-		counterMutex:     &sync.Mutex{},
-		IPAddress:        personalIP,
-		serverID:         "",
-		txnRouterConn:    txnRouterClient,
-		keyRouterConn:    KeyRouterClient,
-		StorageManager:   storageManager,
-		commitBuffer:     make(map[string][]byte),
-		commitLock:       &sync.RWMutex{},
-		TransactionTable: make(map[string]*TransactionEntry),
-		TransactionMutex: &sync.RWMutex{},
-		WriteBuffer:      make(map[string]*WriteBufferEntry),
-		WriteBufferMutex: &sync.RWMutex{},
-		ReadCache:        make(map[string][]byte),
-		ReadCacheLock:    &sync.RWMutex{},
-		zmqInfo:          zmqInfo,
-		Responder:        &responder,
-		PusherCache:      &pusherCache,
-		batchMode:        batchMode,
+		counter:              0,
+		counterMutex:         &sync.Mutex{},
+		IPAddress:            personalIP,
+		serverID:             "",
+		keyRouterConn:        KeyRouterClient,
+		StorageManager:       storageManager,
+		commitBuffer:         make(map[string][]byte),
+		commitLock:           &sync.Mutex{},
+		TransactionTable:     make(map[string]*TransactionEntry),
+		TransactionMutex:     &sync.RWMutex{},
+		WriteBuffer:          make(map[string]*WriteBufferEntry),
+		WriteBufferMutex:     &sync.RWMutex{},
+		ReadCache:            make(map[string][]byte),
+		ReadCacheLock:        &sync.RWMutex{},
+		zmqInfo:              zmqInfo,
+		Responder:            &responder,
+		PusherCache:          &pusherCache,
+		batchMode:            batchMode,
 	}, 0, nil
 }

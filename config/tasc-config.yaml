@@ -1,0 +1,8 @@
+storageType: dynamo
+ipAddress: 127.0.0.1
+keyRouterIP: 127.0.0.1
+txnRouterIP: 127.0.0.1
+batch: true
+nodeIPs:
+  - 127.0.0.1
+  - 127.0.0.2

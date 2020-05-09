@@ -6,6 +6,8 @@ import (
 	"encoding/binary"
 	"flag"
 	"fmt"
+	"github.com/golang/protobuf/ptypes/empty"
+	"math/rand"
 	pb "github.com/saurav-c/aftsi/proto/routing/api"
 	"google.golang.org/grpc"
 	"log"
@@ -17,6 +19,15 @@ const (
 	TxnRouterPort = ":5006"
 	KeyRouterPort = ":5007"
 )
+
+func (r *RouterServer) FetchNew(ctx context.Context, emp *empty.Empty) (*pb.RouterResponse, error) {
+	fmt.Println("Received request")
+	index := rand.Intn(len(r.router))
+	ipAddress := r.router[index]
+	return &pb.RouterResponse{
+		Ip:    ipAddress,
+	}, nil
+}
 
 func (r *RouterServer) LookUp(ctx context.Context, req *pb.RouterReq) (*pb.RouterResponse, error) {
 	fmt.Println("Received request")

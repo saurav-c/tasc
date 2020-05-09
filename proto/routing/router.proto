@@ -1,6 +1,9 @@
 syntax="proto3";
 
+import "google/protobuf/empty.proto";
+
 service Router{
+    rpc FetchNew(google.protobuf.Empty) returns (RouterResponse) {}
     rpc LookUp(RouterReq) returns (RouterResponse) {}
     rpc MultipleLookUp(RouterReqMulti) returns (MultiRouterResponse) {}
 }
