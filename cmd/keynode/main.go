@@ -170,7 +170,7 @@ func (k *KeyNode) readKey (tid string, key string, readList []string, begints st
 
 	k.committedLock.RLock()
 	keyLock := k.committedKeysLock[key]
-	k.keyVersionIndexLock.RUnlock()
+	k.committedLock.RUnlock()
 
 	keyLock.RLock()
 	keyVersions := k.keyVersionIndex[key].keys
