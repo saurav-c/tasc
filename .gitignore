@@ -1,6 +1,9 @@
 *.pb.go
+*.png
+*.jpg
 .idea/
 .vscode/
+*.ipynb
 benchmark/.ipynb_checkpoints
 .DS_Store
 
