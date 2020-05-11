@@ -133,6 +133,8 @@ func (k KeyNode) _flushBuffer() error {
 		allValues = append(allValues, v)
 	}
 	keysWritten, err := k.StorageManager.MultiPut(allKeys, allValues)
+	k.commitLock.Lock()
+	defer k.commitLock.Unlock()
 	if err != nil {
 		for _, key := range keysWritten {
 			delete(k.commitBuffer, key)
