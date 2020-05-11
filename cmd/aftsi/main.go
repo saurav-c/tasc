@@ -50,14 +50,18 @@ func (s *AftSIServer) _flushBuffer() error {
 	}
 	keysWritten, err := s.StorageManager.MultiPut(allKeys, allValues)
 	if err != nil {
+		s.commitLock.Lock()
 		for _, key := range keysWritten {
 			delete(s.commitBuffer, key)
 		}
+		s.commitLock.Unlock()
 		return errors.New("Not all keys have been put")
 	}
+	s.commitLock.Lock()
 	for key := range copyCommitBuffer {
 		delete(s.commitBuffer, key)
 	}
+	s.commitLock.Unlock()
 	return nil
 }
 
