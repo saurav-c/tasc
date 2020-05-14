@@ -72,9 +72,37 @@ type ZMQInfo struct {
 }
 
 type SocketCache struct {
-	locks        map[string]*sync.Mutex
-	sockets      map[string]*zmq.Socket
-	creatorMutex *sync.Mutex
+	locks       map[string]*sync.Mutex
+	sockets     map[string]*zmq.Socket
+	lockMutex   *sync.RWMutex
+	socketMutex *sync.RWMutex
+}
+
+func (cache *SocketCache) lock(ctx *zmq.Context, address string) {
+	cache.lockMutex.Lock()
+	_, ok := cache.locks[address]
+	if !ok {
+		cache.socketMutex.Lock()
+		cache.locks[address] = &sync.Mutex{}
+		cache.sockets[address] = createSocket(zmq.PUSH, ctx, address, false)
+		cache.socketMutex.Unlock()
+	}
+	cache.locks[address].Lock()
+	cache.lockMutex.Unlock()
+}
+
+func (cache *SocketCache) unlock(address string) {
+	cache.lockMutex.RLock()
+	cache.locks[address].Unlock()
+	cache.lockMutex.RUnlock()
+}
+
+// Lock and Unlock need to be called on the Cache for this address
+func (cache *SocketCache) getSocket(address string) *zmq.Socket {
+	cache.socketMutex.RLock()
+	socket := cache.sockets[address]
+	cache.socketMutex.RUnlock()
+	return socket
 }
 
 func InsertParticularIndex(list []string, kv string) []string {
@@ -126,31 +154,6 @@ func createSocket(tp zmq.Type, context *zmq.Context, address string, bind bool) 
 	}
 
 	return sckt
-}
-
-func (cache *SocketCache) lock(ctx *zmq.Context, address string) {
-	if _, ok := cache.locks[address]; ok {
-		cache.locks[address].Lock()
-		return
-	}
-
-	cache.creatorMutex.Lock()
-	// Check again for race condition
-	if _, ok := cache.locks[address]; !ok {
-		cache.locks[address] = &sync.Mutex{}
-		cache.sockets[address] = createSocket(zmq.PUSH, ctx, address, false)
-	}
-	cache.locks[address].Lock()
-	cache.creatorMutex.Unlock()
-}
-
-func (cache *SocketCache) unlock(address string) {
-	cache.locks[address].Unlock()
-}
-
-// Lock and Unlock need to be called on the Cache for this address
-func (cache *SocketCache) getSocket(address string) *zmq.Socket {
-	return cache.sockets[address]
 }
 
 func flusher(k *KeyNode) {
@@ -332,9 +335,10 @@ func NewKeyNode(storageInstance string, batchMode bool) (*KeyNode, error) {
 	}
 
 	pusherCache := SocketCache{
-		locks:        make(map[string]*sync.Mutex),
-		sockets:      make(map[string]*zmq.Socket),
-		creatorMutex: &sync.Mutex{},
+		locks:       make(map[string]*sync.Mutex),
+		sockets:     make(map[string]*zmq.Socket),
+		lockMutex:   &sync.RWMutex{},
+		socketMutex: &sync.RWMutex{},
 	}
 
 	return &KeyNode{

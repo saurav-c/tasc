@@ -63,25 +63,25 @@ type WriteBufferEntry struct {
 }
 
 type AftSIServer struct {
-	counter              uint64
-	counterMutex         *sync.Mutex
-	IPAddress            string
-	serverID             string
-	txnRouterConn        rtr.RouterClient
-	keyRouterConn        rtr.RouterClient
-	StorageManager       storage.StorageManager
-	TransactionTable     map[string]*TransactionEntry
-	TransactionMutex     *sync.RWMutex
-	WriteBuffer          map[string]*WriteBufferEntry
-	WriteBufferMutex     *sync.RWMutex
-	ReadCache            map[string][]byte
-	ReadCacheLock        *sync.RWMutex
-	commitBuffer         map[string][]byte
-	commitLock           *sync.Mutex
-	zmqInfo              ZMQInfo
-	Responder            *ResponseHandler
-	PusherCache          *SocketCache
-	batchMode            bool
+	counter          uint64
+	counterMutex     *sync.Mutex
+	IPAddress        string
+	serverID         string
+	txnRouterConn    rtr.RouterClient
+	keyRouterConn    rtr.RouterClient
+	StorageManager   storage.StorageManager
+	TransactionTable map[string]*TransactionEntry
+	TransactionMutex *sync.RWMutex
+	WriteBuffer      map[string]*WriteBufferEntry
+	WriteBufferMutex *sync.RWMutex
+	ReadCache        map[string][]byte
+	ReadCacheLock    *sync.RWMutex
+	commitBuffer     map[string][]byte
+	commitLock       *sync.Mutex
+	zmqInfo          ZMQInfo
+	Responder        *ResponseHandler
+	PusherCache      *SocketCache
+	batchMode        bool
 }
 
 type ZMQInfo struct {
@@ -105,34 +105,37 @@ type ResponseHandler struct {
 }
 
 type SocketCache struct {
-	locks        map[string]*sync.Mutex
-	sockets      map[string]*zmq.Socket
-	creatorMutex *sync.Mutex
+	locks       map[string]*sync.Mutex
+	sockets     map[string]*zmq.Socket
+	lockMutex   *sync.RWMutex
+	socketMutex *sync.RWMutex
 }
 
 func (cache *SocketCache) lock(ctx *zmq.Context, address string) {
-	if _, ok := cache.locks[address]; ok {
-		cache.locks[address].Lock()
-		return
-	}
-
-	cache.creatorMutex.Lock()
-	// Check again for race condition
-	if _, ok := cache.locks[address]; !ok {
+	cache.lockMutex.Lock()
+	_, ok := cache.locks[address]
+	if !ok {
+		cache.socketMutex.Lock()
 		cache.locks[address] = &sync.Mutex{}
 		cache.sockets[address] = createSocket(zmq.PUSH, ctx, address, false)
+		cache.socketMutex.Unlock()
 	}
 	cache.locks[address].Lock()
-	cache.creatorMutex.Unlock()
+	cache.lockMutex.Unlock()
 }
 
 func (cache *SocketCache) unlock(address string) {
+	cache.lockMutex.RLock()
 	cache.locks[address].Unlock()
+	cache.lockMutex.RUnlock()
 }
 
 // Lock and Unlock need to be called on the Cache for this address
 func (cache *SocketCache) getSocket(address string) *zmq.Socket {
-	return cache.sockets[address]
+	cache.socketMutex.RLock()
+	socket := cache.sockets[address]
+	cache.socketMutex.RUnlock()
+	return socket
 }
 
 func createSocket(tp zmq.Type, context *zmq.Context, address string, bind bool) *zmq.Socket {
@@ -316,30 +319,31 @@ func NewAftSIServer(personalIP string, txnRouterIP string, keyRouterIP string, s
 	}
 
 	pusherCache := SocketCache{
-		locks:        make(map[string]*sync.Mutex),
-		sockets:      make(map[string]*zmq.Socket),
-		creatorMutex: &sync.Mutex{},
+		locks:       make(map[string]*sync.Mutex),
+		sockets:     make(map[string]*zmq.Socket),
+		lockMutex:   &sync.RWMutex{},
+		socketMutex: &sync.RWMutex{},
 	}
 
 	return &AftSIServer{
-		counter:              0,
-		counterMutex:         &sync.Mutex{},
-		IPAddress:            personalIP,
-		serverID:             "",
-		txnRouterConn:        txnRouterClient,
-		keyRouterConn:        KeyRouterClient,
-		StorageManager:       storageManager,
-		commitBuffer:         make(map[string][]byte),
-		commitLock:           &sync.Mutex{},
-		TransactionTable:     make(map[string]*TransactionEntry),
-		TransactionMutex:     &sync.RWMutex{},
-		WriteBuffer:          make(map[string]*WriteBufferEntry),
-		WriteBufferMutex:     &sync.RWMutex{},
-		ReadCache:            make(map[string][]byte),
-		ReadCacheLock:        &sync.RWMutex{},
-		zmqInfo:              zmqInfo,
-		Responder:            &responder,
-		PusherCache:          &pusherCache,
-		batchMode:            batchMode,
+		counter:          0,
+		counterMutex:     &sync.Mutex{},
+		IPAddress:        personalIP,
+		serverID:         "",
+		txnRouterConn:    txnRouterClient,
+		keyRouterConn:    KeyRouterClient,
+		StorageManager:   storageManager,
+		commitBuffer:     make(map[string][]byte),
+		commitLock:       &sync.Mutex{},
+		TransactionTable: make(map[string]*TransactionEntry),
+		TransactionMutex: &sync.RWMutex{},
+		WriteBuffer:      make(map[string]*WriteBufferEntry),
+		WriteBufferMutex: &sync.RWMutex{},
+		ReadCache:        make(map[string][]byte),
+		ReadCacheLock:    &sync.RWMutex{},
+		zmqInfo:          zmqInfo,
+		Responder:        &responder,
+		PusherCache:      &pusherCache,
+		batchMode:        batchMode,
 	}, 0, nil
 }
