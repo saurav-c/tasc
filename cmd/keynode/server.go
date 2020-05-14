@@ -58,7 +58,7 @@ type KeyNode struct {
 	readCache                  map[string][]byte
 	readCacheLock              *sync.RWMutex
 	commitBuffer               map[string][]byte
-	commitLock                 *sync.Mutex
+	commitLock                 *sync.RWMutex
 	zmqInfo                    ZMQInfo
 	pusherCache                *SocketCache
 	batchMode                  bool
@@ -360,7 +360,7 @@ func NewKeyNode(storageInstance string, batchMode bool) (*KeyNode, error) {
 		readCache:                  make(map[string][]byte),
 		readCacheLock:              &sync.RWMutex{},
 		commitBuffer:               make(map[string][]byte),
-		commitLock:                 &sync.Mutex{},
+		commitLock:                 &sync.RWMutex{},
 		zmqInfo:                    zmqInfo,
 		pusherCache:                &pusherCache,
 		batchMode:                  batchMode,

@@ -122,28 +122,29 @@ func (k KeyNode) _addToBuffer(key string, value []byte) {
 	k.commitLock.Unlock()
 }
 
-func (k KeyNode) _flushBuffer() error {
-	k.commitLock.Lock()
-	copyCommitBuffer := k.commitBuffer
-	k.commitLock.Unlock()
+func (k *KeyNode) _flushBuffer() error {
 	allKeys := make([]string, 0)
 	allValues := make([][]byte, 0)
-	for k, v := range copyCommitBuffer {
+	k.commitLock.RLock()
+	for k, v := range k.commitBuffer {
 		allKeys = append(allKeys, k)
 		allValues = append(allValues, v)
 	}
+	k.commitLock.RUnlock()
 	keysWritten, err := k.StorageManager.MultiPut(allKeys, allValues)
-	k.commitLock.Lock()
-	defer k.commitLock.Unlock()
 	if err != nil {
+		k.commitLock.Lock()
 		for _, key := range keysWritten {
 			delete(k.commitBuffer, key)
 		}
+		k.commitLock.Unlock()
 		return errors.New("Not all keys have been put")
 	}
-	for key := range copyCommitBuffer {
+	k.commitLock.Lock()
+	for _, key := range allKeys {
 		delete(k.commitBuffer, key)
 	}
+	k.commitLock.Unlock()
 	return nil
 }
 

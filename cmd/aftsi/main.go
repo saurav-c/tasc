@@ -39,15 +39,14 @@ func (s *AftSIServer) _addToBuffer(key string, value []byte) {
 }
 
 func (s *AftSIServer) _flushBuffer() error {
-	s.commitLock.Lock()
-	copyCommitBuffer := s.commitBuffer
-	s.commitLock.Unlock()
 	allKeys := make([]string, 0)
 	allValues := make([][]byte, 0)
-	for k, v := range copyCommitBuffer {
+	s.commitLock.RLock()
+	for k, v := range s.commitBuffer {
 		allKeys = append(allKeys, k)
 		allValues = append(allValues, v)
 	}
+	s.commitLock.RUnlock()
 	keysWritten, err := s.StorageManager.MultiPut(allKeys, allValues)
 	if err != nil {
 		s.commitLock.Lock()
@@ -58,7 +57,7 @@ func (s *AftSIServer) _flushBuffer() error {
 		return errors.New("Not all keys have been put")
 	}
 	s.commitLock.Lock()
-	for key := range copyCommitBuffer {
+	for _, key := range allKeys {
 		delete(s.commitBuffer, key)
 	}
 	s.commitLock.Unlock()
