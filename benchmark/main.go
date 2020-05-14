@@ -316,31 +316,52 @@ func throughputPerClient (
 		txnStart := time.Now()
 		txn, _ := client.StartTransaction(context.TODO(), &empty.Empty{})
 		tid := txn.GetTid()
-		for j := 0; j < numWrites; j++ {
-			key := fmt.Sprintf("aftsiThroughput-%d-%d-%d", uniqueThread, i, j)
-			write := &pb.WriteRequest{
-				Tid:   tid,
-				Key:   key,
-				Value: writeData,
-			}
-			_, err := client.Write(context.TODO(), write)
-			if err != nil {
-				fmt.Println("Writes are failing")
-				fmt.Println(err)
-			}
+		//for j := 0; j < numWrites; j++ {
+		//	key := fmt.Sprintf("aftsiThroughput-%d-%d-%d", uniqueThread, i, j)
+		//	write := &pb.WriteRequest{
+		//		Tid:   tid,
+		//		Key:   key,
+		//		Value: writeData,
+		//	}
+		//	_, err := client.Write(context.TODO(), write)
+		//	if err != nil {
+		//		fmt.Println("Writes are failing")
+		//		fmt.Println(err)
+		//	}
+		//}
+		key := fmt.Sprintf("aftsiThroughput-%d-%d", uniqueThread, i)
+		write := &pb.WriteRequest{
+			Tid:   tid,
+			Key:   key,
+			Value: writeData,
 		}
-		for j := 0; j < numReads; j++ {
-			readKey := rand.Intn(numWrites)
-			key := fmt.Sprintf("aftsiThroughput-%d-%d-%d", uniqueThread, i, readKey)
-			read := &pb.ReadRequest{
-				Tid:   tid,
-				Key:   key,
-			}
-			_, err = client.Read(context.TODO(), read)
-			if err != nil {
-				fmt.Println("Reads are failing")
-				fmt.Println(err)
-			}
+		_, err := client.Write(context.TODO(), write)
+		if err != nil {
+			fmt.Println("Writes are failing")
+			fmt.Println(err)
+		}
+		//for j := 0; j < numReads; j++ {
+		//	readKey := rand.Intn(numWrites)
+		//	key := fmt.Sprintf("aftsiThroughput-%d-%d-%d", uniqueThread, i, readKey)
+		//	read := &pb.ReadRequest{
+		//		Tid:   tid,
+		//		Key:   key,
+		//	}
+		//	_, err = client.Read(context.TODO(), read)
+		//	if err != nil {
+		//		fmt.Println("Reads are failing")
+		//		fmt.Println(err)
+		//	}
+		//}
+		key = fmt.Sprintf("aftsiThroughput-%d-%d", uniqueThread, i)
+		read := &pb.ReadRequest{
+			Tid:   tid,
+			Key:   key,
+		}
+		_, err = client.Read(context.TODO(), read)
+		if err != nil {
+			fmt.Println("Reads are failing")
+			fmt.Println(err)
 		}
 		resp, err := client.CommitTransaction(context.TODO(), &pb.TransactionID{
 			Tid: tid,
