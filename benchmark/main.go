@@ -60,6 +60,18 @@ func main() {
 			printLatencies(latencies, "End to End Latencies")
 			printThroughput(throughputs, *numThreads, "Throughput of the system")
 		}
+	case "keyNodeNum":
+		{
+			l1 := keyNodeWriteTest(*rtrAddr, *address, *numRequests, []string{"apple"})
+			l2 := keyNodeWriteTest(*rtrAddr, *address, *numRequests, []string{"apple", "ban"})
+			l3 := keyNodeWriteTest(*rtrAddr, *address, *numRequests, []string{"apple", "ban", "goo"})
+			l4 := keyNodeWriteTest(*rtrAddr, *address, *numRequests, []string{"apple", "goo", "banana", "sauravchh"})
+
+			printLatencies(l1, "1 Key Node")
+			printLatencies(l2, "2 Key Nodes")
+			printLatencies(l3, "3 Key Nodes")
+			printLatencies(l4, "4 Key Nodes")
+		}
 	case "aftsiWrites":
 		{
 			latencies, writeLatencies := runAftsiWrites(*rtrAddr, *address, *numRequests)
@@ -376,6 +388,75 @@ func throughputPerClient (
 	benchEnd := time.Now()
 	latency <- latencies
 	totalTime <- benchEnd.Sub(benchStart).Seconds()
+}
+
+func keyNodeWriteTest(routerAddr string, defaultTxn string, numReq int, keys []string) ([]float64) {
+	// Establish connection with Router
+	conn, err := grpc.Dial(fmt.Sprintf("%s:5000", routerAddr), grpc.WithInsecure())
+	if err != nil {
+		fmt.Printf("Unexpected error:\n%v\n", err)
+		os.Exit(1)
+	}
+	defer conn.Close()
+	client := rtr.NewRouterClient(conn)
+
+	latencies := make([]float64, 1000)
+
+	writeData := make([]byte, 4096)
+	rand.Read(writeData)
+
+	clientConns := make(map[string]pb.AftSIClient)
+
+	// Make the default connection to a Txn Manager
+	tConn, err := grpc.Dial(fmt.Sprintf("%s:5000", defaultTxn), grpc.WithInsecure())
+	if err != nil {
+		fmt.Printf("Unexpected error:\n%v\n", err)
+		os.Exit(1)
+	}
+	defer tConn.Close()
+	clientConns[defaultTxn] = pb.NewAftSIClient(tConn)
+
+	for i := 0; i < numReq; i++ {
+		txnStart := time.Now()
+		txn, _ := clientConns[defaultTxn].StartTransaction(context.TODO(), &empty.Empty{})
+		tid := txn.GetTid()
+
+		// Get Ip Addr of this txns manager
+		rtrResp, _ := client.LookUp(context.TODO(), &rtr.RouterReq{
+			Req: tid,
+		})
+		managerIP := rtrResp.GetIp()
+		if _, ok := clientConns[managerIP]; !ok {
+			c, err := grpc.Dial(fmt.Sprintf("%s:5000", managerIP), grpc.WithInsecure())
+			if err != nil {
+				fmt.Printf("Unexpected error:\n%v\n", err)
+				os.Exit(1)
+			}
+			defer c.Close()
+			clientConns[managerIP] = pb.NewAftSIClient(c)
+		}
+
+		txnConn := clientConns[managerIP]
+
+		for _, k := range keys {
+			write := &pb.WriteRequest{
+				Tid:   tid,
+				Key:   k,
+				Value: writeData,
+			}
+			txnConn.Write(context.TODO(), write)
+		}
+		resp, _ := txnConn.CommitTransaction(context.TODO(), &pb.TransactionID{
+			Tid: tid,
+		})
+		txnEnd := time.Now()
+		if resp.GetE() != pb.TransactionError_SUCCESS {
+			panic("Commit failed")
+		}
+		latencies[i] = 1000 * txnEnd.Sub(txnStart).Seconds()
+	}
+
+	return latencies
 }
 
 func printWriteLatencies(latencies map[int][]float64, title string) {
