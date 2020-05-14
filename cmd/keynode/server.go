@@ -87,9 +87,11 @@ func (cache *SocketCache) lock(ctx *zmq.Context, address string) {
 		cache.sockets[address] = createSocket(zmq.PUSH, ctx, address, false)
 		cache.socketMutex.Unlock()
 	}
-	cache.locks[address].Lock()
+	addrLock := cache.locks[address]
 	cache.lockMutex.Unlock()
+	addrLock.Lock()
 }
+
 
 func (cache *SocketCache) unlock(address string) {
 	cache.lockMutex.RLock()
