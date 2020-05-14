@@ -98,7 +98,7 @@ func (s *AftSIServer) StartTransaction(ctx context.Context, emp *empty.Empty) (*
 	s.Responder.createMutex.Lock()
 	s.Responder.createTxnChannels[cid] = cChan
 	s.Responder.createMutex.Unlock()
-	defer close(s.Responder.createTxnChannels[cid])
+	// defer close(s.Responder.createTxnChannels[cid])
 
 	txnEntryReq := &pb.CreateTxnEntry{
 		Tid:          tid,
@@ -237,7 +237,7 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 	s.Responder.readMutex.Lock()
 	s.Responder.readChannels[cid] = rChan
 	s.Responder.readMutex.Unlock()
-	defer close(s.Responder.readChannels[cid])
+	// defer close(s.Responder.readChannels[cid])
 
 	keyReq := &keyNode.KeyRequest{
 		Tid:        tid,
@@ -399,7 +399,7 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 			s.Responder.valMutex.Lock()
 			s.Responder.validateChannels[cid] = vChan
 			s.Responder.valMutex.Unlock()
-			defer close(s.Responder.validateChannels[cid])
+			// defer close(s.Responder.validateChannels[cid])
 
 			vReq := &keyNode.ValidateRequest{
 				Tid:       tid,
@@ -492,7 +492,7 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 			s.Responder.endMutex.Lock()
 			s.Responder.endTxnChannels[cid] = eChan
 			s.Responder.endMutex.Unlock()
-			defer close(s.Responder.endTxnChannels[cid])
+			// defer close(s.Responder.endTxnChannels[cid])
 
 			// Create Finish Request
 			var endReq *keyNode.FinishRequest
