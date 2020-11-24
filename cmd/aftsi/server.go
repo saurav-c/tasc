@@ -279,6 +279,8 @@ func NewAftSIServer() (*AftSIServer, int, error) {
 		storageManager = storage.NewDynamoStorageManager("Aftsi", "Aftsi")
 	case "local":
 		storageManager = storage.NewLocalStoreManager()
+	case "anna":
+		storageManager = storage.NewAnnaStorageManager(configValue.IpAddress, configValue.AnnaELB)
 	default:
 		log.Fatal(fmt.Sprintf("Unrecognized storageType %s. Valid types are: anna, local, dynamo", configValue.StorageType))
 		os.Exit(3)

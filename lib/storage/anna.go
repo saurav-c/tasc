@@ -21,6 +21,18 @@ type AnnaStorageManager struct {
 	clientLock  *sync.Mutex
 }
 
+func (anna *AnnaStorageManager) CommitTransaction(tid string, CommitTS string, writeBuffer map[string][]byte) error {
+	panic("implement me")
+}
+
+func (anna *AnnaStorageManager) GetTransactionWriteSet(transactionKey string) ([]string, error) {
+	panic("implement me")
+}
+
+func (anna *AnnaStorageManager) MultiGetTransactionWriteSet(transactionKeys *[]string) (*[][]string, error) {
+	panic("implement me")
+}
+
 func NewAnnaStorageManager(ipAddress string, elbAddress string) *AnnaStorageManager {
 	clients := []*AnnaClient{}
 	for i := 0; i < 4; i++ {
@@ -32,6 +44,41 @@ func NewAnnaStorageManager(ipAddress string, elbAddress string) *AnnaStorageMana
 		freeClients: clients,
 		clientLock:  &sync.Mutex{},
 	}
+}
+
+func (anna *AnnaStorageManager) Get(key string) ([]byte, error) {
+	result := &pb.KeyValuePair{}
+
+	client := anna.getClient()
+	defer anna.releaseClient(client)
+	bts, err := client.Get(key)
+	for err != nil && strings.Contains(err.Error(), "KEY_DNE") {
+		bts, err = client.Get(key)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	err = proto.Unmarshal(bts, result)
+	return result.Value, err
+}
+
+func (anna *AnnaStorageManager) Put(key string, val []byte) error {
+	client := anna.getClient()
+	defer anna.releaseClient(client)
+	_, err := client.Put(key, val)
+	return err
+}
+
+func (anna *AnnaStorageManager) MultiPut(keys []string, vals [][]byte) ([]string, error) {
+	for i, key := range keys {
+		err := anna.Put(key, vals[i])
+		if err != nil {
+			fmt.Printf("Writing %s. ERROR: %v\n", key, err)
+			return nil, err
+		}
+	}
+	return nil, nil
 }
 
 func (anna *AnnaStorageManager) getClient() *AnnaClient {
@@ -85,22 +132,22 @@ func (anna *AnnaStorageManager) AbortTransaction(transaction *pb.TransactionReco
 	return nil
 }
 
-func (anna *AnnaStorageManager) Get(key string) (*pb.KeyValuePair, error) {
-	result := &pb.KeyValuePair{}
-
-	client := anna.getClient()
-	defer anna.releaseClient(client)
-	bts, err := client.Get(key)
-	for err != nil && strings.Contains(err.Error(), "KEY_DNE") {
-		bts, err = client.Get(key)
-	}
-	if err != nil {
-		return result, err
-	}
-
-	err = proto.Unmarshal(bts, result)
-	return result, err
-}
+//func (anna *AnnaStorageManager) Get(key string) (*pb.KeyValuePair, error) {
+//	result := &pb.KeyValuePair{}
+//
+//	client := anna.getClient()
+//	defer anna.releaseClient(client)
+//	bts, err := client.Get(key)
+//	for err != nil && strings.Contains(err.Error(), "KEY_DNE") {
+//		bts, err = client.Get(key)
+//	}
+//	if err != nil {
+//		return result, err
+//	}
+//
+//	err = proto.Unmarshal(bts, result)
+//	return result, err
+//}
 
 func (anna *AnnaStorageManager) GetTransaction(transactionKey string) (*pb.TransactionRecord, error) {
 	result := &pb.TransactionRecord{}
@@ -131,29 +178,29 @@ func (anna *AnnaStorageManager) MultiGetTransaction(transactionKeys *[]string) (
 	return &results, nil
 }
 
-func (anna *AnnaStorageManager) Put(key string, val *pb.KeyValuePair) error {
-	serialized, err := proto.Marshal(val)
-	if err != nil {
-		return err
-	}
+//func (anna *AnnaStorageManager) Put(key string, val *pb.KeyValuePair) error {
+//	serialized, err := proto.Marshal(val)
+//	if err != nil {
+//		return err
+//	}
+//
+//	client := anna.getClient()
+//	defer anna.releaseClient(client)
+//	_, err = client.Put(key, serialized)
+//	return err
+//}
 
-	client := anna.getClient()
-	defer anna.releaseClient(client)
-	_, err = client.Put(key, serialized)
-	return err
-}
-
-func (anna *AnnaStorageManager) MultiPut(data *map[string]*pb.KeyValuePair) error {
-	for key, val := range *data {
-		err := anna.Put(key, val)
-		if err != nil {
-			fmt.Printf("Writing %s. ERROR: %v\n", key, err)
-			return err
-		}
-	}
-
-	return nil
-}
+//func (anna *AnnaStorageManager) MultiPut(data *map[string]*pb.KeyValuePair) error {
+//	for key, val := range *data {
+//		err := anna.Put(key, val)
+//		if err != nil {
+//			fmt.Printf("Writing %s. ERROR: %v\n", key, err)
+//			return err
+//		}
+//	}
+//
+//	return nil
+//}
 
 func (anna *AnnaStorageManager) Delete(key string) error {
 	return nil // Anna does not support deletes.

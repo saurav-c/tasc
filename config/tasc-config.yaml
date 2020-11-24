@@ -6,3 +6,4 @@ batch: false
 nodeIPs:
   - 127.0.0.1
   - 127.0.0.2
+annaELB: 127.0.0.1

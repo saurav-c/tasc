@@ -317,6 +317,8 @@ func NewKeyNode() (*KeyNode, error) {
 		storageManager = storage.NewDynamoStorageManager("Aftsi", "Aftsi")
 	case "local":
 		storageManager = storage.NewLocalStoreManager()
+	case "anna":
+		storageManager = storage.NewAnnaStorageManager(configValue.IpAddress, configValue.AnnaELB)
 	default:
 		log.Fatal(fmt.Sprintf("Unrecognized storageType %s. Valid types are: s3, dynamo, redis.", configValue.StorageType))
 		os.Exit(3)
