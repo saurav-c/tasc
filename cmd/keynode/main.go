@@ -396,14 +396,14 @@ func (k *KeyNode) endTransaction (tid string, action int8, writeBuffer map[strin
 
 	// TODO: Adding to read cache and deleting from pendingKVI can be done with goroutines, if
 	// TODO: we block if value not in read cache yet
-	s = time.Now()
-	k.readCacheLock.Lock()
-	for key, value := range writeBuffer {
-		k.readCache[key + KEY_DELIMITER + keyVersion] = value
-	}
-	k.readCacheLock.Unlock()
-	e = time.Now()
-	fmt.Printf("Read Cache Time: %f\n\n", 1000 * e.Sub(s).Seconds())
+	//s = time.Now()
+	//k.readCacheLock.Lock()
+	//for key, value := range writeBuffer {
+	//	k.readCache[key + KEY_DELIMITER + keyVersion] = value
+	//}
+	//k.readCacheLock.Unlock()
+	//e = time.Now()
+	//fmt.Printf("Read Cache Time: %f\n\n", 1000 * e.Sub(s).Seconds())
 
 	// Deleting the entries from the Pending Key-Version Index and storing in Committed Txn Cache
 	s = time.Now()
