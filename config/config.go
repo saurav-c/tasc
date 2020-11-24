@@ -1,6 +1,7 @@
 package config
 
 import (
+	"go/build"
 	"io/ioutil"
 	"log"
 	"os"
@@ -19,7 +20,10 @@ type TASCConfig struct {
 
 func ParseConfig() *TASCConfig {
 	home := os.Getenv("GOPATH")
-	confPath := filepath.Join(home, "src", "github.com", "saurav-c", "aftsi", "config", "tasc-config.yml")
+	if home == "" {
+		home = build.Default.GOPATH
+	}
+	confPath := filepath.Join(home, "src", "github.com", "saurav-c", "aftsi", "config", "tasc-config.yaml")
 	bts, err := ioutil.ReadFile(confPath)
 	if err != nil {
 		log.Fatal("Unable to read config file.\n")

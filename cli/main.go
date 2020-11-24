@@ -8,26 +8,25 @@ import (
 	"strings"
 	"time"
 
-	pb "github.com/saurav-c/aftsi/proto/aftsi/api"
-	rtr "github.com/saurav-c/aftsi/proto/routing/api"
 	"github.com/golang/protobuf/ptypes/empty"
+	pb "github.com/saurav-c/aftsi/proto/aftsi/api"
 	"google.golang.org/grpc"
 )
 
 func main() {
 	fmt.Println("TASC Command Line Interface")
-	if len(os.Args) == 1 {
-		fmt.Println("Please pass in the address of the TASC Transaction Router.")
-		return
-	}
-	address := os.Args[1]
-	conn, err := grpc.Dial(fmt.Sprintf("%s:5006", address), grpc.WithInsecure())
-	defer conn.Close()
-	if err != nil {
-		fmt.Printf("Unexpected error:\n%v\n", err)
-		os.Exit(1)
-	}
-	client := rtr.NewRouterClient(conn)
+	//if len(os.Args) == 1 {
+	//	fmt.Println("Please pass in the address of the TASC Transaction Router.")
+	//	return
+	//}
+	//address := os.Args[1]
+	//conn, err := grpc.Dial(fmt.Sprintf("%s:5006", address), grpc.WithInsecure())
+	//defer conn.Close()
+	//if err != nil {
+	//	fmt.Printf("Unexpected error:\n%v\n", err)
+	//	os.Exit(1)
+	//}
+	//client := rtr.NewRouterClient(conn)
 	reader := bufio.NewReader(os.Stdin)
 	tidClientMapping := map[string]pb.AftSIClient{}
 
@@ -40,7 +39,8 @@ func main() {
 		switch command {
 		case "start":
 			start := time.Now()
-			txnAddress := client.FetchNew(context.TODO(), &empty.Empty{})
+			//txnAddress, _ := client.FetchNew(context.TODO(), &empty.Empty{})
+			txnAddress := "127.0.0.1"
 			conn, err := grpc.Dial(fmt.Sprintf("%s:5000", txnAddress), grpc.WithInsecure())
 			tascClient := pb.NewAftSIClient(conn)
 			tid, err := tascClient.StartTransaction(context.TODO(), &empty.Empty{})

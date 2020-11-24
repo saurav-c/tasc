@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/golang/protobuf/proto"
 	zmq "github.com/pebbe/zmq4"
+	"github.com/saurav-c/aftsi/config"
 	"github.com/saurav-c/aftsi/lib/storage"
 	pb "github.com/saurav-c/aftsi/proto/keynode/api"
 	"log"
@@ -306,17 +307,18 @@ func endTxnHandler(keyNode *KeyNode, req *pb.FinishRequest) {
 	keyNode.pusherCache.unlock(addr)
 }
 
-func NewKeyNode(storageInstance string, batchMode bool) (*KeyNode, error) {
+func NewKeyNode() (*KeyNode, error) {
 	// TODO: Integrate this into config manager
 	// Need to change parameters to fit around needs better
+	configValue := config.ParseConfig()
 	var storageManager storage.StorageManager
-	switch storageInstance {
+	switch configValue.StorageType {
 	case "dynamo":
 		storageManager = storage.NewDynamoStorageManager("Aftsi", "Aftsi")
 	case "local":
 		storageManager = storage.NewLocalStoreManager()
 	default:
-		log.Fatal(fmt.Sprintf("Unrecognized storageType %s. Valid types are: s3, dynamo, redis.", storageInstance))
+		log.Fatal(fmt.Sprintf("Unrecognized storageType %s. Valid types are: s3, dynamo, redis.", configValue.StorageType))
 		os.Exit(3)
 	}
 
@@ -363,6 +365,6 @@ func NewKeyNode(storageInstance string, batchMode bool) (*KeyNode, error) {
 		commitLock:                 &sync.RWMutex{},
 		zmqInfo:                    zmqInfo,
 		pusherCache:                &pusherCache,
-		batchMode:                  batchMode,
+		batchMode:                  configValue.Batch,
 	}, nil
 }

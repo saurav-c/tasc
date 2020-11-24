@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"github.com/google/uuid"
 	zmq "github.com/pebbe/zmq4"
@@ -41,12 +40,12 @@ func (s *AftSIServer) _addToBuffer(key string, value []byte) {
 func (s *AftSIServer) _flushBuffer() error {
 	allKeys := make([]string, 0)
 	allValues := make([][]byte, 0)
-	s.commitLock.RLock()
+	s.commitLock.Lock()
 	for k, v := range s.commitBuffer {
 		allKeys = append(allKeys, k)
 		allValues = append(allValues, v)
 	}
-	s.commitLock.RUnlock()
+	s.commitLock.Unlock()
 	keysWritten, err := s.StorageManager.MultiPut(allKeys, allValues)
 	if err != nil {
 		s.commitLock.Lock()
@@ -582,20 +581,9 @@ func main() {
 		log.Fatal("Could not start server on port %s: %v\n", TxnServerPort, err)
 	}
 
-	personalIP := flag.String("addr", "", "Personal IP")
-	keyRouter := flag.String("keyRtr", "", "Key Router IP")
-	storage := flag.String("storage", "dynamo", "Storage Engine")
-
-	batchMode := flag.Bool("batch", false, "Whether to do batch updates or not")
-
-	flag.Parse()
-
 	server := grpc.NewServer()
 
-	fmt.Printf("Batch Mode: %t\n", *batchMode)
-
-
-	aftsi, _, err := NewAftSIServer(*personalIP, *keyRouter, *storage, *batchMode)
+	aftsi, _, err := NewAftSIServer()
 	if err != nil {
 		log.Fatal("Could not start server on port %s: %v\n", TxnServerPort, err)
 	}
@@ -603,7 +591,8 @@ func main() {
 
 	// Start listening for updates
 	go txnManagerListen(aftsi)
-	if *batchMode {
+
+	if aftsi.batchMode {
 		go flusher(aftsi)
 	}
 

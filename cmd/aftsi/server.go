@@ -265,7 +265,7 @@ func endTxnHandler(data []byte, responder *ResponseHandler) {
 	channel <- resp
 }
 
-func NewAftSIServer(personalIP string, keyRouterIP string, storageInstance string, batchMode bool) (*AftSIServer, int, error) {
+func NewAftSIServer() (*AftSIServer, int, error) {
 	zctx, err := zmq.NewContext()
 	if err != nil {
 		return nil, 0, err
@@ -280,13 +280,13 @@ func NewAftSIServer(personalIP string, keyRouterIP string, storageInstance strin
 	case "local":
 		storageManager = storage.NewLocalStoreManager()
 	default:
-		log.Fatal(fmt.Sprintf("Unrecognized storageType %s. Valid types are: s3, dynamo, redis.", storageInstance))
+		log.Fatal(fmt.Sprintf("Unrecognized storageType %s. Valid types are: anna, local, dynamo", configValue.StorageType))
 		os.Exit(3)
 	}
 
-	keyRouterIP = configValue.KeyRouterIP
+	keyRouterIP := configValue.KeyRouterIP
 
-	connKey, err := grpc.Dial(keyRouterIP+":5007", grpc.WithInsecure())
+	connKey, err := grpc.Dial(keyRouterIP + ":5007", grpc.WithInsecure())
 	KeyRouterClient := rtr.NewRouterClient(connKey)
 
 	// Setup Txn Manager ZMQ sockets
@@ -328,7 +328,7 @@ func NewAftSIServer(personalIP string, keyRouterIP string, storageInstance strin
 	return &AftSIServer{
 		counter:              0,
 		counterMutex:         &sync.Mutex{},
-		IPAddress:            personalIP,
+		IPAddress:            configValue.IpAddress,
 		serverID:             "",
 		keyRouterConn:        KeyRouterClient,
 		StorageManager:       storageManager,
@@ -343,6 +343,6 @@ func NewAftSIServer(personalIP string, keyRouterIP string, storageInstance strin
 		zmqInfo:              zmqInfo,
 		Responder:            &responder,
 		PusherCache:          &pusherCache,
-		batchMode:            batchMode,
+		batchMode:            configValue.Batch,
 	}, 0, nil
 }
