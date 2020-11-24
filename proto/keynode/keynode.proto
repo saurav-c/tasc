@@ -56,6 +56,6 @@ enum TransactionAction {
 }
 
 enum KeyError {
-    SUCCESS = 0;
-    FAILURE = 1;
+    K_SUCCESS = 0;
+    K_FAILURE = 1;
 }

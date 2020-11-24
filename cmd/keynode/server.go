@@ -218,7 +218,7 @@ func readHandler(keyNode *KeyNode, req *pb.KeyRequest) {
 
 	if err != nil {
 		resp = &pb.KeyResponse{
-			Error:     pb.KeyError_FAILURE,
+			Error:     pb.KeyError_K_FAILURE,
 			ChannelID: req.GetChannelID(),
 		}
 	} else {
@@ -227,7 +227,7 @@ func readHandler(keyNode *KeyNode, req *pb.KeyRequest) {
 			KeyVersion:   keyVersion,
 			Value:        val,
 			CoWrittenSet: coWrites,
-			Error:        pb.KeyError_SUCCESS,
+			Error:        pb.KeyError_K_SUCCESS,
 			ChannelID:    req.GetChannelID(),
 		}
 	}
@@ -255,7 +255,7 @@ func validateHandler(keyNode *KeyNode, req *pb.ValidateRequest) {
 	resp = &pb.ValidateResponse{
 		Tid:       req.GetTid(),
 		Ok:        ok,
-		Error:     pb.KeyError_SUCCESS,
+		Error:     pb.KeyError_K_SUCCESS,
 		ChannelID: req.GetChannelID(),
 	}
 	data, _ := proto.Marshal(resp)
@@ -287,9 +287,9 @@ func endTxnHandler(keyNode *KeyNode, req *pb.FinishRequest) {
 
 	var e pb.KeyError
 	if err != nil {
-		e = pb.KeyError_FAILURE
+		e = pb.KeyError_K_FAILURE
 	} else {
-		e = pb.KeyError_SUCCESS
+		e = pb.KeyError_K_SUCCESS
 	}
 
 	resp := &pb.FinishResponse{
