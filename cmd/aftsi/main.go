@@ -72,7 +72,7 @@ func duration(msg string, start time.Time) {
 	fmt.Printf("%s: %f", end.Sub(start).Seconds() * 1000)
 }
 
-func (s *AftSIServer) StartTransaction(ctx context.Context, emp *empty.Empty) (*pb.TransactionID, error) {
+func (s *AftSIServer) StartTransaction(ctx context.Context, emp *empty.Empty) (*pb.CreateTransactionClient, error) {
 	defer duration(trackTime("StartTransaction API"))
 
 	// Generate TID
@@ -83,9 +83,12 @@ func (s *AftSIServer) StartTransaction(ctx context.Context, emp *empty.Empty) (*
 	tid := s.serverID + strconv.FormatUint(counter, 10)
 
 	s.CreateTransactionEntry(tid, "", 0)
-	return &pb.TransactionID{
-		Tid: tid,
-		E:   pb.TransactionError_SUCCESS,
+	return &pb.CreateTransactionClient{
+		IpAddr: s.IPAddress,
+		T: &pb.TransactionID{
+			Tid: tid,
+			E:   pb.TransactionError_SUCCESS,
+		},
 	}, nil
 }
 
@@ -190,13 +193,13 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 	}
 
 	cid := uuid.New().ID()
-	rChan := make(chan *keyNode.KeyResponse, 1)
+	rChan := make(chan *keyNode.KeyNodeResponse, 1)
 	s.Responder.readMutex.Lock()
 	s.Responder.readChannels[cid] = rChan
 	s.Responder.readMutex.Unlock()
 	// defer close(s.Responder.readChannels[cid])
 
-	keyReq := &keyNode.KeyRequest{
+	keyReq := &keyNode.KeyNodeRequest{
 		Tid:        tid,
 		Key:        key,
 		ReadSet:    rSet,
@@ -216,7 +219,7 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 
 	readResponse := <-rChan
 
-	if readResponse.GetError() != keyNode.KeyError_SUCCESS {
+	if readResponse.GetError() != keyNode.KeyError_K_SUCCESS {
 		return &pb.TransactionResponse{
 			E: pb.TransactionError_FAILURE,
 		}, nil
@@ -485,7 +488,7 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 			// Timeout if no response heard
 			select {
 			case resp := <-eChan:
-				if resp.GetError() == keyNode.KeyError_FAILURE {
+				if resp.GetError() == keyNode.KeyError_K_FAILURE {
 					finishTxnChannel <- false
 				} else {
 					finishTxnChannel <- true

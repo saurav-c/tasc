@@ -1,2 +1,2 @@
-storageType: dynamo
+storageType: local
 batch: true

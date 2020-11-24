@@ -46,10 +46,6 @@ elif [[ "$ROLE" = "keynode" ]]; then
   cd $TASC_HOME/cmd/keynode
   go build
   ./keynode
-elif [[ "$ROLE" = "txnrouter" ]]; then
-  cd $TASC_HOME/cmd/routing
-  go build
-  ./routing -mode txn
 elif [[ "$ROLE" = "keyrouter" ]]; then
   cd $TASC_HOME/cmd/routing
   go build

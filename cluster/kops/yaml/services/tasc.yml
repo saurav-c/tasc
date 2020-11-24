@@ -13,20 +13,14 @@
 #  limitations under the License.
 
 apiVersion: kops/v1alpha2
-kind: InstanceGroup
+kind: Service
 metadata:
-  labels:
-    kops.k8s.io/cluster: CLUSTER_NAME
-  name: keynode-instances
+  name: tasc-service
 spec:
-  image: kope.io/k8s-1.11-debian-stretch-amd64-hvm-ebs-2018-08-17
-  machineType: c5.2xlarge
-  maxSize: FILLER
-  minSize: FILLER
-  role: Node
-  rootVolumeSize: 32
-  nodeLabels:
-    role: keynode
-  subnets:
-    - us-west-1b
-
+  type: LoadBalancer
+  ports:
+  - port: 5000
+    targetPort: 5000
+    name: tasc-0
+  selector:
+    role: tasc

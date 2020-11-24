@@ -3,7 +3,7 @@ syntax="proto3";
 import "google/protobuf/empty.proto";
 
 service AftSI {
-    rpc StartTransaction(google.protobuf.Empty) returns (TransactionID) {}
+    rpc StartTransaction(google.protobuf.Empty) returns (CreateTransactionClient) {}
     rpc Read(ReadRequest) returns (TransactionResponse) {}
     rpc Write(WriteRequest) returns (TransactionResponse) {}
     rpc CommitTransaction(TransactionID) returns (TransactionResponse) {}
@@ -19,6 +19,11 @@ message CreateTxnEntry {
 message CreateTxnEntryResp {
     TransactionError e = 1;
     uint32 channelID = 2;
+}
+
+message CreateTransactionClient {
+    string ipAddr = 1;
+    TransactionID t = 2;
 }
 
 message TransactionID {

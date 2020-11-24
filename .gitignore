@@ -7,6 +7,8 @@
 benchmark/.ipynb_checkpoints
 .DS_Store
 
+cluster/__pycache__/
+
 cmd/keynode/keynode
 cmd/aftsi/aftsi
 cmd/routing/routing

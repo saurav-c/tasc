@@ -47,21 +47,24 @@ RUN go get -u github.com/montanaflynn/stats
 
 # Clone the TASC code.
 RUN mkdir -p $GOPATH/src/github.com/saurav-c
-WORKDIR $GOPATH/src/github.com/saurav_c
-RUN git clone https://github.com/saurav-c/aftsi
+WORKDIR $GOPATH/src/github.com/saurav-c
+RUN git clone -b refactor https://github.com/saurav-c/aftsi
 WORKDIR aftsi
 
 RUN which protoc-gen-go
+
+# If file exists, delete it
+RUN rm -f config/tasc-config.yaml
 
 # Produce all keynode, aftsi and routing pb.go files
 WORKDIR proto
 RUN mkdir -p aftsi/api
 RUN mkdir -p keynode/api
 RUN mkdir -p routing/api
-RUN protoc -I aftsi/ afsti/aftsi.proto --go_out=plugins=grpc:aftsi/api
-RUN protoc -I keynode/ keynode/keynode.proto --go_out=plugins=grpc:keynode/api
-RUN protoc -I routing/ routing/routing.proto --go_out=plugins=grpc:routing/api
-WORKDIR ../
 
-COPY cluster/init-tasc.sh .
+RUN protoc -I aftsi/ aftsi/aftsi.proto --go_out=plugins=grpc:aftsi/api
+RUN protoc -I keynode/ keynode/keynode.proto --go_out=plugins=grpc:keynode/api
+RUN protoc -I routing/ routing/router.proto --go_out=plugins=grpc:routing/api
+
+WORKDIR $GOPATH/src/github.com/saurav-c/aftsi/cluster
 CMD bash init-tasc.sh

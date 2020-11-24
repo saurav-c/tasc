@@ -186,7 +186,7 @@ func startKeyNode(keyNode *KeyNode) {
 			switch s := socket.Socket; s {
 			case zmqInfo.readPuller:
 				{
-					req := &pb.KeyRequest{}
+					req := &pb.KeyNodeRequest{}
 					data, _ := zmqInfo.readPuller.RecvBytes(zmq.DONTWAIT)
 					proto.Unmarshal(data, req)
 					go readHandler(keyNode, req)
@@ -210,19 +210,19 @@ func startKeyNode(keyNode *KeyNode) {
 	}
 }
 
-func readHandler(keyNode *KeyNode, req *pb.KeyRequest) {
+func readHandler(keyNode *KeyNode, req *pb.KeyNodeRequest) {
 	keyVersion, val, coWrites, err := keyNode.readKey(req.GetTid(),
 		req.GetKey(), req.GetReadSet(), req.GetBeginTS(), req.GetLowerBound())
 
-	var resp *pb.KeyResponse
+	var resp *pb.KeyNodeResponse
 
 	if err != nil {
-		resp = &pb.KeyResponse{
+		resp = &pb.KeyNodeResponse{
 			Error:     pb.KeyError_K_FAILURE,
 			ChannelID: req.GetChannelID(),
 		}
 	} else {
-		resp = &pb.KeyResponse{
+		resp = &pb.KeyNodeResponse{
 			Tid:          req.GetTid(),
 			KeyVersion:   keyVersion,
 			Value:        val,

@@ -28,4 +28,4 @@ spec:
   nodeLabels:
     role: tasc
   subnets:
-    - us-east-1a
+    - us-west-1b

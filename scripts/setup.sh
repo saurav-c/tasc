@@ -5,17 +5,11 @@ print_help()
    # Display Help
    echo "The setup script can setup TASC Nodes, Keynodes, Benchmark Nodes, the client CLI, and the router nodes on AWS EC2 instances."
    echo
-   echo "To use batch mode, use the flag -b."
-   echo "Syntax for TASC: ./aftsi -addr \$1 -txnRtr \$2 -keyrtr \$3 -storage \$4 -batch batch_mode"
-   echo "Syntax for Keynode: ./keynode -storage \$1 -batch batch_mode"
-   echo "Syntax for Routing Node: ./routing -mode \$1 \$*"
-   echo "Syntax for Benchmark Node: ./benchmark -address \$1 -type \$2 -numReq \$3 -numThreads \$4 -rtr \$5"
-   echo "Syntax for CLI: ./cli \$1"
+   echo "Use the config file to configure the particular node."
 }
 
 while getopts 'bh' flag; do
   case "${flag}" in
-    b) batch_mode=1 ;;
     h)  print_help; exit 1;;
   esac
 done
@@ -78,12 +72,7 @@ then
   # Creating the executable for AFTSI
   cd $GOPATH/src/github.com/saurav-c/aftsi/cmd/aftsi
   sudo go build
-  if [[ $batch_mode -eq 1 ]]
-  then
-    ./aftsi -batch -addr $2 -txnrtr $3 -keyrtr $4 -storage $5
-  else
-    ./aftsi -addr $2 -txnrtr $3 -keyrtr $4 -storage $5
-  fi
+  ./aftsi
 fi
 
 if [[ "$1" = "keynode" ]]
@@ -91,12 +80,7 @@ then
   # Creating the executable for Keynode
   cd $GOPATH/src/github.com/saurav-c/aftsi/cmd/keynode
   sudo go build
-  if [[ $batch_mode -eq 1 ]]
-  then
-    ./keynode -batch false -storage $2
-  else
-    ./keynode -storage $2
-  fi
+  ./keynode
 fi
 
 if [[ "$1" = "cli" ]]
@@ -104,7 +88,7 @@ then
   # Creating the executable for CLI
   cd $GOPATH/src/github.com/saurav-c/aftsi/cli
   sudo go build
-  ./cli $2
+  ./cli
 fi
 
 if [[ "$1" = "routing" ]]
@@ -113,8 +97,7 @@ then
   cd $GOPATH/src/github.com/saurav-c/aftsi/cmd/routing
   sudo go build
   mode=$2
-  shift 2
-  ./routing -mode $mode $*
+  ./routing -mode $mode
 fi
 
 if [[ "$1" = "benchmark" ]]

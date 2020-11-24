@@ -18,9 +18,7 @@ KOPS_STATE_STORE=$1
 SSH_KEY=$2
 
 echo "Creating cluster object..."
-kops create cluster --master-size t2.micro --node-size t2.micro --zones us-east-1a --ssh-public-key ${SSH_KEY}.pub ${HYDRO_CLUSTER_NAME} --networking kube-router > /dev/null 2>&1
-# delete default instance group that we won't use
-kops delete ig nodes --name ${HYDRO_CLUSTER_NAME} --yes > /dev/null 2>&1
+kops create cluster --master-size c5.large --node-size c5.large --zones us-west-1b --ssh-public-key ${SSH_KEY}.pub ${HYDRO_CLUSTER_NAME} --networking kube-router > /dev/null 2>&1
 
 # create the cluster
 echo "Creating cluster on AWS..."

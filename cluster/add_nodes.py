@@ -4,7 +4,7 @@ import os
 import boto3
 import util
 
-ec2_client = boto3.client('ec2', os.getenv('AWS_REGION', 'us-east-1'))
+ec2_client = boto3.client('ec2', os.getenv('AWS_REGION', 'us-west-1'))
 
 
 def add_nodes(client, apps_client, cfile, kind, count, aws_key_id=None,
@@ -20,10 +20,6 @@ def add_nodes(client, apps_client, cfile, kind, count, aws_key_id=None,
         key_ips = util.get_node_ips(client, 'role=keynode', 'ExternalIP')
         keynode_ips = ' '.join(key_ips)
 
-    if kind == "txnrouter":
-        tasc_ips = util.get_node_ips(client, 'role=tasc', 'ExternalIP')
-        tasc_ips = ' '.join(tasc_ips)
-
     if create:
         fname = 'yaml/ds/%s-ds.yml' % kind
         yml = util.load_yaml(fname, prefix)
@@ -32,8 +28,6 @@ def add_nodes(client, apps_client, cfile, kind, count, aws_key_id=None,
             env = container['env']
             util.replace_yaml_val(env, 'AWS_ACCESS_KEY_ID', aws_key_id)
             util.replace_yaml_val(env, 'AWS_SECRET_ACCESS_KEY', aws_key)
-            if kind == "txnrouter":
-                util.replace_yaml_val(env, 'TASC_IPS', tasc_ips)
             if kind == "keyrouter":
                 util.replace_yaml_val(env, 'KEYNODE_IPS', keynode_ips)
 
@@ -58,9 +52,9 @@ def add_nodes(client, apps_client, cfile, kind, count, aws_key_id=None,
                 created_pods.append((pname, cname))
 
         # Copy the KVS config into all recently created pods.
-        os.system('cp %s ./aft-config.yml' % cfile)
+        os.system('cp %s ./tasc-config.yml' % cfile)
 
         for pname, cname in created_pods:
-            util.copy_file_to_pod(client, 'aft-config.yml', pname,
-                                  '/go/src/github.com/saurav-c/aftsi/config', cname)
-        os.system('rm ./aft-config.yml')
+            util.copy_file_to_pod(client, 'tasc-config.yml', pname,
+                                  '/go/src/github.com/saurav-c/aftsi', cname)
+        os.system('rm ./tasc-config.yml')

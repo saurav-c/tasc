@@ -1,6 +1,6 @@
 syntax="proto3";
 
-message KeyRequest {
+message KeyNodeRequest {
     string tid = 1;
     string key = 2;
     repeated string readSet = 3;
@@ -10,7 +10,7 @@ message KeyRequest {
     uint32 channelID = 7;
 }
 
-message KeyResponse {
+message KeyNodeResponse {
     string tid = 1;
     string keyVersion = 2;
     bytes value = 3;

@@ -16,12 +16,11 @@ apiVersion: v1
 kind: Service
 metadata:
   name: tasc-service
-  labels:
-    run: txnrouter
 spec:
+  type: LoadBalancer
   ports:
   - port: 5006
     targetPort: 5006
-    name: txnrouter-0
+    name: tasc-0
   selector:
-    role: txnrouter
+    role: tasc

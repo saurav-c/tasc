@@ -94,7 +94,7 @@ type ZMQInfo struct {
 }
 
 type ResponseHandler struct {
-	readChannels      map[uint32](chan *key.KeyResponse)
+	readChannels      map[uint32](chan *key.KeyNodeResponse)
 	readMutex         *sync.RWMutex
 	validateChannels  map[uint32](chan *key.ValidateResponse)
 	valMutex          *sync.RWMutex
@@ -236,7 +236,7 @@ func createTxnRespHandler(data []byte, responder *ResponseHandler) {
 // Key Node Response Handlers
 
 func readHandler(data []byte, responder *ResponseHandler) {
-	resp := &key.KeyResponse{}
+	resp := &key.KeyNodeResponse{}
 	proto.Unmarshal(data, resp)
 	channelID := resp.GetChannelID()
 	responder.readMutex.RLock()
@@ -270,8 +270,6 @@ func NewAftSIServer() (*AftSIServer, int, error) {
 	if err != nil {
 		return nil, 0, err
 	}
-	// TODO: Integrate this into config manager
-	// Need to change parameters to fit around needs better
 	configValue := config.ParseConfig()
 	var storageManager storage.StorageManager
 	switch configValue.StorageType {
@@ -310,7 +308,7 @@ func NewAftSIServer() (*AftSIServer, int, error) {
 	}
 
 	responder := ResponseHandler{
-		readChannels:      make(map[uint32](chan *key.KeyResponse)),
+		readChannels:      make(map[uint32](chan *key.KeyNodeResponse)),
 		validateChannels:  make(map[uint32](chan *key.ValidateResponse)),
 		endTxnChannels:    make(map[uint32](chan *key.FinishResponse)),
 		createTxnChannels: make(map[uint32](chan *pb.CreateTxnEntryResp)),

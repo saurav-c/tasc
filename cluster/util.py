@@ -78,6 +78,7 @@ def get_pod_ips(client, selector, is_running=False):
         if is_running:
             pod_statuses = list(filter(
                   lambda pod: pod.status.phase != 'Running', pod_list))
+            
             running = len(pod_statuses) == 0
         else:
             running = True
