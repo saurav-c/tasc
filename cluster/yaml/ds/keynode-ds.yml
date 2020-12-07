@@ -34,6 +34,11 @@ spec:
       - name: keynode-container
         image: tajshaik24/tasc
         imagePullPolicy: Always
+        resources:
+          requests:
+            cpu: "250m"
+          limits:
+            cpu: "500m"
         env:
         - name: AWS_ACCESS_KEY_ID
           value: ACCESS_KEY_ID_DUMMY

@@ -3,16 +3,17 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/google/uuid"
-	zmq "github.com/pebbe/zmq4"
-	"github.com/pkg/errors"
-	router "github.com/saurav-c/aftsi/proto/routing/api"
 	"log"
 	"math/rand"
 	"net"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
+	zmq "github.com/pebbe/zmq4"
+	"github.com/pkg/errors"
+	router "github.com/saurav-c/aftsi/proto/routing/api"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
@@ -26,7 +27,7 @@ const (
 	TxnServerPort = ":5000"
 )
 
-func _convertStringToBytes(stringSlice []string) ([]byte) {
+func _convertStringToBytes(stringSlice []string) []byte {
 	stringByte := strings.Join(stringSlice, "\x20\x00")
 	return []byte(stringByte)
 }
@@ -69,10 +70,10 @@ func trackTime(msg string) (string, time.Time) {
 
 func duration(msg string, start time.Time) {
 	end := time.Now()
-	fmt.Printf("%s: %f", end.Sub(start).Seconds() * 1000)
+	fmt.Printf("%s: %f", end.Sub(start).Seconds()*1000)
 }
 
-func (s *AftSIServer) StartTransaction(ctx context.Context, emp *empty.Empty) (*pb.CreateTransactionClient, error) {
+func (s *AftSIServer) StartTransaction(ctx context.Context, emp *empty.Empty) (*pb.TransactionID, error) {
 	// Generate TID
 	s.counterMutex.Lock()
 	counter := s.counter
@@ -81,12 +82,9 @@ func (s *AftSIServer) StartTransaction(ctx context.Context, emp *empty.Empty) (*
 	tid := s.serverID + strconv.FormatUint(counter, 10)
 
 	s.CreateTransactionEntry(tid, "", 0)
-	return &pb.CreateTransactionClient{
-		IpAddr: s.IPAddress,
-		T: &pb.TransactionID{
-			Tid: tid,
-			E:   pb.TransactionError_SUCCESS,
-		},
+	return &pb.TransactionID{
+		Tid: tid,
+		E:   pb.TransactionError_SUCCESS,
 	}, nil
 }
 
@@ -346,7 +344,7 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 
 	// TODO: Do 2PC for KeyNodes
 	for ip, keys := range keyMap {
-		go func(ip string, keys []string){
+		go func(ip string, keys []string) {
 			addr := fmt.Sprintf(PushTemplate, ip, validatePullPort)
 			cid := uuid.New().ID()
 			vChan := make(chan *keyNode.ValidateResponse, 1)
@@ -382,7 +380,7 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 				validationChannel <- false
 			}
 			endVal := time.Now()
-			fmt.Printf("Validation time: %f ms\n", 1000 * endVal.Sub(startVal).Seconds())
+			fmt.Printf("Validation time: %f ms\n", 1000*endVal.Sub(startVal).Seconds())
 		}(ip, keys)
 	}
 
@@ -429,7 +427,7 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 				s.StorageManager.MultiPut(dbKeys, dbVals)
 			}
 			endWrite := time.Now()
-			fmt.Printf("Write to storage time: %f ms\n", 1000 * endWrite.Sub(startWrite).Seconds())
+			fmt.Printf("Write to storage time: %f ms\n", 1000*endWrite.Sub(startWrite).Seconds())
 			storageChannel <- 1
 		}()
 	} else {
@@ -491,7 +489,7 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 				finishTxnChannel <- false
 			}
 			endEnd := time.Now()
-			fmt.Printf("End Txn time: %f ms\n", 1000 * endEnd.Sub(startEnd).Seconds())
+			fmt.Printf("End Txn time: %f ms\n", 1000*endEnd.Sub(startEnd).Seconds())
 		}(ip)
 	}
 
@@ -508,7 +506,7 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 	}
 
 	// Wait for storage write to be done
-	<- storageChannel
+	<-storageChannel
 
 	if commit {
 		txnEntry.status = TxnCommitted
@@ -543,7 +541,7 @@ func (s *AftSIServer) AbortTransaction(ctx context.Context, req *pb.TransactionI
 	}, nil
 }
 
-func (s *AftSIServer) CreateTransactionEntry(tid string, txnManagerIP string, channelID uint32) () {
+func (s *AftSIServer) CreateTransactionEntry(tid string, txnManagerIP string, channelID uint32) {
 	s.TransactionMutex.Lock()
 	s.TransactionTable[tid] = &TransactionEntry{}
 	s.TransactionMutex.Unlock()

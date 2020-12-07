@@ -64,7 +64,7 @@ RUN git clone https://github.com/saurav-c/aftsi
 WORKDIR aftsi
 
 # If file exists, delete it
-RUN rm -f config/tasc-config.yaml
+RUN rm -f config/tasc-config.yml
 
 # Produce all keynode, aftsi and routing pb.go files
 WORKDIR proto
@@ -77,4 +77,4 @@ RUN protoc -I keynode/ keynode/keynode.proto --go_out=plugins=grpc:keynode/api
 RUN protoc -I routing/ routing/router.proto --go_out=plugins=grpc:routing/api
 
 WORKDIR $GOPATH/src/github.com/saurav-c/aftsi/cluster
-CMD ./init-tasc.sh
+CMD bash ./init-tasc.sh

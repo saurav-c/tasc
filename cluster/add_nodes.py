@@ -16,10 +16,6 @@ def add_nodes(client, apps_client, cfile, kind, count, aws_key_id=None,
 
     util.run_process(['./validate_cluster.sh'])
 
-    if kind == "keyrouter":
-        key_ips = util.get_node_ips(client, 'role=keynode', 'ExternalIP')
-        keynode_ips = ' '.join(key_ips)
-
     if create:
         fname = 'yaml/ds/%s-ds.yml' % kind
         yml = util.load_yaml(fname, prefix)
@@ -29,7 +25,12 @@ def add_nodes(client, apps_client, cfile, kind, count, aws_key_id=None,
             util.replace_yaml_val(env, 'AWS_ACCESS_KEY_ID', aws_key_id)
             util.replace_yaml_val(env, 'AWS_SECRET_ACCESS_KEY', aws_key)
             if kind == "keyrouter":
-                util.replace_yaml_val(env, 'KEYNODE_IPS', keynode_ips)
+                key_ips = util.get_node_ips(client, 'role=keynode', 'ExternalIP')
+                keynodes = ' '.join(key_ips)  
+                util.replace_yaml_val(env, 'NODE_IPS', keynodes)
+            if kind == "tasc":
+                keyrouter_ip = util.get_node_ips(client, 'role=keyrouter', 'ExternalIP')[0]
+                util.replace_yaml_val(env, 'KEY_ROUTER', keyrouter_ip)
 
         apps_client.create_namespaced_daemon_set(namespace=util.NAMESPACE,
                                                  body=yml)
@@ -56,5 +57,5 @@ def add_nodes(client, apps_client, cfile, kind, count, aws_key_id=None,
 
         for pname, cname in created_pods:
             util.copy_file_to_pod(client, 'tasc-config.yml', pname,
-                                  '/go/src/github.com/saurav-c/aftsi', cname)
+                                  '/go/src/github.com/saurav-c/aftsi/config', cname)
         os.system('rm ./tasc-config.yml')

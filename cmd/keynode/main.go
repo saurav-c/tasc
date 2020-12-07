@@ -1,36 +1,33 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
+	"math/rand"
 	"strings"
 	"sync"
 	"time"
 )
 
-import (
-	"errors"
-	"math/rand"
-)
-
 const (
-	TRANSACTION_SUCCESS = 0;
-	TRANSACTION_FAILURE = 1;
-	KEY_DELIMITER = ":";
-	KEY_VERSION_DELIMITER = "-";
+	TRANSACTION_SUCCESS   = 0
+	TRANSACTION_FAILURE   = 1
+	KEY_DELIMITER         = ":"
+	KEY_VERSION_DELIMITER = "-"
 )
 
-func _convertStringToBytes(stringSlice []string) ([]byte) {
+func _convertStringToBytes(stringSlice []string) []byte {
 	stringByte := strings.Join(stringSlice, "\x20\x00")
 	return []byte(stringByte)
 }
 
-func _convertBytesToString(byteSlice []byte) ([]string) {
+func _convertBytesToString(byteSlice []byte) []string {
 	stringSliceConverted := string(byteSlice)
 	return strings.Split(stringSliceConverted, "\x20\x00")
 }
 
-func (k *KeyNode) _deleteFromPendingKVI (keys []string, keyEntry string, action int8) {
+func (k *KeyNode) _deleteFromPendingKVI(keys []string, keyEntry string, action int8) {
 	for _, key := range keys {
 		k.pendingLock.RLock()
 		keyLock := k.pendingKeysLock[key]
@@ -147,7 +144,7 @@ func (k *KeyNode) _flushBuffer() error {
 	return nil
 }
 
-func (k *KeyNode) readKey (tid string, key string, readList []string, begints string, lowerBound string) (keyVersion string, value []byte, coWritten []string, err error) {
+func (k *KeyNode) readKey(tid string, key string, readList []string, begints string, lowerBound string) (keyVersion string, value []byte, coWritten []string, err error) {
 	// Check for Index Lock
 	k.committedLock.Lock()
 	if _, ok := k.committedKeysLock[key]; !ok {
@@ -182,8 +179,8 @@ func (k *KeyNode) readKey (tid string, key string, readList []string, begints st
 	// updated when the Key Node adds entries to the Key Version Index.
 
 	var version string
-	for i := range(keyVersions) {
-		version = keyVersions[len(keyVersions) - 1 - i]
+	for i := range keyVersions {
+		version = keyVersions[len(keyVersions)-1-i]
 
 		splits := strings.Split(version, KEY_VERSION_DELIMITER)
 		keyCommitTS, keyTxn := splits[0], splits[1]
@@ -246,10 +243,10 @@ func (k *KeyNode) readKey (tid string, key string, readList []string, begints st
 
 		return version, val, coWrites, nil
 	}
-	return"", nil, nil, errors.New("No valid version found!")
+	return "", nil, nil, errors.New("No valid version found!")
 }
 
-func (k *KeyNode) validate (tid string, txnBeginTS string, txnCommitTS string, keys []string) (action int8) {
+func (k *KeyNode) validate(tid string, txnBeginTS string, txnCommitTS string, keys []string) (action int8) {
 	for _, key := range keys {
 		// Check for write conflicts in pending Key Version Index
 		// Acquire a Read Lock on map that stores pending locks
@@ -351,14 +348,14 @@ func (k *KeyNode) validate (tid string, txnBeginTS string, txnCommitTS string, k
 	// Add entry to pending transaction writeset
 	k.pendingTxnCacheLock.Lock()
 	k.pendingTxnCache[tid] = &pendingTxn{
-		keys:     keys,
+		keys:       keys,
 		keyVersion: keyVersion,
 	}
 	k.pendingTxnCacheLock.Unlock()
 	return TRANSACTION_SUCCESS
 }
 
-func (k *KeyNode) endTransaction (tid string, action int8, writeBuffer map[string][]byte) (error) {
+func (k *KeyNode) endTransaction(tid string, action int8, writeBuffer map[string][]byte) error {
 	// Acquire read lock on pending Txn Cache, return error if not found
 	k.pendingTxnCacheLock.RLock()
 	pendingTxn, ok := k.pendingTxnCache[tid]
@@ -385,14 +382,13 @@ func (k *KeyNode) endTransaction (tid string, action int8, writeBuffer map[strin
 	s := time.Now()
 	var writeSet []string
 	for key := range writeBuffer {
-		writeSet = append(writeSet, key + KEY_DELIMITER + keyVersion)
+		writeSet = append(writeSet, key+KEY_DELIMITER+keyVersion)
 	}
 	k.committedTxnCacheLock.Lock()
 	k.committedTxnCache[tid] = writeSet
 	k.committedTxnCacheLock.Unlock()
 	e := time.Now()
-	fmt.Printf("TxnWrite Time: %f\n\n", 1000 * e.Sub(s).Seconds())
-
+	fmt.Printf("TxnWrite Time: %f\n\n", 1000*e.Sub(s).Seconds())
 
 	// TODO: Adding to read cache and deleting from pendingKVI can be done with goroutines, if
 	// TODO: we block if value not in read cache yet
@@ -409,7 +405,7 @@ func (k *KeyNode) endTransaction (tid string, action int8, writeBuffer map[strin
 	s = time.Now()
 	k._deleteFromPendingKVI(TxnKeys, keyVersion, TRANSACTION_SUCCESS)
 	e = time.Now()
-	fmt.Printf("Delete PKVI Time: %f\n\n", 1000 * e.Sub(s).Seconds())
+	fmt.Printf("Delete PKVI Time: %f\n\n", 1000*e.Sub(s).Seconds())
 
 	return nil
 }

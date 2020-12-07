@@ -6,13 +6,16 @@ import (
 	"encoding/binary"
 	"flag"
 	"fmt"
-	"github.com/golang/protobuf/ptypes/empty"
-	"math/rand"
-	pb "github.com/saurav-c/aftsi/proto/routing/api"
-	"google.golang.org/grpc"
 	"log"
+	"math/rand"
 	"net"
 	"time"
+
+	"github.com/saurav-c/aftsi/config"
+
+	"github.com/golang/protobuf/ptypes/empty"
+	pb "github.com/saurav-c/aftsi/proto/routing/api"
+	"google.golang.org/grpc"
 )
 
 const (
@@ -25,7 +28,7 @@ func (r *RouterServer) FetchNew(ctx context.Context, emp *empty.Empty) (*pb.Rout
 	index := rand.Intn(len(r.router))
 	ipAddress := r.router[index]
 	return &pb.RouterResponse{
-		Ip:    ipAddress,
+		Ip: ipAddress,
 	}, nil
 }
 
@@ -38,7 +41,7 @@ func (r *RouterServer) LookUp(ctx context.Context, req *pb.RouterReq) (*pb.Route
 	index := intSha % uint64(len(r.router))
 	ipAddress := r.router[index]
 	return &pb.RouterResponse{
-		Ip:    ipAddress,
+		Ip: ipAddress,
 	}, nil
 }
 
@@ -85,7 +88,8 @@ func main() {
 		log.Fatal("Wrong mode")
 	}
 
-	IpAddresses := flag.Args()
+	configValue := config.ParseConfig()
+	IpAddresses := configValue.NodeIPs
 
 	lis, err := net.Listen("tcp", RouterPort)
 	if err != nil {

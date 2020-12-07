@@ -23,16 +23,16 @@ echo -e "[default]\naws_access_key_id = $AWS_ACCESS_KEY_ID\naws_secret_access_ke
 cd $GOPATH/src/github.com/saurav-c/aftsi
 
 # Wait for the config file to be passed in.
-while [[ ! -f $GOPATH/src/saurav-c/aftsi/config/tasc-config.yaml ]]; do
-  X=1 # Empty command to pass.
+while [[ ! -f $GOPATH/src/github.com/saurav-c/aftsi/config/tasc-config.yml ]]; do
+  sleep 1
 done
 
 # Generate the YML config file.
-echo "ipAddress: $IP" >> config/tasc-config.yaml
-echo "keyRouterIP: $KEY_ROUTER" >> config/tasc-config.yaml
+echo "ipAddress: $IP" >> config/tasc-config.yml
+echo "keyRouterIP: $KEY_ROUTER" >> config/tasc-config.yml
 LST=$(gen_yml_list "$NODE_IPS")
-echo "nodeIPs:" >> config/tasc-config.yaml
-echo "$LST" >> config/tasc-config.yaml
+echo "nodeIPs:" >> config/tasc-config.yml
+echo "$LST" >> config/tasc-config.yml
 
 # Start the process.
 if [[ "$ROLE" = "tasc" ]]; then
