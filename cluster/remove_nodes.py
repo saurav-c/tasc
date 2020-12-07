@@ -21,7 +21,7 @@ import kubernetes as k8s
 
 import util
 
-ec2_client = boto3.client('ec2', os.getenv('AWS_REGION', 'us-west-1'))
+ec2_client = boto3.client('ec2', os.getenv('AWS_REGION', 'us-east-1'))
 
 
 def remove_node(ip, ntype):

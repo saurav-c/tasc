@@ -13,16 +13,12 @@ import (
 
 const (
 	TransactionsKey = "Transactions"
-	TransactionKey = "%s_%d"
+	TransactionKey  = "%s_%d"
 )
 
 type AnnaStorageManager struct {
 	freeClients []*AnnaClient
 	clientLock  *sync.Mutex
-}
-
-func (anna *AnnaStorageManager) CommitTransaction(tid string, CommitTS string, writeBuffer map[string][]byte) error {
-	panic("implement me")
 }
 
 func (anna *AnnaStorageManager) GetTransactionWriteSet(transactionKey string) ([]string, error) {

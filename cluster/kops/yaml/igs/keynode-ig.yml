@@ -28,5 +28,5 @@ spec:
   nodeLabels:
     role: keynode
   subnets:
-    - us-west-1b
+    - us-east-1a
 

@@ -2,15 +2,16 @@ package main
 
 import (
 	"fmt"
+	"log"
+	"os"
+	"sync"
+	"time"
+
 	"github.com/golang/protobuf/proto"
 	zmq "github.com/pebbe/zmq4"
 	"github.com/saurav-c/aftsi/config"
 	"github.com/saurav-c/aftsi/lib/storage"
 	pb "github.com/saurav-c/aftsi/proto/keynode/api"
-	"log"
-	"os"
-	"sync"
-	"time"
 )
 
 const (
@@ -92,7 +93,6 @@ func (cache *SocketCache) lock(ctx *zmq.Context, address string) {
 	cache.lockMutex.Unlock()
 	addrLock.Lock()
 }
-
 
 func (cache *SocketCache) unlock(address string) {
 	cache.lockMutex.RLock()

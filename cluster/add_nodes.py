@@ -4,7 +4,7 @@ import os
 import boto3
 import util
 
-ec2_client = boto3.client('ec2', os.getenv('AWS_REGION', 'us-west-1'))
+ec2_client = boto3.client('ec2', os.getenv('AWS_REGION', 'us-east-1'))
 
 
 def add_nodes(client, apps_client, cfile, kind, count, aws_key_id=None,

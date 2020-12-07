@@ -6,9 +6,9 @@ import boto3
 from add_nodes import add_nodes
 import util
 
-ec2_client = boto3.client('ec2', os.getenv('AWS_REGION', 'us-west-1'))
+ec2_client = boto3.client('ec2', os.getenv('AWS_REGION', 'us-east-1'))
 
-def create_cluster(txn_count, keynode_count, config_file, ssh_key, cluster_name, kops_bucket, aws_key_id, aws_key):
+def create_cluster(txn_count, keynode_count, lb_count, config_file, ssh_key, cluster_name, kops_bucket, aws_key_id, aws_key):
     prefix = './'
     util.run_process(['./create_cluster_object.sh', kops_bucket, ssh_key])
 
@@ -21,6 +21,17 @@ def create_cluster(txn_count, keynode_count, config_file, ssh_key, cluster_name,
     print('Creating key node router')
     add_nodes(client, apps_client, config_file, "keyrouter", 1,
               aws_key_id, aws_key, True, prefix)
+    
+    print('Creating %d load balancer nodes...' % lb_count)
+    add_nodes(client, apps_client, config_file, 'lb', lb_count,
+             aws_key_id, aws_key, True, prefix)
+
+    lb_pods = client.list_namespaced_pod(namespace=util.NAMESPACE,
+                                         label_selector="role=lb").items
+    kubecfg = os.path.join(os.environ['HOME'], '.kube/config')
+    for pod in lb_pods:
+        util.copy_file_to_pod(client, kubecfg, pod.metadata.name,
+                              '/root/.kube', 'lb-container')
 
     print('Creating %d TASC nodes...' % (txn_count))
     add_nodes(client, apps_client, config_file, 'tasc', txn_count,
@@ -34,12 +45,43 @@ def create_cluster(txn_count, keynode_count, config_file, ssh_key, cluster_name,
     client.create_namespaced_service(namespace=util.NAMESPACE,
                                      body=service_spec)
 
-    print('TASC Service Endpoint: ' + util.get_service_address(client, 'tasc-service'))
-
     sg_name = 'nodes.' + cluster_name
     sg = ec2_client.describe_security_groups(
           Filters=[{'Name': 'group-name',
                     'Values': [sg_name]}])['SecurityGroups'][0]
+    print("Authorizing Ports for TASC...")
+    permission = [{
+        'FromPort': 5000,
+        'IpProtocol': 'tcp',
+        'ToPort': 5100,
+        'IpRanges': [{
+            'CidrIp': '0.0.0.0/0'
+        }]
+    }, {
+        'FromPort': 6000,
+        'IpProtocol': 'tcp',
+        'ToPort': 6100,
+        'IpRanges': [{
+            'CidrIp': '0.0.0.0/0'
+        }]
+    },{
+        'FromPort': 8000,
+        'IpProtocol': 'tcp',
+        'ToPort': 8003,
+        'IpRanges': [{
+            'CidrIp': '0.0.0.0/0'
+        }]
+    },{
+        'FromPort': 9000,
+        'IpProtocol': 'tcp',
+        'ToPort': 9100,
+        'IpRanges': [{
+            'CidrIp': '0.0.0.0/0'
+        }]
+    }]
+
+    ec2_client.authorize_security_group_ingress(GroupId=sg['GroupId'],
+                                                IpPermissions=permission)
     print('Finished!')
 
 
@@ -61,6 +103,9 @@ if __name__ == '__main__':
     parser.add_argument('-k', '--keynodes', nargs=1, type=int, metavar='K',
                         help='The number of keynodes to start with ' +
                              '(required)', dest='keynodes', required=True)
+    parser.add_argument('-l', '--loadbalancer', nargs=1, type=int, metavar='L',
+                        help='The number of load balancer nodes to start with ' +
+                             '(required)', dest='loadbalancer', required=True)
     parser.add_argument('--config', nargs='?', type=str,
                         help='The configuration file to start the cluster with'
                         + ' (optional)', dest='config',
@@ -78,6 +123,6 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    create_cluster(args.nodes[0], args.keynodes[0], args.config,
+    create_cluster(args.nodes[0], args.keynodes[0], args.loadbalancer[0], args.config,
                    args.sshkey, cluster_name, kops_bucket,
                    aws_key_id, aws_key)

@@ -7,11 +7,11 @@ metadata:
 spec:
   image: kope.io/k8s-1.11-debian-stretch-amd64-hvm-ebs-2018-08-17
   machineType: c5.2xlarge
-  maxSize: 1
-  minSize: 1
+  maxSize: FILLER
+  minSize: FILLER
   rootVolumeSize: 32
   role: Node
   nodeLabels:
     role: keyrouter
   subnets:
-    - us-west-1b
+    - us-east-1a

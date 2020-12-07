@@ -11,12 +11,12 @@ import (
 )
 
 type TASCConfig struct {
-	StorageType     string   `yaml:"storageType"`
-	Batch           bool     `yaml:"batch"`
-	IpAddress       string   `yaml:"ipAddress"`
-	KeyRouterIP     string   `yaml:"keyRouterIP"`
-	NodeIPs        []string  `yaml:"nodeIPs"`
-	AnnaELB			string	 `yaml:"annaELB"`
+	StorageType string   `yaml:"storageType"`
+	Batch       bool     `yaml:"batch"`
+	IpAddress   string   `yaml:"ipAddress"`
+	KeyRouterIP string   `yaml:"keyRouterIP"`
+	NodeIPs     []string `yaml:"nodeIPs"`
+	AnnaELB     string   `yaml:"annaELB"`
 }
 
 func ParseConfig() *TASCConfig {
@@ -24,7 +24,7 @@ func ParseConfig() *TASCConfig {
 	if home == "" {
 		home = build.Default.GOPATH
 	}
-	confPath := filepath.Join(home, "src", "github.com", "saurav-c", "aftsi", "config", "tasc-config.yaml")
+	confPath := filepath.Join(home, "src", "github.com", "saurav-c", "aftsi", "config", "tasc-config.yml")
 	bts, err := ioutil.ReadFile(confPath)
 	if err != nil {
 		log.Fatal("Unable to read config file.\n")
