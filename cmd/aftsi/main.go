@@ -73,8 +73,6 @@ func duration(msg string, start time.Time) {
 }
 
 func (s *AftSIServer) StartTransaction(ctx context.Context, emp *empty.Empty) (*pb.CreateTransactionClient, error) {
-	defer duration(trackTime("StartTransaction API"))
-
 	// Generate TID
 	s.counterMutex.Lock()
 	counter := s.counter
@@ -93,8 +91,6 @@ func (s *AftSIServer) StartTransaction(ctx context.Context, emp *empty.Empty) (*
 }
 
 func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.TransactionResponse, error) {
-	defer duration(trackTime("Read API"))
-
 	// Parse read request fields
 	tid := readReq.GetTid()
 	key := readReq.GetKey()
@@ -268,8 +264,6 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 }
 
 func (s *AftSIServer) Write(ctx context.Context, writeReq *pb.WriteRequest) (*pb.TransactionResponse, error) {
-	defer duration(trackTime("Write API"))
-
 	// Parse read request fields
 	tid := writeReq.GetTid()
 	key := writeReq.GetKey()
@@ -300,7 +294,6 @@ func (s *AftSIServer) Write(ctx context.Context, writeReq *pb.WriteRequest) (*pb
 }
 
 func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.TransactionID) (*pb.TransactionResponse, error) {
-	defer duration(trackTime("CommitTransaction API"))
 	// send internal validate(TID, writeSet, Begin-TS, Commit-TS) to all keyNodes
 
 	// Parse request TID
