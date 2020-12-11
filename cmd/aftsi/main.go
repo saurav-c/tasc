@@ -64,15 +64,6 @@ func (s *AftSIServer) _flushBuffer() error {
 	return nil
 }
 
-func trackTime(msg string) (string, time.Time) {
-	return msg, time.Now()
-}
-
-func duration(msg string, start time.Time) {
-	end := time.Now()
-	fmt.Printf("%s: %f", end.Sub(start).Seconds()*1000)
-}
-
 func (s *AftSIServer) StartTransaction(ctx context.Context, emp *empty.Empty) (*pb.TransactionID, error) {
 	// Generate TID
 	s.counterMutex.Lock()
@@ -81,7 +72,7 @@ func (s *AftSIServer) StartTransaction(ctx context.Context, emp *empty.Empty) (*
 	s.counterMutex.Unlock()
 	tid := s.serverID + strconv.FormatUint(counter, 10)
 
-	s.CreateTransactionEntry(tid, "", 0)
+	s.CreateTransactionEntry(tid)
 	return &pb.TransactionID{
 		Tid: tid,
 		E:   pb.TransactionError_SUCCESS,
@@ -541,7 +532,7 @@ func (s *AftSIServer) AbortTransaction(ctx context.Context, req *pb.TransactionI
 	}, nil
 }
 
-func (s *AftSIServer) CreateTransactionEntry(tid string, txnManagerIP string, channelID uint32) {
+func (s *AftSIServer) CreateTransactionEntry(tid string) {
 	s.TransactionMutex.Lock()
 	s.TransactionTable[tid] = &TransactionEntry{}
 	s.TransactionMutex.Unlock()
@@ -560,22 +551,6 @@ func (s *AftSIServer) CreateTransactionEntry(tid string, txnManagerIP string, ch
 	s.TransactionMutex.Lock()
 	s.TransactionTable[tid] = entry
 	s.TransactionMutex.Unlock()
-
-	if txnManagerIP == "" {
-		return
-	}
-
-	resp := &pb.CreateTxnEntryResp{
-		E:         pb.TransactionError_SUCCESS,
-		ChannelID: channelID,
-	}
-	data, _ := proto.Marshal(resp)
-
-	addr := fmt.Sprintf(PushTemplate, txnManagerIP, createTxnPortResp)
-	s.PusherCache.lock(s.zmqInfo.context, addr)
-	pusher := s.PusherCache.getSocket(addr)
-	pusher.SendBytes(data, zmq.DONTWAIT)
-	s.PusherCache.unlock(addr)
 }
 
 func main() {
