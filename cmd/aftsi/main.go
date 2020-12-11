@@ -79,6 +79,27 @@ func (s *AftSIServer) StartTransaction(ctx context.Context, emp *empty.Empty) (*
 	}, nil
 }
 
+func (s *AftSIServer) CreateTransactionEntry(tid string) {
+	s.TransactionMutex.Lock()
+	s.TransactionTable[tid] = &TransactionEntry{}
+	s.TransactionMutex.Unlock()
+
+	s.WriteBufferMutex.Lock()
+	s.WriteBuffer[tid] = &WriteBufferEntry{buffer: make(map[string][]byte)}
+	s.WriteBufferMutex.Unlock()
+
+	entry := &TransactionEntry{
+		beginTS:      strconv.FormatInt(time.Now().UnixNano(), 10),
+		readSet:      make(map[string]string),
+		coWrittenSet: make(map[string]string),
+		status:       TxnInProgress,
+	}
+
+	s.TransactionMutex.Lock()
+	s.TransactionTable[tid] = entry
+	s.TransactionMutex.Unlock()
+}
+
 func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.TransactionResponse, error) {
 	// Parse read request fields
 	tid := readReq.GetTid()
@@ -532,27 +553,6 @@ func (s *AftSIServer) AbortTransaction(ctx context.Context, req *pb.TransactionI
 	}, nil
 }
 
-func (s *AftSIServer) CreateTransactionEntry(tid string) {
-	s.TransactionMutex.Lock()
-	s.TransactionTable[tid] = &TransactionEntry{}
-	s.TransactionMutex.Unlock()
-
-	s.WriteBufferMutex.Lock()
-	s.WriteBuffer[tid] = &WriteBufferEntry{buffer: make(map[string][]byte)}
-	s.WriteBufferMutex.Unlock()
-
-	entry := &TransactionEntry{
-		beginTS:      strconv.FormatInt(time.Now().UnixNano(), 10),
-		readSet:      make(map[string]string),
-		coWrittenSet: make(map[string]string),
-		status:       TxnInProgress,
-	}
-
-	s.TransactionMutex.Lock()
-	s.TransactionTable[tid] = entry
-	s.TransactionMutex.Unlock()
-}
-
 func main() {
 	lis, err := net.Listen("tcp", TxnServerPort)
 	if err != nil {
@@ -569,10 +569,6 @@ func main() {
 
 	// Start listening for updates
 	go txnManagerListen(aftsi)
-
-	if aftsi.batchMode {
-		go flusher(aftsi)
-	}
 
 	fmt.Printf("Starting server at %s.\n", time.Now().String())
 	if err = server.Serve(lis); err != nil {
