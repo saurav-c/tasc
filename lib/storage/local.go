@@ -1,13 +1,20 @@
 package storage
 
-import "fmt"
+import (
+	"fmt"
+	"sync"
+)
 
 type LocalStoreManager struct {
 	database map[string][]byte
+	lock *sync.RWMutex
 }
 
 func NewLocalStoreManager() (*LocalStoreManager) {
-	return &LocalStoreManager{database: make(map[string][]byte)}
+	return &LocalStoreManager{
+		database: make(map[string][]byte),
+		lock:     &sync.RWMutex{},
+	}
 }
 
 func (local *LocalStoreManager) CommitTransaction(tid string, CommitTS string, writeBuffer map[string][]byte) error {
@@ -23,10 +30,14 @@ func (local *LocalStoreManager) CommitTransaction(tid string, CommitTS string, w
 }
 
 func (local *LocalStoreManager) Get(key string) ([]byte, error) {
+	local.lock.RLock()
+	defer local.lock.RUnlock()
 	return local.database[key], nil
 }
 
 func (local *LocalStoreManager) Put(key string, val []byte) error {
+	local.lock.Lock()
+	defer local.lock.Unlock()
 	local.database[key] = val
 	return nil
 }

@@ -180,7 +180,7 @@ func startKeyNode(keyNode *KeyNode) {
 	poller.Add(zmqInfo.endTxnPuller, zmq.POLLIN)
 
 	for true {
-		sockets, _ := poller.Poll(10 * time.Millisecond)
+		sockets, _ := poller.Poll(0)
 
 		for _, socket := range sockets {
 			switch s := socket.Socket; s {
