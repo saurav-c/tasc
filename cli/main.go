@@ -10,23 +10,31 @@ import (
 
 	"github.com/golang/protobuf/ptypes/empty"
 	pb "github.com/saurav-c/aftsi/proto/aftsi/api"
+
+	zmq "github.com/pebbe/zmq4"
 	"google.golang.org/grpc"
 )
 
 func main() {
 	fmt.Println("TASC Command Line Interface")
-	//if len(os.Args) == 1 {
-	//	fmt.Println("Please pass in the address of the TASC Transaction Router.")
-	//	return
-	//}
-	//address := os.Args[1]
-	//conn, err := grpc.Dial(fmt.Sprintf("%s:5006", address), grpc.WithInsecure())
-	//defer conn.Close()
-	//if err != nil {
-	//	fmt.Printf("Unexpected error:\n%v\n", err)
-	//	os.Exit(1)
-	//}
-	//client := rtr.NewRouterClient(conn)
+	if len(os.Args) == 1 {
+		fmt.Println("Please pass in the address of the TASC Transaction Router.")
+		return
+	}
+	elbAddress := os.Args[1]
+	zctx, err := zmq.NewContext()
+	if err != nil {
+		return
+	}
+	sckt, err := zctx.NewSocket(zmq.REQ)
+	err = sckt.Connect(fmt.Sprintf("tcp://%s:8000", elbAddress))
+	defer sckt.Close()
+	if err != nil {
+		fmt.Printf("Unexpected error:\n%v\n", err)
+		os.Exit(1)
+	}
+
+	// client := rtr.NewRouterClient(conn)
 	reader := bufio.NewReader(os.Stdin)
 	tidClientMapping := map[string]pb.AftSIClient{}
 
@@ -39,14 +47,16 @@ func main() {
 		switch command {
 		case "start":
 			start := time.Now()
-			//txnAddress, _ := client.FetchNew(context.TODO(), &empty.Empty{})
-			txnAddress := "127.0.0.1"
-			conn, err := grpc.Dial(fmt.Sprintf("%s:5000", txnAddress), grpc.WithInsecure())
+			sckt.SendBytes(nil, zmq.DONTWAIT)
+			txnAddress, _ := sckt.RecvBytes(0)
+			txnAddressString := string(txnAddress)
+			fmt.Println(txnAddressString)
+			conn, err := grpc.Dial(fmt.Sprintf("%s:5000", txnAddressString), grpc.WithInsecure())
 			tascClient := pb.NewAftSIClient(conn)
 			tid, err := tascClient.StartTransaction(context.TODO(), &empty.Empty{})
 			end := time.Now()
-			tidClientMapping[tid.Tid] = tascClient
-			fmt.Printf("Start took: %f ms\n", 1000 * end.Sub(start).Seconds())
+			//tidClientMapping[tid.Tid] = tascClient
+			fmt.Printf("Start took: %f ms\n", 1000*end.Sub(start).Seconds())
 			if err != nil {
 				fmt.Printf("An error %s has occurred.\n", err)
 				return
@@ -67,7 +77,7 @@ func main() {
 			start := time.Now()
 			response, err := tascClient.Read(context.TODO(), readReq)
 			end := time.Now()
-			fmt.Printf("Read took: %f ms\n", 1000 * end.Sub(start).Seconds())
+			fmt.Printf("Read took: %f ms\n", 1000*end.Sub(start).Seconds())
 			if err != nil {
 				fmt.Printf("An error %s has occurred.\n", err)
 				return
@@ -90,7 +100,7 @@ func main() {
 			start := time.Now()
 			_, err := tascClient.Write(context.TODO(), writeReq)
 			end := time.Now()
-			fmt.Printf("Write took: %f ms\n", 1000 * end.Sub(start).Seconds())
+			fmt.Printf("Write took: %f ms\n", 1000*end.Sub(start).Seconds())
 			if err != nil {
 				fmt.Printf("An error %s has occurred.\n", err)
 				return
@@ -110,7 +120,7 @@ func main() {
 			start := time.Now()
 			resp, err := tascClient.CommitTransaction(context.TODO(), TID)
 			end := time.Now()
-			fmt.Printf("Commit took: %f ms\n", 1000 * end.Sub(start).Seconds())
+			fmt.Printf("Commit took: %f ms\n", 1000*end.Sub(start).Seconds())
 			if err != nil {
 				fmt.Printf("An error %s has occurred.\n", err)
 				return

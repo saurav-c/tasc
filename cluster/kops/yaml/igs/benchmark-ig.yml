@@ -3,15 +3,15 @@ kind: InstanceGroup
 metadata:
   labels:
     kops.k8s.io/cluster: CLUSTER_NAME
-  name: lb-instances
+  name: benchmark-instances
 spec:
   image: kope.io/k8s-1.11-debian-stretch-amd64-hvm-ebs-2018-08-17
-  machineType: c5.large
+  machineType: c5.2xlarge
   maxSize: FILLER
   minSize: FILLER
   rootVolumeSize: 32
   role: Node
   nodeLabels:
-    role: lb
+    role: benchmark
   subnets:
     - us-east-1a
