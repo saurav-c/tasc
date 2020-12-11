@@ -38,11 +38,11 @@ func main() {
 		command = strings.TrimSpace(command)
 		switch command {
 		case "start":
-			start := time.Now()
 			//txnAddress, _ := client.FetchNew(context.TODO(), &empty.Empty{})
 			txnAddress := "127.0.0.1"
 			conn, err := grpc.Dial(fmt.Sprintf("%s:5000", txnAddress), grpc.WithInsecure())
 			tascClient := pb.NewAftSIClient(conn)
+			start := time.Now()
 			tid, err := tascClient.StartTransaction(context.TODO(), &empty.Empty{})
 			end := time.Now()
 			tidClientMapping[tid.Tid] = tascClient

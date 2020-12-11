@@ -2,8 +2,9 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
-	"log"
+	log "github.com/sirupsen/logrus"
 	"net"
 	"strconv"
 	"strings"
@@ -63,7 +64,13 @@ func (s *AftSIServer) _flushBuffer() error {
 	return nil
 }
 
+func logExecutionTime(start time.Time, msg string) {
+	end := time.Now()
+	log.Debugf("%s: %f ms", msg, end.Sub(start).Seconds() * 1000)
+}
+
 func (s *AftSIServer) StartTransaction(ctx context.Context, emp *empty.Empty) (*pb.TransactionID, error) {
+	defer logExecutionTime(time.Now(), "Start Txn Time")
 	// Generate TID
 	s.counterMutex.Lock()
 	counter := s.counter
@@ -100,6 +107,7 @@ func (s *AftSIServer) CreateTransactionEntry(tid string) {
 }
 
 func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.TransactionResponse, error) {
+	defer logExecutionTime(time.Now(), "Read time")
 	// Parse read request fields
 	tid := readReq.GetTid()
 	key := readReq.GetKey()
@@ -226,6 +234,7 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 }
 
 func (s *AftSIServer) Write(ctx context.Context, writeReq *pb.WriteRequest) (*pb.TransactionResponse, error) {
+	defer logExecutionTime(time.Now(), "Write time")
 	// Parse read request fields
 	tid := writeReq.GetTid()
 	key := writeReq.GetKey()
@@ -254,6 +263,7 @@ func (s *AftSIServer) Write(ctx context.Context, writeReq *pb.WriteRequest) (*pb
 }
 
 func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.TransactionID) (*pb.TransactionResponse, error) {
+	defer logExecutionTime(time.Now(), "Commit time")
 	tid := req.GetTid()
 
 	s.TransactionMutex.RLock()
@@ -467,6 +477,7 @@ func (s *AftSIServer) endTransaction(ipAddr string, tid string, toCommit bool, e
 }
 
 func (s *AftSIServer) AbortTransaction(ctx context.Context, req *pb.TransactionID) (*pb.TransactionResponse, error) {
+	defer logExecutionTime(time.Now(), "Abort time")
 	tid := req.GetTid()
 
 	s.TransactionMutex.RLock()
@@ -486,7 +497,17 @@ func (s *AftSIServer) AbortTransaction(ctx context.Context, req *pb.TransactionI
 	}, nil
 }
 
+func (s *AftSIServer) shutdown(debugMode bool) {
+	if debugMode {
+		s.logFile.Sync()
+		s.logFile.Close()
+	}
+}
+
 func main() {
+	debug := flag.Bool("debug", false, "Debug Mode")
+	flag.Parse()
+
 	lis, err := net.Listen("tcp", TxnServerPort)
 	if err != nil {
 		log.Fatal("Could not start server on port %s: %v\n", TxnServerPort, err)
@@ -494,7 +515,7 @@ func main() {
 
 	server := grpc.NewServer()
 
-	aftsi, _, err := NewAftSIServer()
+	aftsi, _, err := NewAftSIServer(*debug)
 	if err != nil {
 		log.Fatal("Could not start server on port %s: %v\n", TxnServerPort, err)
 	}
@@ -503,7 +524,10 @@ func main() {
 	// Start listening for updates
 	go txnManagerListen(aftsi)
 
-	fmt.Printf("Starting server at %s.\n", time.Now().String())
+	// Cleanup
+	defer aftsi.shutdown(*debug)
+
+	log.Infof("Starting transaction manager %s", aftsi.serverID)
 	if err = server.Serve(lis); err != nil {
 		log.Fatal("Could not start server on port %s: %v\n", TxnServerPort, err)
 	}
