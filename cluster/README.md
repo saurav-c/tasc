@@ -28,7 +28,7 @@ In order to utilize these scripts, you will need to do the following:
 
 ### Step 4: Creating your first cluster
 
-You're now ready to create your first cluster. To start off, we'll create a tiny cluster, with one memory tier node and one routing node. From the `$TASC_HOME/cluster/` directory, run `python3 -m create_cluster -n 1 -k 1`. This will take a while to run. Once it's finished, you will see the URL of the AWS [ELB](https://aws.amazon.com/elasticloadbalancing/)s, which can be used to interact with the TASC system.
+You're now ready to create your first cluster. To start off, we'll create a tiny cluster, with one type of each node. From the `$GOPATH/src/github.com/saurav-c/aftsi/cluster/` directory, run `python3 -m create_cluster -n 1 -k 1 -l 1`. This will spin up 1 load balancing node, 1 key node, and 1 TASC (transaction manager) node. This will take a while to run. Once it's finished, you can interact with the TASC system by with the outputted ELB (which serves as an entry point into the system).
 
 <sup>1</sup> By default, the AWS CLI tool installs in `~/.local/bin` on Ubuntu. You will have to add this directory to your `$PATH`.
 

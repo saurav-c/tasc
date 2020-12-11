@@ -53,27 +53,6 @@ def create_cluster(txn_count, keynode_count, lb_count, config_file, ssh_key, clu
     permission = [{
         'FromPort': 5000,
         'IpProtocol': 'tcp',
-        'ToPort': 5100,
-        'IpRanges': [{
-            'CidrIp': '0.0.0.0/0'
-        }]
-    }, {
-        'FromPort': 6000,
-        'IpProtocol': 'tcp',
-        'ToPort': 6100,
-        'IpRanges': [{
-            'CidrIp': '0.0.0.0/0'
-        }]
-    },{
-        'FromPort': 8000,
-        'IpProtocol': 'tcp',
-        'ToPort': 8003,
-        'IpRanges': [{
-            'CidrIp': '0.0.0.0/0'
-        }]
-    },{
-        'FromPort': 9000,
-        'IpProtocol': 'tcp',
         'ToPort': 9100,
         'IpRanges': [{
             'CidrIp': '0.0.0.0/0'
@@ -82,6 +61,8 @@ def create_cluster(txn_count, keynode_count, lb_count, config_file, ssh_key, clu
 
     ec2_client.authorize_security_group_ingress(GroupId=sg['GroupId'],
                                                 IpPermissions=permission)
+
+    print("The TASC LB Endpoint: " + util.get_service_address(client, "tasc-service"))
     print('Finished!')
 
 
