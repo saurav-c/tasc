@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"math/rand"
 	"net"
 	"strconv"
 	"strings"
@@ -147,7 +146,6 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 	}
 
 	// Find lower bound for key version in order to maintain an atomic read set
-	// TODO: Go thru each cowritten set and check for this key, find max version and send it to KN
 	coWrittenSet := txnEntry.coWrittenSet
 	keyLowerBound := ""
 	if version, ok := coWrittenSet[key]; ok {
@@ -163,8 +161,6 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 
 	keyIP := resp.GetIp()
 
-	// Use ZMQ to make a read request to the Key Node at keyIP
-
 	rSet := []string{}
 	for _, v := range txnEntry.readSet {
 		rSet = append(rSet, v)
@@ -177,14 +173,11 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 	s.Responder.readMutex.Unlock()
 	// defer close(s.Responder.readChannels[cid])
 
-	// Verify transaction status
-	beginTS := txnEntry.beginTS
-
 	keyReq := &keyNode.KeyNodeRequest{
 		Tid:        tid,
 		Key:        key,
 		ReadSet:    rSet,
-		BeginTS:    beginTS,
+		BeginTS:    txnEntry.beginTS,
 		LowerBound: keyLowerBound,
 		TxnMngrIP:  s.IPAddress,
 		ChannelID:  cid,
@@ -226,22 +219,6 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 	}
 	txnEntry.readSet[key] = versionedKey
 
-	// Cache value
-	s.ReadCacheLock.Lock()
-	if len(s.ReadCache) == ReadCacheLimit {
-		randInt := rand.Intn(len(s.ReadCache))
-		key := ""
-		for key = range s.ReadCache {
-			if randInt == 0 {
-				break
-			}
-			randInt -= 1
-		}
-		delete(s.ReadCache, key)
-	}
-	s.ReadCache[versionedKey] = val
-	s.ReadCacheLock.Unlock()
-
 	return &pb.TransactionResponse{
 		Value: val,
 		E:     pb.TransactionError_SUCCESS,
@@ -271,17 +248,12 @@ func (s *AftSIServer) Write(ctx context.Context, writeReq *pb.WriteRequest) (*pb
 
 	bufferEntry.buffer[key] = val
 
-	// TODO: Send update to replicas
-
 	return &pb.TransactionResponse{
 		E: pb.TransactionError_SUCCESS,
 	}, nil
 }
 
 func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.TransactionID) (*pb.TransactionResponse, error) {
-	// send internal validate(TID, writeSet, Begin-TS, Commit-TS) to all keyNodes
-
-	// Parse request TID
 	tid := req.GetTid()
 
 	s.TransactionMutex.RLock()
@@ -306,7 +278,8 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 		}, nil
 	}
 
-	// Do a "routing" request for keys in writeSet
+	txnEntry.endTS = strconv.FormatInt(time.Now().UnixNano(), 10)
+
 	writeSet := make([]string, 0, len(bufferEntry.buffer))
 	writeVals := make([][]byte, 0, len(bufferEntry.buffer))
 	for k, v := range bufferEntry.buffer {
@@ -326,53 +299,17 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 	}
 
 	validationChannel := make(chan bool, len(keyMap))
-
-	txnEntry.endTS = strconv.FormatInt(time.Now().UnixNano(), 10)
-
-	// TODO: Do 2PC for KeyNodes
+	// Phase 1 of 2PC
 	for ip, keys := range keyMap {
-		go func(ip string, keys []string) {
-			addr := fmt.Sprintf(PushTemplate, ip, validatePullPort)
-			cid := uuid.New().ID()
-			vChan := make(chan *keyNode.ValidateResponse, 1)
-			s.Responder.valMutex.Lock()
-			s.Responder.validateChannels[cid] = vChan
-			s.Responder.valMutex.Unlock()
-			// defer close(s.Responder.validateChannels[cid])
-
-			vReq := &keyNode.ValidateRequest{
-				Tid:       tid,
-				BeginTS:   txnEntry.beginTS,
-				CommitTS:  txnEntry.endTS,
-				Keys:      keys,
-				TxnMngrIP: s.IPAddress,
-				ChannelID: cid,
-			}
-			data, _ := proto.Marshal(vReq)
-
-			s.PusherCache.lock(s.zmqInfo.context, addr)
-			validatePusher := s.PusherCache.getSocket(addr)
-
-			startVal := time.Now()
-
-			validatePusher.SendBytes(data, zmq.DONTWAIT)
-			s.PusherCache.unlock(addr)
-
-			// Timeout if no response heard
-			select {
-			case resp := <-vChan:
-				validationChannel <- resp.GetOk()
-			case <-time.After(1 * time.Second):
-				fmt.Printf("Timeout waiting for Key Node Phase 1: %s\n", ip)
-				validationChannel <- false
-			}
-			endVal := time.Now()
-			fmt.Printf("Validation time: %f ms\n", 1000*endVal.Sub(startVal).Seconds())
-		}(ip, keys)
+		go s.validateTransaction(ip, keys, txnEntry, tid, validationChannel)
 	}
 
-	// Wait for responses from Key Node
-	commit := false
+	// Preemptively start writing to storage
+	storageChannel := make(chan bool, 1)
+	go s.writeToStorage(tid, txnEntry.endTS, bufferEntry, storageChannel)
+
+	// Wait for validation response from Key Node
+	toCommit := false
 	respCount := 0
 	for ok := range validationChannel {
 		if !ok {
@@ -380,109 +317,20 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 		}
 		respCount += 1
 		if respCount == len(keyMap) {
-			commit = true
+			toCommit = true
 			break
 		}
 	}
 
-	storageChannel := make(chan int, 1)
-	if commit {
-		go func() {
-			startWrite := time.Now()
-			dbKeys := make([]string, len(bufferEntry.buffer)+1)
-			dbVals := make([][]byte, len(bufferEntry.buffer)+1)
-			// Send writes & transaction set to storage manager
-			i := 0
-			for k, v := range bufferEntry.buffer {
-				newKey := k + keyVersionDelim + txnEntry.endTS + "-" + tid
-				fmt.Printf("Wrote key %s\n", newKey)
-
-				dbKeys[i] = newKey
-				if s.batchMode {
-					s._addToBuffer(newKey, v)
-				} else {
-					dbVals[i] = v
-				}
-				i++
-			}
-			wSet := _convertStringToBytes(dbKeys)
-			if s.batchMode {
-				s._addToBuffer(tid, wSet)
-			} else {
-				dbKeys[i] = tid
-				dbVals[i] = wSet
-				s.StorageManager.MultiPut(dbKeys, dbVals)
-			}
-			endWrite := time.Now()
-			fmt.Printf("Write to storage time: %f ms\n", 1000*endWrite.Sub(startWrite).Seconds())
-			storageChannel <- 1
-		}()
-	} else {
-		storageChannel <- 1
-	}
-
-	finishTxnChannel := make(chan bool, len(keyMap))
-	// Phase 2 of 2PC to Send ABORT/COMMIT to all Key Nodes
+	endChannel := make(chan bool, len(keyMap))
+	// Phase 2 of 2PC
 	for ip, _ := range keyMap {
-		go func(ip string) {
-			addr := fmt.Sprintf(PushTemplate, ip, endTxnPort)
-			cid := uuid.New().ID()
-			eChan := make(chan *keyNode.FinishResponse, 1)
-			s.Responder.endMutex.Lock()
-			s.Responder.endTxnChannels[cid] = eChan
-			s.Responder.endMutex.Unlock()
-			// defer close(s.Responder.endTxnChannels[cid])
-
-			// Create Finish Request
-			var endReq *keyNode.FinishRequest
-			if commit {
-				endReq = &keyNode.FinishRequest{
-					Tid:         tid,
-					S:           keyNode.TransactionAction_COMMIT,
-					WriteSet:    writeSet,
-					WriteBuffer: writeVals,
-					TxnMngrIP:   s.IPAddress,
-					ChannelID:   cid,
-				}
-			} else {
-				endReq = &keyNode.FinishRequest{
-					Tid:       tid,
-					S:         keyNode.TransactionAction_ABORT,
-					TxnMngrIP: s.IPAddress,
-					ChannelID: cid,
-				}
-			}
-
-			data, _ := proto.Marshal(endReq)
-
-			s.PusherCache.lock(s.zmqInfo.context, addr)
-			endPusher := s.PusherCache.getSocket(addr)
-
-			startEnd := time.Now()
-
-			endPusher.SendBytes(data, zmq.DONTWAIT)
-			s.PusherCache.unlock(addr)
-
-			// Timeout if no response heard
-			select {
-			case resp := <-eChan:
-				if resp.GetError() == keyNode.KeyError_K_FAILURE {
-					finishTxnChannel <- false
-				} else {
-					finishTxnChannel <- true
-				}
-			case <-time.After(1 * time.Second):
-				fmt.Printf("Timeout waiting for Key Node Phase 2: %s\n", ip)
-				finishTxnChannel <- false
-			}
-			endEnd := time.Now()
-			fmt.Printf("End Txn time: %f ms\n", 1000*endEnd.Sub(startEnd).Seconds())
-		}(ip)
+		go s.endTransaction(ip, tid, toCommit, endChannel,  writeSet, writeVals, )
 	}
 
-	// Wait for responses from Key Node
+	// Wait for end transaction responses from Key Node
 	respCount = 0
-	for ok := range finishTxnChannel {
+	for ok := range endChannel {
 		if !ok {
 			// TODO: Perform some sort of rollback?
 		}
@@ -492,10 +340,9 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 		}
 	}
 
-	// Wait for storage write to be done
-	<-storageChannel
-
-	if commit {
+	if toCommit {
+		// Wait for storage write to be done
+		<-storageChannel
 		txnEntry.status = TxnCommitted
 		return &pb.TransactionResponse{
 			E: pb.TransactionError_SUCCESS,
@@ -505,6 +352,117 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 		return &pb.TransactionResponse{
 			E: pb.TransactionError_FAILURE,
 		}, nil
+	}
+}
+
+func (s *AftSIServer) validateTransaction(ipAddr string, keys[] string,
+	entry *TransactionEntry, tid string, responseChan chan bool) {
+	addr := fmt.Sprintf(PushTemplate, ipAddr, validatePullPort)
+	cid := uuid.New().ID()
+	vChan := make(chan *keyNode.ValidateResponse, 1)
+	s.Responder.valMutex.Lock()
+	s.Responder.validateChannels[cid] = vChan
+	s.Responder.valMutex.Unlock()
+	// defer close(s.Responder.validateChannels[cid])
+
+	vReq := &keyNode.ValidateRequest{
+		Tid:       tid,
+		BeginTS:   entry.beginTS,
+		CommitTS:  entry.endTS,
+		Keys:      keys,
+		TxnMngrIP: s.IPAddress,
+		ChannelID: cid,
+	}
+	data, _ := proto.Marshal(vReq)
+
+	s.PusherCache.lock(s.zmqInfo.context, addr)
+	validatePusher := s.PusherCache.getSocket(addr)
+
+	validatePusher.SendBytes(data, zmq.DONTWAIT)
+	s.PusherCache.unlock(addr)
+
+	// Timeout if no response heard
+	select {
+	case resp := <-vChan:
+		responseChan <- resp.GetOk()
+	case <-time.After(1 * time.Second):
+		fmt.Printf("Timeout waiting for Key Node Phase 1: %s\n", ipAddr)
+		responseChan <- false
+	}
+}
+
+func (s *AftSIServer) writeToStorage(tid string, endTS string, entry *WriteBufferEntry, writeChan chan bool) {
+	dbKeys := make([]string, len(entry.buffer)+1)
+	dbVals := make([][]byte, len(entry.buffer)+1)
+
+	// Send writes & transaction set to storage manager
+	i := 0
+	for k, v := range entry.buffer {
+		newKey := k + keyVersionDelim + endTS + "-" + tid
+
+		dbKeys[i] = newKey
+		dbVals[i] = v
+		i++
+	}
+	wSet := _convertStringToBytes(dbKeys)
+
+	dbKeys[i] = tid
+	dbVals[i] = wSet
+
+	s.StorageManager.MultiPut(dbKeys, dbVals)
+
+	writeChan <- true
+}
+
+func (s *AftSIServer) endTransaction(ipAddr string, tid string, toCommit bool, endChan chan bool,
+	writeSet []string, writeVals [][]byte) {
+	addr := fmt.Sprintf(PushTemplate, ipAddr, endTxnPort)
+	cid := uuid.New().ID()
+	eChan := make(chan *keyNode.FinishResponse, 1)
+	s.Responder.endMutex.Lock()
+	s.Responder.endTxnChannels[cid] = eChan
+	s.Responder.endMutex.Unlock()
+	// defer close(s.Responder.endTxnChannels[cid])
+
+	// Create Finish Request
+	var endReq *keyNode.FinishRequest
+	if toCommit {
+		endReq = &keyNode.FinishRequest{
+			Tid:         tid,
+			S:           keyNode.TransactionAction_COMMIT,
+			WriteSet:    writeSet,
+			WriteBuffer: writeVals,
+			TxnMngrIP:   s.IPAddress,
+			ChannelID:   cid,
+		}
+	} else {
+		endReq = &keyNode.FinishRequest{
+			Tid:       tid,
+			S:         keyNode.TransactionAction_ABORT,
+			TxnMngrIP: s.IPAddress,
+			ChannelID: cid,
+		}
+	}
+
+	data, _ := proto.Marshal(endReq)
+
+	s.PusherCache.lock(s.zmqInfo.context, addr)
+	endPusher := s.PusherCache.getSocket(addr)
+
+	endPusher.SendBytes(data, zmq.DONTWAIT)
+	s.PusherCache.unlock(addr)
+
+	// Timeout if no response heard
+	select {
+	case resp := <-eChan:
+		if resp.GetError() == keyNode.KeyError_K_FAILURE {
+			endChan <- false
+		} else {
+			endChan <- true
+		}
+	case <-time.After(1 * time.Second):
+		fmt.Printf("Timeout waiting for Key Node Phase 2: %s\n", ipAddr)
+		endChan <- false
 	}
 }
 

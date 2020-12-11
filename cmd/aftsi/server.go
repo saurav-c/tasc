@@ -56,7 +56,6 @@ type TransactionEntry struct {
 	readSet      map[string]string
 	coWrittenSet map[string]string
 	status       uint8
-	// unverifiedProtos map[hash.Hash]*rpb.TransactionUpdate
 }
 
 type WriteBufferEntry struct {
@@ -190,13 +189,6 @@ func txnManagerListen(server *AftSIServer) {
 
 		for _, socket := range sockets {
 			switch s := socket.Socket; s {
-			case info.createTxnReqPuller:
-				{
-					req := &pb.CreateTxnEntry{}
-					data, _ := info.createTxnReqPuller.RecvBytes(zmq.DONTWAIT)
-					proto.Unmarshal(data, req)
-					go server.CreateTransactionEntry(req.GetTid(), req.GetTxnManagerIP(), req.GetChannelID())
-				}
 			case info.createTxnRespPuller:
 				{
 					data, _ := info.createTxnRespPuller.RecvBytes(zmq.DONTWAIT)
