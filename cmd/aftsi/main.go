@@ -120,9 +120,6 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 	bufferEntry := s.WriteBuffer[tid]
 	s.WriteBufferMutex.RUnlock()
 
-	// Verify transaction status
-	beginTS := txnEntry.beginTS
-
 	// Reading from the Write Buffer
 	if val, ok := bufferEntry.buffer[key]; ok {
 		return &pb.TransactionResponse{
@@ -134,16 +131,6 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 	// Reading from the ReadSet
 	versionedKey, ok := txnEntry.readSet[key]
 	if ok {
-		// Fetch correct version from ReadSet, check for version in ReadCache
-		s.ReadCacheLock.RLock()
-		if val, ok := s.ReadCache[versionedKey]; ok {
-			s.ReadCacheLock.RUnlock()
-			return &pb.TransactionResponse{
-				Value: val,
-				E:     pb.TransactionError_SUCCESS,
-			}, nil
-		}
-		s.ReadCacheLock.RUnlock()
 		// Fetch Value From Storage (stored in val)
 		val, err := s.StorageManager.Get(versionedKey)
 		if err != nil {
@@ -152,21 +139,6 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 				E:     pb.TransactionError_FAILURE,
 			}, nil
 		}
-
-		s.ReadCacheLock.Lock()
-		if len(s.ReadCache) == ReadCacheLimit {
-			randInt := rand.Intn(len(s.ReadCache))
-			key := ""
-			for key = range s.ReadCache {
-				if randInt == 0 {
-					break
-				}
-				randInt -= 1
-			}
-			delete(s.ReadCache, key)
-		}
-		s.ReadCache[versionedKey] = val
-		s.ReadCacheLock.Unlock()
 
 		return &pb.TransactionResponse{
 			Value: val,
@@ -204,6 +176,9 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 	s.Responder.readChannels[cid] = rChan
 	s.Responder.readMutex.Unlock()
 	// defer close(s.Responder.readChannels[cid])
+
+	// Verify transaction status
+	beginTS := txnEntry.beginTS
 
 	keyReq := &keyNode.KeyNodeRequest{
 		Tid:        tid,
