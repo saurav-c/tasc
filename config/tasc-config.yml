@@ -1,3 +1,6 @@
 storageType: local
 batch: false
-annaELB: 127.0.0.1
+keyRouterIp: 127.0.0.1
+ipAddress: 127.0.0.1
+nodeIPs:
+  - 127.0.0.1

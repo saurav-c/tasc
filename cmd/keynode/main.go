@@ -420,5 +420,7 @@ func main() {
 		go flusher(keyNode)
 	}
 
+	fmt.Println("Started key node")
+
 	startKeyNode(keyNode)
 }
