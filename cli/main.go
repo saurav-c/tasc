@@ -53,6 +53,7 @@ func main() {
 			fmt.Println(txnAddressString)
 			conn, err := grpc.Dial(fmt.Sprintf("%s:5000", txnAddressString), grpc.WithInsecure())
 			tascClient := pb.NewAftSIClient(conn)
+			start := time.Now()
 			tid, err := tascClient.StartTransaction(context.TODO(), &empty.Empty{})
 			end := time.Now()
 			//tidClientMapping[tid.Tid] = tascClient

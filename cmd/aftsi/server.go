@@ -2,10 +2,10 @@ package main
 
 import (
 	"fmt"
-	pb "github.com/saurav-c/aftsi/proto/aftsi/api"
 	"github.com/saurav-c/aftsi/config"
+	pb "github.com/saurav-c/aftsi/proto/aftsi/api"
+	log "github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
-	"log"
 	"os"
 	"sync"
 	"time"
@@ -56,7 +56,6 @@ type TransactionEntry struct {
 	readSet      map[string]string
 	coWrittenSet map[string]string
 	status       uint8
-	// unverifiedProtos map[hash.Hash]*rpb.TransactionUpdate
 }
 
 type WriteBufferEntry struct {
@@ -64,24 +63,25 @@ type WriteBufferEntry struct {
 }
 
 type AftSIServer struct {
-	counter              uint64
-	counterMutex         *sync.Mutex
-	IPAddress            string
-	serverID             string
-	keyRouterConn        rtr.RouterClient
-	StorageManager       storage.StorageManager
-	TransactionTable     map[string]*TransactionEntry
-	TransactionMutex     *sync.RWMutex
-	WriteBuffer          map[string]*WriteBufferEntry
-	WriteBufferMutex     *sync.RWMutex
-	ReadCache            map[string][]byte
-	ReadCacheLock        *sync.RWMutex
-	commitBuffer         map[string][]byte
-	commitLock           *sync.Mutex
-	zmqInfo              ZMQInfo
-	Responder            *ResponseHandler
-	PusherCache          *SocketCache
-	batchMode            bool
+	counter          uint64
+	counterMutex     *sync.Mutex
+	IPAddress        string
+	serverID         string
+	keyRouterConn    rtr.RouterClient
+	StorageManager   storage.StorageManager
+	TransactionTable map[string]*TransactionEntry
+	TransactionMutex *sync.RWMutex
+	WriteBuffer      map[string]*WriteBufferEntry
+	WriteBufferMutex *sync.RWMutex
+	ReadCache        map[string][]byte
+	ReadCacheLock    *sync.RWMutex
+	commitBuffer     map[string][]byte
+	commitLock       *sync.Mutex
+	zmqInfo          ZMQInfo
+	Responder        *ResponseHandler
+	PusherCache      *SocketCache
+	batchMode        bool
+	logFile          *os.File
 }
 
 type ZMQInfo struct {
@@ -186,17 +186,10 @@ func txnManagerListen(server *AftSIServer) {
 	poller.Add(info.endTxnPuller, zmq.POLLIN)
 
 	for true {
-		sockets, _ := poller.Poll(10 * time.Millisecond)
+		sockets, _ := poller.Poll(0)
 
 		for _, socket := range sockets {
 			switch s := socket.Socket; s {
-			case info.createTxnReqPuller:
-				{
-					req := &pb.CreateTxnEntry{}
-					data, _ := info.createTxnReqPuller.RecvBytes(zmq.DONTWAIT)
-					proto.Unmarshal(data, req)
-					go server.CreateTransactionEntry(req.GetTid(), req.GetTxnManagerIP(), req.GetChannelID())
-				}
 			case info.createTxnRespPuller:
 				{
 					data, _ := info.createTxnRespPuller.RecvBytes(zmq.DONTWAIT)
@@ -265,7 +258,7 @@ func endTxnHandler(data []byte, responder *ResponseHandler) {
 	channel <- resp
 }
 
-func NewAftSIServer() (*AftSIServer, int, error) {
+func NewAftSIServer(debugMode bool) (*AftSIServer, int, error) {
 	zctx, err := zmq.NewContext()
 	if err != nil {
 		return nil, 0, err
@@ -286,7 +279,7 @@ func NewAftSIServer() (*AftSIServer, int, error) {
 
 	keyRouterIP := configValue.KeyRouterIP
 
-	connKey, err := grpc.Dial(keyRouterIP + ":5007", grpc.WithInsecure())
+	connKey, err := grpc.Dial(keyRouterIP+":5007", grpc.WithInsecure())
 	KeyRouterClient := rtr.NewRouterClient(connKey)
 
 	// Setup Txn Manager ZMQ sockets
@@ -325,24 +318,40 @@ func NewAftSIServer() (*AftSIServer, int, error) {
 		socketMutex: &sync.RWMutex{},
 	}
 
+	serverID := "0"
+
+	var file *os.File
+	if !debugMode {
+		if _, err := os.Stat("logs"); os.IsNotExist(err) {
+			os.Mkdir("logs", os.ModePerm)
+		}
+		file, err = os.OpenFile("logs/txn-manager"+serverID, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.SetOutput(file)
+	}
+	log.SetLevel(log.DebugLevel)
+
 	return &AftSIServer{
-		counter:              0,
-		counterMutex:         &sync.Mutex{},
-		IPAddress:            configValue.IpAddress,
-		serverID:             "",
-		keyRouterConn:        KeyRouterClient,
-		StorageManager:       storageManager,
-		commitBuffer:         make(map[string][]byte),
-		commitLock:           &sync.Mutex{},
-		TransactionTable:     make(map[string]*TransactionEntry),
-		TransactionMutex:     &sync.RWMutex{},
-		WriteBuffer:          make(map[string]*WriteBufferEntry),
-		WriteBufferMutex:     &sync.RWMutex{},
-		ReadCache:            make(map[string][]byte),
-		ReadCacheLock:        &sync.RWMutex{},
-		zmqInfo:              zmqInfo,
-		Responder:            &responder,
-		PusherCache:          &pusherCache,
-		batchMode:            configValue.Batch,
+		counter:          0,
+		counterMutex:     &sync.Mutex{},
+		IPAddress:        configValue.IpAddress,
+		serverID:         serverID,
+		keyRouterConn:    KeyRouterClient,
+		StorageManager:   storageManager,
+		commitBuffer:     make(map[string][]byte),
+		commitLock:       &sync.Mutex{},
+		TransactionTable: make(map[string]*TransactionEntry),
+		TransactionMutex: &sync.RWMutex{},
+		WriteBuffer:      make(map[string]*WriteBufferEntry),
+		WriteBufferMutex: &sync.RWMutex{},
+		ReadCache:        make(map[string][]byte),
+		ReadCacheLock:    &sync.RWMutex{},
+		zmqInfo:          zmqInfo,
+		Responder:        &responder,
+		PusherCache:      &pusherCache,
+		batchMode:        configValue.Batch,
+		logFile:          file,
 	}, 0, nil
 }

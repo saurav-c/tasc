@@ -13,4 +13,7 @@ cd ../routing
 go build
 echo "Built Key Router"
 
+cd ../../cli
+go build
+
 cd $CWD
