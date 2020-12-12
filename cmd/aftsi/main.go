@@ -64,13 +64,19 @@ func (s *AftSIServer) _flushBuffer() error {
 	return nil
 }
 
-func logExecutionTime(start time.Time, msg string) {
+func (monitor *Monitor) logExecutionTime(start time.Time, msg string) {
 	end := time.Now()
-	log.Debugf("%s: %f ms", msg, end.Sub(start).Seconds() * 1000)
+	diff := end.Sub(start)
+	monitor.logTime(msg, diff)
+}
+
+func (monitor *Monitor) logTime(msg string, diff time.Duration) {
+	log.Debugf("%s: %f ms", msg, diff.Seconds() * 1000)
+	monitor.trackStat(msg, diff.Seconds() * 1000)
 }
 
 func (s *AftSIServer) StartTransaction(ctx context.Context, emp *empty.Empty) (*pb.TransactionID, error) {
-	defer logExecutionTime(time.Now(), "Start Txn Time")
+	defer s.monitor.logExecutionTime(time.Now(), "Start Txn Time")
 	// Generate TID
 	s.counterMutex.Lock()
 	counter := s.counter
@@ -107,7 +113,7 @@ func (s *AftSIServer) CreateTransactionEntry(tid string) {
 }
 
 func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.TransactionResponse, error) {
-	defer logExecutionTime(time.Now(), "Read time")
+	defer s.monitor.logExecutionTime(time.Now(), "Read time")
 	// Parse read request fields
 	tid := readReq.GetTid()
 	key := readReq.GetKey()
@@ -234,7 +240,7 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 }
 
 func (s *AftSIServer) Write(ctx context.Context, writeReq *pb.WriteRequest) (*pb.TransactionResponse, error) {
-	defer logExecutionTime(time.Now(), "Write time")
+	defer s.monitor.logExecutionTime(time.Now(), "Write time")
 	// Parse read request fields
 	tid := writeReq.GetTid()
 	key := writeReq.GetKey()
@@ -263,9 +269,11 @@ func (s *AftSIServer) Write(ctx context.Context, writeReq *pb.WriteRequest) (*pb
 }
 
 func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.TransactionID) (*pb.TransactionResponse, error) {
-	defer logExecutionTime(time.Now(), "Commit time")
+	defer s.monitor.logExecutionTime(time.Now(), "Commit time")
+	actualStart := time.Now()
 	tid := req.GetTid()
 
+	cStart := time.Now()
 	s.TransactionMutex.RLock()
 	txnEntry, ok := s.TransactionTable[tid]
 	s.TransactionMutex.RUnlock()
@@ -296,9 +304,15 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 		writeSet = append(writeSet, k)
 		writeVals = append(writeVals, v)
 	}
+	cEnd := time.Now()
+	go s.monitor.logTime("Commit Setup Time", cEnd.Sub(cStart))
 
 	// Fetch KeyNode IP addresses
+	rStart := time.Now()
 	respRouter, err := s.keyRouterConn.MultipleLookUp(context.TODO(), &router.RouterReqMulti{Req: writeSet})
+	rEnd := time.Now()
+	go s.monitor.logTime("Router Lookup Time", rEnd.Sub(rStart))
+
 	if err != nil {
 		return &pb.TransactionResponse{E: pb.TransactionError_FAILURE}, err
 	}
@@ -309,6 +323,8 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 	}
 
 	validationChannel := make(chan bool, len(keyMap))
+
+	start := time.Now()
 	// Phase 1 of 2PC
 	for ip, keys := range keyMap {
 		go s.validateTransaction(ip, keys, txnEntry, tid, validationChannel)
@@ -331,8 +347,12 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 			break
 		}
 	}
+	end := time.Now()
+	go s.monitor.logTime("Phase 1 2PC Time", end.Sub(start))
 
 	endChannel := make(chan bool, len(keyMap))
+
+	start = time.Now()
 	// Phase 2 of 2PC
 	for ip, _ := range keyMap {
 		go s.endTransaction(ip, tid, toCommit, endChannel,  writeSet, writeVals, )
@@ -349,11 +369,19 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 			break
 		}
 	}
+	end = time.Now()
+	go s.monitor.logTime("Phase 2 2PC Time", end.Sub(start))
 
 	if toCommit {
 		// Wait for storage write to be done
 		<-storageChannel
+		sEnd := time.Now()
+		go s.monitor.logTime("Extra Storage Wait Time", sEnd.Sub(end))
+
 		txnEntry.status = TxnCommitted
+		actualEnd := time.Now()
+		go s.monitor.logTime("Actual Commit Time", actualEnd.Sub(actualStart))
+
 		return &pb.TransactionResponse{
 			E: pb.TransactionError_SUCCESS,
 		}, nil
@@ -477,7 +505,7 @@ func (s *AftSIServer) endTransaction(ipAddr string, tid string, toCommit bool, e
 }
 
 func (s *AftSIServer) AbortTransaction(ctx context.Context, req *pb.TransactionID) (*pb.TransactionResponse, error) {
-	defer logExecutionTime(time.Now(), "Abort time")
+	defer s.monitor.logExecutionTime(time.Now(), "Abort time")
 	tid := req.GetTid()
 
 	s.TransactionMutex.RLock()
@@ -526,6 +554,9 @@ func main() {
 
 	// Cleanup
 	defer aftsi.shutdown(*debug)
+
+	// Send statistics to monitoring node
+	go aftsi.monitor.sendStats()
 
 	log.Infof("Starting transaction manager %s", aftsi.serverID)
 	if err = server.Serve(lis); err != nil {

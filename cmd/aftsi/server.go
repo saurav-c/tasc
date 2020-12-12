@@ -8,6 +8,7 @@ import (
 
 	"github.com/saurav-c/aftsi/config"
 	pb "github.com/saurav-c/aftsi/proto/aftsi/api"
+	mt "github.com/saurav-c/aftsi/proto/monitor"
 	log "github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 
@@ -49,6 +50,9 @@ const (
 
 	// In ms
 	FlushFrequency = 1000
+
+	// Monitor Node Port
+	monitorPushPort = 10000
 )
 
 type TransactionEntry struct {
@@ -82,6 +86,7 @@ type AftSIServer struct {
 	Responder        *ResponseHandler
 	PusherCache      *SocketCache
 	logFile          *os.File
+	monitor          *Monitor
 }
 
 type ZMQInfo struct {
@@ -109,6 +114,49 @@ type SocketCache struct {
 	sockets     map[string]*zmq.Socket
 	lockMutex   *sync.RWMutex
 	socketMutex *sync.RWMutex
+}
+
+type Monitor struct {
+	pusher   *zmq.Socket
+	statsMap map[string][]float64
+	lock     *sync.Mutex
+}
+
+func (monitor *Monitor) trackStat(msg string, latency float64) {
+	msg = "TXNMANAGER" + "-" + msg
+	monitor.lock.Lock()
+	if _, ok := monitor.statsMap[msg]; !ok {
+		monitor.statsMap[msg] = make([]float64, 0)
+	}
+	monitor.statsMap[msg] = append(monitor.statsMap[msg], latency)
+	monitor.lock.Unlock()
+}
+
+func (monitor *Monitor) sendStats() {
+	for true {
+		log.Debug("Triggered sendStats")
+		time.Sleep(100 * time.Millisecond)
+		statsMap := make(map[string]*mt.Latencies)
+		monitor.lock.Lock()
+		if len(monitor.statsMap) == 0 {
+			monitor.lock.Unlock()
+			continue
+		}
+		for msg, lats := range monitor.statsMap {
+			latencies := &mt.Latencies{
+				Value: lats,
+			}
+			statsMap[msg] = latencies
+		}
+		monitor.statsMap = make(map[string][]float64)
+		monitor.lock.Unlock()
+		statsMsg := &mt.Statistics{
+			Stats: statsMap,
+		}
+		data, _ := proto.Marshal(statsMsg)
+		monitor.pusher.SendBytes(data, zmq.DONTWAIT)
+		log.Debug("Sent stats to monitor")
+	}
 }
 
 func (cache *SocketCache) lock(ctx *zmq.Context, address string) {
@@ -186,7 +234,7 @@ func txnManagerListen(server *AftSIServer) {
 	poller.Add(info.endTxnPuller, zmq.POLLIN)
 
 	for true {
-		sockets, _ := poller.Poll(0)
+		sockets, _ := poller.Poll(10 * time.Millisecond)
 
 		for _, socket := range sockets {
 			switch s := socket.Socket; s {
@@ -333,6 +381,13 @@ func NewAftSIServer(debugMode bool) (*AftSIServer, int, error) {
 	}
 	log.SetLevel(log.DebugLevel)
 
+	monitorPusher := createSocket(zmq.PUSH, zctx, fmt.Sprintf(PushTemplate, configValue.MonitorIP, monitorPushPort), false)
+	monitor := Monitor{
+		pusher:   monitorPusher,
+		statsMap: make(map[string][]float64),
+		lock:     &sync.Mutex{},
+	}
+
 	return &AftSIServer{
 		counter:          0,
 		counterMutex:     &sync.Mutex{},
@@ -352,5 +407,6 @@ func NewAftSIServer(debugMode bool) (*AftSIServer, int, error) {
 		Responder:        &responder,
 		PusherCache:      &pusherCache,
 		logFile:          file,
+		monitor:          &monitor,
 	}, 0, nil
 }

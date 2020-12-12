@@ -2,8 +2,8 @@ package main
 
 import (
 	"errors"
-	"fmt"
-	"log"
+	"flag"
+	log "github.com/sirupsen/logrus"
 	"math/rand"
 	"strings"
 	"sync"
@@ -144,20 +144,20 @@ func (k *KeyNode) _flushBuffer() error {
 	return nil
 }
 
-func (k *KeyNode) readKey(tid string, key string, readList []string, begints string, lowerBound string) (keyVersion string, value []byte, coWritten []string, err error) {
+func (k *KeyNode) readKey(tid string, key string, readList []string, begints string,
+	lowerBound string)(keyVersion string, value []byte, coWritten []string, err error) {
 	// Check for Index Lock
 	k.committedLock.Lock()
 	if _, ok := k.committedKeysLock[key]; !ok {
 		// Fetch index from storage
-		start := time.Now()
 		index, err := k.StorageManager.Get(key + ":" + "index")
-		end := time.Now()
+
 		// No Versions found for this key
 		if err != nil {
 			k.committedLock.Unlock()
+			log.Errorf("Key %s does not exist", key)
 			return "", nil, nil, errors.New("Key not found")
 		}
-		fmt.Printf("Index Read: %f\n", end.Sub(start).Seconds())
 		k.committedKeysLock[key] = &sync.RWMutex{}
 		k.keyVersionIndexLock.Lock()
 		k.keyVersionIndex[key] = &keysList{keys: _convertBytesToString(index)}
@@ -379,7 +379,6 @@ func (k *KeyNode) endTransaction(tid string, action int8, writeBuffer map[string
 	}
 
 	// Add to committed Txn Writeset and Read Cache
-	s := time.Now()
 	var writeSet []string
 	for key := range writeBuffer {
 		writeSet = append(writeSet, key+KEY_DELIMITER+keyVersion)
@@ -387,8 +386,6 @@ func (k *KeyNode) endTransaction(tid string, action int8, writeBuffer map[string
 	k.committedTxnCacheLock.Lock()
 	k.committedTxnCache[tid] = writeSet
 	k.committedTxnCacheLock.Unlock()
-	e := time.Now()
-	fmt.Printf("TxnWrite Time: %f\n\n", 1000*e.Sub(s).Seconds())
 
 	// TODO: Adding to read cache and deleting from pendingKVI can be done with goroutines, if
 	// TODO: we block if value not in read cache yet
@@ -402,25 +399,32 @@ func (k *KeyNode) endTransaction(tid string, action int8, writeBuffer map[string
 	//fmt.Printf("Read Cache Time: %f\n\n", 1000 * e.Sub(s).Seconds())
 
 	// Deleting the entries from the Pending Key-Version Index and storing in Committed Txn Cache
-	s = time.Now()
+	start := time.Now()
 	k._deleteFromPendingKVI(TxnKeys, keyVersion, TRANSACTION_SUCCESS)
-	e = time.Now()
-	fmt.Printf("Delete PKVI Time: %f\n\n", 1000*e.Sub(s).Seconds())
+	end := time.Now()
+	go k.logExecutionTime("Delete From Pending KVI Time", end.Sub(start))
 
 	return nil
 }
 
+func (k *KeyNode) shutdown(debugMode bool) {
+	if debugMode {
+		k.logFile.Sync()
+		k.logFile.Close()
+	}
+}
+
 func main() {
-	keyNode, err := NewKeyNode()
+	debug := flag.Bool("debug", false, "Debug Mode")
+	flag.Parse()
+
+
+	keyNode, err := NewKeyNode(*debug)
 	if err != nil {
 		log.Fatalf("Could not start new Key Node %v\n", err)
 	}
 
-	if keyNode.batchMode {
-		go flusher(keyNode)
-	}
-
-	fmt.Println("Started key node")
+	log.Info("Started Key Node")
 
 	startKeyNode(keyNode)
 }

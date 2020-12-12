@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"log"
+	log "github.com/sirupsen/logrus"
 	"os"
 	"sync"
 	"time"
@@ -12,6 +12,7 @@ import (
 	"github.com/saurav-c/aftsi/config"
 	"github.com/saurav-c/aftsi/lib/storage"
 	pb "github.com/saurav-c/aftsi/proto/keynode/api"
+	mt "github.com/saurav-c/aftsi/proto/monitor"
 )
 
 const (
@@ -32,6 +33,9 @@ const (
 
 	// In Seconds
 	FlushFrequency = 1000
+
+	// Monitor Node Port
+	monitorPushPort = 10000
 )
 
 type pendingTxn struct {
@@ -64,6 +68,8 @@ type KeyNode struct {
 	zmqInfo                    ZMQInfo
 	pusherCache                *SocketCache
 	batchMode                  bool
+	logFile                    *os.File
+	monitor                    *Monitor
 }
 
 type ZMQInfo struct {
@@ -78,6 +84,49 @@ type SocketCache struct {
 	sockets     map[string]*zmq.Socket
 	lockMutex   *sync.RWMutex
 	socketMutex *sync.RWMutex
+}
+
+type Monitor struct {
+	pusher   *zmq.Socket
+	statsMap map[string][]float64
+	lock     *sync.Mutex
+}
+
+func (monitor *Monitor) trackStat(msg string, latency float64) {
+	msg = "KEYNODE" + "-" + msg
+	monitor.lock.Lock()
+	if _, ok := monitor.statsMap[msg]; !ok {
+		monitor.statsMap[msg] = make([]float64, 0)
+	}
+	monitor.statsMap[msg] = append(monitor.statsMap[msg], latency)
+	monitor.lock.Unlock()
+}
+
+func (monitor *Monitor) sendStats() {
+	for true {
+		log.Debug("Triggered sendStats")
+		time.Sleep(100 * time.Millisecond)
+		statsMap := make(map[string]*mt.Latencies)
+		monitor.lock.Lock()
+		if len(monitor.statsMap) == 0 {
+			monitor.lock.Unlock()
+			continue
+		}
+		for msg, lats := range monitor.statsMap {
+			latencies := &mt.Latencies{
+				Value: lats,
+			}
+			statsMap[msg] = latencies
+		}
+		monitor.statsMap = make(map[string][]float64)
+		monitor.lock.Unlock()
+		statsMsg := &mt.Statistics{
+			Stats: statsMap,
+		}
+		data, _ := proto.Marshal(statsMsg)
+		monitor.pusher.SendBytes(data, zmq.DONTWAIT)
+		log.Debug("Sent stats to monitor")
+	}
 }
 
 func (cache *SocketCache) lock(ctx *zmq.Context, address string) {
@@ -171,7 +220,14 @@ func flusher(k *KeyNode) {
 	}
 }
 
+func (k *KeyNode) logExecutionTime(msg string, diff time.Duration) {
+	log.Debugf("%s: %f ms", msg, diff.Seconds() * 1000)
+	k.monitor.trackStat(msg, diff.Seconds() * 1000)
+}
+
 func startKeyNode(keyNode *KeyNode) {
+	go keyNode.monitor.sendStats()
+
 	poller := zmq.NewPoller()
 	zmqInfo := keyNode.zmqInfo
 
@@ -180,7 +236,7 @@ func startKeyNode(keyNode *KeyNode) {
 	poller.Add(zmqInfo.endTxnPuller, zmq.POLLIN)
 
 	for true {
-		sockets, _ := poller.Poll(0)
+		sockets, _ := poller.Poll(10 * time.Millisecond)
 
 		for _, socket := range sockets {
 			switch s := socket.Socket; s {
@@ -211,8 +267,11 @@ func startKeyNode(keyNode *KeyNode) {
 }
 
 func readHandler(keyNode *KeyNode, req *pb.KeyNodeRequest) {
+	start := time.Now()
 	keyVersion, val, coWrites, err := keyNode.readKey(req.GetTid(),
 		req.GetKey(), req.GetReadSet(), req.GetBeginTS(), req.GetLowerBound())
+	end := time.Now()
+	go keyNode.logExecutionTime("Read Key Time", end.Sub(start))
 
 	var resp *pb.KeyNodeResponse
 
@@ -241,7 +300,10 @@ func readHandler(keyNode *KeyNode, req *pb.KeyNodeRequest) {
 }
 
 func validateHandler(keyNode *KeyNode, req *pb.ValidateRequest) {
+	start := time.Now()
 	action := keyNode.validate(req.GetTid(), req.GetBeginTS(), req.GetCommitTS(), req.GetKeys())
+	end := time.Now()
+	go keyNode.logExecutionTime("Validation Time", end.Sub(start))
 
 	var resp *pb.ValidateResponse
 
@@ -283,7 +345,10 @@ func endTxnHandler(keyNode *KeyNode, req *pb.FinishRequest) {
 		writeMap[key] = buffer[i]
 	}
 
+	start := time.Now()
 	err := keyNode.endTransaction(req.GetTid(), action, writeMap)
+	end := time.Now()
+	go keyNode.logExecutionTime("End Transaction Time", end.Sub(start))
 
 	var e pb.KeyError
 	if err != nil {
@@ -307,7 +372,9 @@ func endTxnHandler(keyNode *KeyNode, req *pb.FinishRequest) {
 	keyNode.pusherCache.unlock(addr)
 }
 
-func NewKeyNode() (*KeyNode, error) {
+func NewKeyNode(debugMode bool) (*KeyNode, error) {
+	// TODO: Integrate this into config manager
+	// Need to change parameters to fit around needs better
 	configValue := config.ParseConfig()
 	var storageManager storage.StorageManager
 	switch configValue.StorageType {
@@ -345,6 +412,26 @@ func NewKeyNode() (*KeyNode, error) {
 		socketMutex: &sync.RWMutex{},
 	}
 
+	var file *os.File
+	if !debugMode {
+		if _, err := os.Stat("logs"); os.IsNotExist(err) {
+			os.Mkdir("logs", os.ModePerm)
+		}
+		file, err = os.OpenFile("logs/key-node", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.SetOutput(file)
+	}
+	log.SetLevel(log.DebugLevel)
+
+	monitorPusher := createSocket(zmq.PUSH, zctx, fmt.Sprintf(PushTemplate, configValue.MonitorIP, monitorPushPort), false)
+	monitor := Monitor{
+		pusher:   monitorPusher,
+		statsMap: make(map[string][]float64),
+		lock:     &sync.Mutex{},
+	}
+
 	return &KeyNode{
 		StorageManager:             storageManager,
 		keyVersionIndex:            make(map[string]*keysList),
@@ -366,5 +453,7 @@ func NewKeyNode() (*KeyNode, error) {
 		zmqInfo:                    zmqInfo,
 		pusherCache:                &pusherCache,
 		batchMode:                  configValue.Batch,
+		logFile:                    file,
+		monitor:                    &monitor,
 	}, nil
 }
