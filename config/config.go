@@ -12,7 +12,6 @@ import (
 
 type TASCConfig struct {
 	StorageType string   `yaml:"storageType"`
-	Batch       bool     `yaml:"batch"`
 	IpAddress   string   `yaml:"ipAddress"`
 	KeyRouterIP string   `yaml:"keyRouterIP"`
 	NodeIPs     []string `yaml:"nodeIPs"`

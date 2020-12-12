@@ -2,13 +2,14 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"sync"
+	"time"
+
 	"github.com/saurav-c/aftsi/config"
 	pb "github.com/saurav-c/aftsi/proto/aftsi/api"
 	log "github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
-	"os"
-	"sync"
-	"time"
 
 	"github.com/golang/protobuf/proto"
 	zmq "github.com/pebbe/zmq4"
@@ -80,7 +81,6 @@ type AftSIServer struct {
 	zmqInfo          ZMQInfo
 	Responder        *ResponseHandler
 	PusherCache      *SocketCache
-	batchMode        bool
 	logFile          *os.File
 }
 
@@ -351,7 +351,6 @@ func NewAftSIServer(debugMode bool) (*AftSIServer, int, error) {
 		zmqInfo:          zmqInfo,
 		Responder:        &responder,
 		PusherCache:      &pusherCache,
-		batchMode:        configValue.Batch,
 		logFile:          file,
 	}, 0, nil
 }

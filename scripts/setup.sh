@@ -1,5 +1,3 @@
-batch_mode=0
-
 print_help()
 {
    # Display Help

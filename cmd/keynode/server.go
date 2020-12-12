@@ -308,8 +308,6 @@ func endTxnHandler(keyNode *KeyNode, req *pb.FinishRequest) {
 }
 
 func NewKeyNode() (*KeyNode, error) {
-	// TODO: Integrate this into config manager
-	// Need to change parameters to fit around needs better
 	configValue := config.ParseConfig()
 	var storageManager storage.StorageManager
 	switch configValue.StorageType {

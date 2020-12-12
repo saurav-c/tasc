@@ -1,5 +1,4 @@
 storageType: local
-batch: false
 keyRouterIp: 127.0.0.1
 ipAddress: 127.0.0.1
 nodeIPs:
