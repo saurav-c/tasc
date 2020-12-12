@@ -8,7 +8,8 @@ import util
 
 ec2_client = boto3.client('ec2', os.getenv('AWS_REGION', 'us-east-1'))
 
-def create_cluster(txn_count, keynode_count, lb_count, config_file, ssh_key, cluster_name, kops_bucket, aws_key_id, aws_key):
+def create_cluster(txn_count, keynode_count, lb_count, benchmark_count, config_file, 
+            ssh_key, cluster_name, kops_bucket, aws_key_id, aws_key):
     prefix = './'
     util.run_process(['./create_cluster_object.sh', kops_bucket, ssh_key])
 
@@ -37,6 +38,10 @@ def create_cluster(txn_count, keynode_count, lb_count, config_file, ssh_key, clu
     add_nodes(client, apps_client, config_file, 'tasc', txn_count,
               aws_key_id, aws_key, True, prefix)
 
+    print('Creating %d Benchmark nodes...' % (benchmark_count))
+    add_nodes(client, apps_client, config_file, 'benchmark', benchmark_count,
+              aws_key_id, aws_key, True, prefix)
+
     print('Finished creating all pods...')
 
     # Create the Transaction Router
@@ -53,28 +58,7 @@ def create_cluster(txn_count, keynode_count, lb_count, config_file, ssh_key, clu
     permission = [{
         'FromPort': 5000,
         'IpProtocol': 'tcp',
-        'ToPort': 5100,
-        'IpRanges': [{
-            'CidrIp': '0.0.0.0/0'
-        }]
-    }, {
-        'FromPort': 6000,
-        'IpProtocol': 'tcp',
-        'ToPort': 6100,
-        'IpRanges': [{
-            'CidrIp': '0.0.0.0/0'
-        }]
-    },{
-        'FromPort': 8000,
-        'IpProtocol': 'tcp',
-        'ToPort': 8003,
-        'IpRanges': [{
-            'CidrIp': '0.0.0.0/0'
-        }]
-    },{
-        'FromPort': 9000,
-        'IpProtocol': 'tcp',
-        'ToPort': 9100,
+        'ToPort': 9200,
         'IpRanges': [{
             'CidrIp': '0.0.0.0/0'
         }]
@@ -82,6 +66,8 @@ def create_cluster(txn_count, keynode_count, lb_count, config_file, ssh_key, clu
 
     ec2_client.authorize_security_group_ingress(GroupId=sg['GroupId'],
                                                 IpPermissions=permission)
+
+    print("The TASC LB Endpoint: " + util.get_service_address(client, "tasc-service"))
     print('Finished!')
 
 
@@ -106,6 +92,9 @@ if __name__ == '__main__':
     parser.add_argument('-l', '--loadbalancer', nargs=1, type=int, metavar='L',
                         help='The number of load balancer nodes to start with ' +
                              '(required)', dest='loadbalancer', required=True)
+    parser.add_argument('-b', '--benchmark', nargs=1, type=int, metavar='L',
+                        help='The number of benchmark nodes to start with ' +
+                             '(required)', dest='benchmark', required=True)
     parser.add_argument('--config', nargs='?', type=str,
                         help='The configuration file to start the cluster with'
                         + ' (optional)', dest='config',
@@ -123,6 +112,6 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    create_cluster(args.nodes[0], args.keynodes[0], args.loadbalancer[0], args.config,
-                   args.sshkey, cluster_name, kops_bucket,
-                   aws_key_id, aws_key)
+    create_cluster(args.nodes[0], args.keynodes[0], args.loadbalancer[0], 
+                args.benchmark[0], args.config, args.sshkey, cluster_name, 
+                kops_bucket, aws_key_id, aws_key)

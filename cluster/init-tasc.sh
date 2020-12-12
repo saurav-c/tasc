@@ -47,6 +47,9 @@ elif [[ "$ROLE" = "keyrouter" ]]; then
   cd $TASC_HOME/cmd/routing
   go build
   ./routing -mode key
+elif [[ "$ROLE" = "benchmark" ]]; then
+  cd $TASC_HOME/benchmark
+  go build
 elif [[ "$ROLE" = "lb" ]]; then
   cd $TASC_HOME/cmd/lb
   go build

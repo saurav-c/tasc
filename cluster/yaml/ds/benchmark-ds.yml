@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: benchmark-nodes
+  labels: 
+    role: benchmark
+spec:
+  selector:
+    matchLabels:
+      role: benchmark
+  template:
+    metadata:
+      labels:
+        role: benchmark
+    spec:
+      nodeSelector:
+        role: benchmark
+      hostNetwork: true
+      containers:
+      - name: benchmark-container
+        image: tajshaik24/tasc
+        imagePullPolicy: Always
+        env: 
+        - name: ROLE
+          value: benchmark

@@ -19,8 +19,8 @@ metadata:
 spec:
   type: LoadBalancer
   ports:
-  - port: 5000
-    targetPort: 5000
+  - port: 8000
+    targetPort: 8000
     name: tasc-0
   selector:
-    role: tasc
+    role: lb
