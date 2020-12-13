@@ -22,7 +22,7 @@ In order to utilize these scripts, you will need to do the following:
 
 ### Step 3: Odds and ends
 
-* Our cluster creation scripts depend on three environment variables: `TASC_CLUSTER_NAME`, and `KOPS_STATE_STORE`. Set the `TASC_CLUSTER_NAME` variable to the name of the Route53 domain that you're using (see Footnote 2 if you are not using a Route53 domain -- you will need to modify the cluster creation scripts). Set the `KOPS_STATE_STORE` variable to the S3 URL of S3 bucket you created in Step 2 (e.g., `s3://hydro-kops-state-store`).
+* Our cluster creation scripts depend on three environment variables: `TASC_CLUSTER_NAME`, and `KOPS_STATE_STORE`. Set the `TASC_CLUSTER_NAME` variable to the name of the Route53 domain that you're using (see Footnote 2 if you are not using a Route53 domain -- you will need to modify the cluster creation scripts). Set the `KOPS_STATE_STORE` variable to the S3 URL of S3 bucket you created in Step 2 (e.g., `s3://tasc-kops-state-store`).
 * As described in Footnote 1, make sure that your `$PATH` variable includes the path to the `aws` CLI tool. You can check if its on your path by running `which aws` -- if you see a valid path, then you're set.
 * As descried in Step 2, make sure you have run `aws configure` and set your region (by default, we use `us-east-1`) and the access key parameters for the kops user created in Step 2.
 

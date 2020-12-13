@@ -39,8 +39,6 @@ sudo go get -u google.golang.org/grpc
 sudo go get -u github.com/golang/protobuf/protoc-gen-go
 sudo go get -u github.com/pebbe/zmq4
 sudo go get -u github.com/aws/aws-sdk-go
-sudo go get -u github.com/go-redis/redis
-sudo go get -u github.com/pkg/errors
 sudo go get -u github.com/google/uuid
 sudo go get -u github.com/montanaflynn/stats
 

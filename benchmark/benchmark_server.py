@@ -1,16 +1,12 @@
 #!/usr/bin/env python3
 
-import os
 import subprocess
-
 import zmq
 
 def main():
     context = zmq.Context(1)
     benchmark_socket = context.socket(zmq.REP)
-    port = 6500
-
-    benchmark_socket.bind('tcp://*:%d' % port)
+    benchmark_socket.bind('tcp://*:6500')
 
     while True:
         command = benchmark_socket.recv_string()
@@ -34,9 +30,7 @@ def main():
         if result.returncode == 0:
             output = str(result.stdout, 'utf-8')
         else:
-            output = str(result.stdout, 'utf-8') + '\n' + str(result.stderr,
-                                                              'utf-8')
-
+            output = str(result.stdout, 'utf-8') + '\n' + str(result.stderr, 'utf-8')
         benchmark_socket.send_string(output)
 
 if __name__ == '__main__':

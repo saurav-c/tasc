@@ -14,7 +14,7 @@ import (
 	"github.com/saurav-c/aftsi/config"
 
 	"github.com/golang/protobuf/ptypes/empty"
-	pb "github.com/saurav-c/aftsi/proto/routing/api"
+	pb "github.com/saurav-c/aftsi/proto/routing"
 	"google.golang.org/grpc"
 )
 

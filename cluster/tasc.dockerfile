@@ -41,7 +41,6 @@ RUN go get -u google.golang.org/grpc
 RUN go get -u github.com/golang/protobuf/protoc-gen-go
 RUN go get -u github.com/pebbe/zmq4
 RUN go get -u github.com/aws/aws-sdk-go
-RUN go get -u github.com/pkg/errors
 RUN go get -u github.com/google/uuid
 RUN go get -u github.com/montanaflynn/stats
 RUN go get -u k8s.io/client-go/kubernetes
@@ -52,11 +51,6 @@ RUN go get -u github.com/sirupsen/logrus
 # Install required Python dependencies.
 RUN pip3 install zmq
 
-# Clone the AFT code.
-RUN mkdir -p $GOPATH/src/github.com/hydro-project
-WORKDIR $GOPATH/src/github.com/hydro-project
-RUN git clone https://github.com/hydro-project/aft
-
 # Clone the TASC code.
 RUN mkdir -p $GOPATH/src/github.com/saurav-c
 WORKDIR $GOPATH/src/github.com/saurav-c
@@ -66,17 +60,12 @@ WORKDIR aftsi
 # If file exists, delete it
 RUN rm -f config/tasc-config.yml
 
-# Produce all keynode, aftsi and routing pb.go files
+# Produce all keynode, tasc, monitor, and routing pb.go files
 WORKDIR proto
-RUN mkdir -p aftsi/api
-RUN mkdir -p keynode/api
-RUN mkdir -p routing/api
-RUN mkdir -p monitor/api
-
-RUN protoc -I aftsi/ aftsi/aftsi.proto --go_out=plugins=grpc:aftsi/api
-RUN protoc -I keynode/ keynode/keynode.proto --go_out=plugins=grpc:keynode/api
-RUN protoc -I routing/ routing/router.proto --go_out=plugins=grpc:routing/api
-RUN protoc -I monitor/ monitor/monitor.proto --go_out=monitor/api
+RUN protoc -I aftsi/ aftsi/aftsi.proto --go_out=plugins=grpc:aftsi/
+RUN protoc -I keynode/ keynode/keynode.proto --go_out=plugins=grpc:keynode/
+RUN protoc -I routing/ routing/router.proto --go_out=plugins=grpc:routing/
+RUN protoc -I monitor/ monitor/monitor.proto --go_out=monitor/
 
 WORKDIR $GOPATH/src/github.com/saurav-c/aftsi/cluster
 CMD bash ./init-tasc.sh

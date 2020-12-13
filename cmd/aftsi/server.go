@@ -7,16 +7,16 @@ import (
 	"time"
 
 	"github.com/saurav-c/aftsi/config"
-	pb "github.com/saurav-c/aftsi/proto/aftsi/api"
-	mt "github.com/saurav-c/aftsi/proto/monitor/api"
+	pb "github.com/saurav-c/aftsi/proto/aftsi"
+	mt "github.com/saurav-c/aftsi/proto/monitor"
 	log "github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 
 	"github.com/golang/protobuf/proto"
 	zmq "github.com/pebbe/zmq4"
 	"github.com/saurav-c/aftsi/lib/storage"
-	key "github.com/saurav-c/aftsi/proto/keynode/api"
-	rtr "github.com/saurav-c/aftsi/proto/routing/api"
+	key "github.com/saurav-c/aftsi/proto/keynode"
+	rtr "github.com/saurav-c/aftsi/proto/routing"
 )
 
 const (
@@ -206,18 +206,6 @@ func createSocket(tp zmq.Type, context *zmq.Context, address string, bind bool) 
 	return sckt
 }
 
-func flusher(s *AftSIServer) {
-	for {
-		if len(s.commitBuffer) > 0 {
-			e := s._flushBuffer()
-			if e != nil {
-				fmt.Println(e.Error())
-			}
-		}
-		time.Sleep(FlushFrequency * time.Millisecond)
-	}
-}
-
 // Listens for incoming requests via ZMQ
 func txnManagerListen(server *AftSIServer) {
 	// Create a new poller to wait for new updates
@@ -393,8 +381,6 @@ func NewAftSIServer(debugMode bool) (*AftSIServer, int, error) {
 		serverID:         serverID,
 		keyRouterConn:    KeyRouterClient,
 		StorageManager:   storageManager,
-		commitBuffer:     make(map[string][]byte),
-		commitLock:       &sync.Mutex{},
 		TransactionTable: make(map[string]*TransactionEntry),
 		TransactionMutex: &sync.RWMutex{},
 		WriteBuffer:      make(map[string]*WriteBufferEntry),

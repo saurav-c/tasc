@@ -8,7 +8,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	zmq "github.com/pebbe/zmq4"
-	mt "github.com/saurav-c/aftsi/proto/monitor/api"
+	mt "github.com/saurav-c/aftsi/proto/monitor"
 	log "github.com/sirupsen/logrus"
 )
 

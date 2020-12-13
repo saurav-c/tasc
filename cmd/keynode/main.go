@@ -106,38 +106,6 @@ func (k KeyNode) _evictReadCache(n int) {
 	}
 }
 
-func (k KeyNode) _addToBuffer(key string, value []byte) {
-	k.commitLock.Lock()
-	k.commitBuffer[key] = value
-	k.commitLock.Unlock()
-}
-
-func (k *KeyNode) _flushBuffer() error {
-	allKeys := make([]string, 0)
-	allValues := make([][]byte, 0)
-	k.commitLock.RLock()
-	for k, v := range k.commitBuffer {
-		allKeys = append(allKeys, k)
-		allValues = append(allValues, v)
-	}
-	k.commitLock.RUnlock()
-	keysWritten, err := k.StorageManager.MultiPut(allKeys, allValues)
-	if err != nil {
-		k.commitLock.Lock()
-		for _, key := range keysWritten {
-			delete(k.commitBuffer, key)
-		}
-		k.commitLock.Unlock()
-		return errors.New("Not all keys have been put")
-	}
-	k.commitLock.Lock()
-	for _, key := range allKeys {
-		delete(k.commitBuffer, key)
-	}
-	k.commitLock.Unlock()
-	return nil
-}
-
 func (k *KeyNode) readKey(tid string, key string, readList []string, begints string,
 	lowerBound string) (keyVersion string, value []byte, coWritten []string, err error) {
 	// Check for Index Lock

@@ -12,8 +12,8 @@ import (
 	zmq "github.com/pebbe/zmq4"
 	"github.com/saurav-c/aftsi/config"
 	"github.com/saurav-c/aftsi/lib/storage"
-	pb "github.com/saurav-c/aftsi/proto/keynode/api"
-	mt "github.com/saurav-c/aftsi/proto/monitor/api"
+	pb "github.com/saurav-c/aftsi/proto/keynode"
+	mt "github.com/saurav-c/aftsi/proto/monitor"
 )
 
 const (
@@ -204,18 +204,6 @@ func createSocket(tp zmq.Type, context *zmq.Context, address string, bind bool) 
 	}
 
 	return sckt
-}
-
-func flusher(k *KeyNode) {
-	for {
-		if len(k.commitBuffer) > 0 {
-			e := k._flushBuffer()
-			if e != nil {
-				fmt.Println(e.Error())
-			}
-		}
-		time.Sleep(FlushFrequency * time.Millisecond)
-	}
 }
 
 func (k *KeyNode) logExecutionTime(msg string, diff time.Duration) {
@@ -444,8 +432,6 @@ func NewKeyNode(debugMode bool) (*KeyNode, error) {
 		pendingTxnCacheLock:        &sync.RWMutex{},
 		readCache:                  make(map[string][]byte),
 		readCacheLock:              &sync.RWMutex{},
-		commitBuffer:               make(map[string][]byte),
-		commitLock:                 &sync.RWMutex{},
 		zmqInfo:                    zmqInfo,
 		pusherCache:                &pusherCache,
 		logFile:                    file,

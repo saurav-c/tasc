@@ -17,7 +17,7 @@ import (
 	zmq "github.com/pebbe/zmq4"
 	"google.golang.org/grpc"
 
-	pb "github.com/saurav-c/aftsi/proto/aftsi/api"
+	pb "github.com/saurav-c/aftsi/proto/aftsi"
 )
 
 const (

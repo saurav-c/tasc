@@ -4,21 +4,21 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"net"
 	"strconv"
 	"strings"
 	"time"
 
+	log "github.com/sirupsen/logrus"
+
 	"github.com/google/uuid"
 	zmq "github.com/pebbe/zmq4"
-	"github.com/pkg/errors"
-	router "github.com/saurav-c/aftsi/proto/routing/api"
+	router "github.com/saurav-c/aftsi/proto/routing"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
-	pb "github.com/saurav-c/aftsi/proto/aftsi/api"
-	keyNode "github.com/saurav-c/aftsi/proto/keynode/api"
+	pb "github.com/saurav-c/aftsi/proto/aftsi"
+	keyNode "github.com/saurav-c/aftsi/proto/keynode"
 
 	"google.golang.org/grpc"
 )
@@ -32,38 +32,6 @@ func _convertStringToBytes(stringSlice []string) []byte {
 	return []byte(stringByte)
 }
 
-func (s *AftSIServer) _addToBuffer(key string, value []byte) {
-	s.commitLock.Lock()
-	s.commitBuffer[key] = value
-	s.commitLock.Unlock()
-}
-
-func (s *AftSIServer) _flushBuffer() error {
-	allKeys := make([]string, 0)
-	allValues := make([][]byte, 0)
-	s.commitLock.Lock()
-	for k, v := range s.commitBuffer {
-		allKeys = append(allKeys, k)
-		allValues = append(allValues, v)
-	}
-	s.commitLock.Unlock()
-	keysWritten, err := s.StorageManager.MultiPut(allKeys, allValues)
-	if err != nil {
-		s.commitLock.Lock()
-		for _, key := range keysWritten {
-			delete(s.commitBuffer, key)
-		}
-		s.commitLock.Unlock()
-		return errors.New("Not all keys have been put")
-	}
-	s.commitLock.Lock()
-	for _, key := range allKeys {
-		delete(s.commitBuffer, key)
-	}
-	s.commitLock.Unlock()
-	return nil
-}
-
 func (monitor *Monitor) logExecutionTime(start time.Time, msg string) {
 	end := time.Now()
 	diff := end.Sub(start)
@@ -71,8 +39,8 @@ func (monitor *Monitor) logExecutionTime(start time.Time, msg string) {
 }
 
 func (monitor *Monitor) logTime(msg string, diff time.Duration) {
-	log.Debugf("%s: %f ms", msg, diff.Seconds() * 1000)
-	monitor.trackStat(msg, diff.Seconds() * 1000)
+	log.Debugf("%s: %f ms", msg, diff.Seconds()*1000)
+	monitor.trackStat(msg, diff.Seconds()*1000)
 }
 
 func (s *AftSIServer) StartTransaction(ctx context.Context, emp *empty.Empty) (*pb.TransactionID, error) {
@@ -355,7 +323,7 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 	start = time.Now()
 	// Phase 2 of 2PC
 	for ip, _ := range keyMap {
-		go s.endTransaction(ip, tid, toCommit, endChannel,  writeSet, writeVals, )
+		go s.endTransaction(ip, tid, toCommit, endChannel, writeSet, writeVals)
 	}
 
 	// Wait for end transaction responses from Key Node
@@ -393,7 +361,7 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 	}
 }
 
-func (s *AftSIServer) validateTransaction(ipAddr string, keys[] string,
+func (s *AftSIServer) validateTransaction(ipAddr string, keys []string,
 	entry *TransactionEntry, tid string, responseChan chan bool) {
 	addr := fmt.Sprintf(PushTemplate, ipAddr, validatePullPort)
 	cid := uuid.New().ID()

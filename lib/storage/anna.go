@@ -8,7 +8,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 
-	pb "github.com/hydro-project/aft/proto/aft"
+	pb "github.com/saurav-c/aftsi/proto/aft"
 )
 
 const (
@@ -31,7 +31,7 @@ func (anna *AnnaStorageManager) MultiGetTransactionWriteSet(transactionKeys *[]s
 
 func NewAnnaStorageManager(ipAddress string, elbAddress string) *AnnaStorageManager {
 	clients := []*AnnaClient{}
-	for i := 0; i < 4; i++ {
+	for i := 0; i < 10; i++ {
 		anna := NewAnnaClient(elbAddress, ipAddress, false, i)
 		clients = append(clients, anna)
 	}
@@ -128,23 +128,6 @@ func (anna *AnnaStorageManager) AbortTransaction(transaction *pb.TransactionReco
 	return nil
 }
 
-//func (anna *AnnaStorageManager) Get(key string) (*pb.KeyValuePair, error) {
-//	result := &pb.KeyValuePair{}
-//
-//	client := anna.getClient()
-//	defer anna.releaseClient(client)
-//	bts, err := client.Get(key)
-//	for err != nil && strings.Contains(err.Error(), "KEY_DNE") {
-//		bts, err = client.Get(key)
-//	}
-//	if err != nil {
-//		return result, err
-//	}
-//
-//	err = proto.Unmarshal(bts, result)
-//	return result, err
-//}
-
 func (anna *AnnaStorageManager) GetTransaction(transactionKey string) (*pb.TransactionRecord, error) {
 	result := &pb.TransactionRecord{}
 
@@ -173,30 +156,6 @@ func (anna *AnnaStorageManager) MultiGetTransaction(transactionKeys *[]string) (
 
 	return &results, nil
 }
-
-//func (anna *AnnaStorageManager) Put(key string, val *pb.KeyValuePair) error {
-//	serialized, err := proto.Marshal(val)
-//	if err != nil {
-//		return err
-//	}
-//
-//	client := anna.getClient()
-//	defer anna.releaseClient(client)
-//	_, err = client.Put(key, serialized)
-//	return err
-//}
-
-//func (anna *AnnaStorageManager) MultiPut(data *map[string]*pb.KeyValuePair) error {
-//	for key, val := range *data {
-//		err := anna.Put(key, val)
-//		if err != nil {
-//			fmt.Printf("Writing %s. ERROR: %v\n", key, err)
-//			return err
-//		}
-//	}
-//
-//	return nil
-//}
 
 func (anna *AnnaStorageManager) Delete(key string) error {
 	return nil // Anna does not support deletes.
