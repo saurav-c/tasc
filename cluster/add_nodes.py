@@ -12,9 +12,9 @@ def add_nodes(client, apps_client, cfile, kind, count, aws_key_id=None,
     print('Adding %d %s server node(s) to cluster...' % (count, kind))
 
     prev_count = util.get_previous_count(client, kind)
-    util.run_process(['./modify_ig.sh', kind, str(count + prev_count)])
+    util.run_process(['./modify_ig.sh', kind, str(count + prev_count)], 'kops')
 
-    util.run_process(['./validate_cluster.sh'])
+    util.run_process(['./validate_cluster.sh'], 'kops')
 
     if create:
         fname = 'yaml/ds/%s-ds.yml' % kind
@@ -31,6 +31,11 @@ def add_nodes(client, apps_client, cfile, kind, count, aws_key_id=None,
             if kind == "tasc":
                 keyrouter_ip = util.get_node_ips(client, 'role=keyrouter', 'ExternalIP')[0]
                 util.replace_yaml_val(env, 'KEY_ROUTER', keyrouter_ip)
+                monitor_ip = util.get_node_ips(client, 'role=monitor', 'ExternalIP')[0]
+                util.replace_yaml_val(env, 'MONITOR', monitor_ip)
+            if kind == "keynode":
+                monitor_ip = util.get_node_ips(client, 'role=monitor', 'ExternalIP')[0]
+                util.replace_yaml_val(env, 'MONITOR', monitor_ip)
 
         apps_client.create_namespaced_daemon_set(namespace=util.NAMESPACE,
                                                  body=yml)

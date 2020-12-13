@@ -22,7 +22,7 @@ RUN add-apt-repository -y ppa:longsleep/golang-backports
 RUN apt-get update
 RUN apt-get install -y golang-go wget unzip git ca-certificates net-tools python3-pip libzmq3-dev dnsutils curl apt-transport-https
 
-# Install kubectl for the management pod.
+# Install kubectl for lb-nodes
 RUN curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
 RUN echo "deb https://apt.kubernetes.io/ kubernetes-xenial main" | tee -a /etc/apt/sources.list.d/kubernetes.list
 RUN apt-get update
@@ -41,16 +41,16 @@ RUN go get -u google.golang.org/grpc
 RUN go get -u github.com/golang/protobuf/protoc-gen-go
 RUN go get -u github.com/pebbe/zmq4
 RUN go get -u github.com/aws/aws-sdk-go
-RUN go get -u github.com/go-redis/redis
 RUN go get -u github.com/pkg/errors
 RUN go get -u github.com/google/uuid
 RUN go get -u github.com/montanaflynn/stats
 RUN go get -u k8s.io/client-go/kubernetes
 RUN go get -u k8s.io/client-go/tools/clientcmd
 RUN go get -u k8s.io/apimachinery/pkg/apis/meta/v1
+RUN go get -u github.com/sirupsen/logrus
 
-# For the k8s config
-RUN mkdir -p /root/.kube
+# Install required Python dependencies.
+RUN pip3 install zmq
 
 # Clone the AFT code.
 RUN mkdir -p $GOPATH/src/github.com/hydro-project
@@ -71,10 +71,12 @@ WORKDIR proto
 RUN mkdir -p aftsi/api
 RUN mkdir -p keynode/api
 RUN mkdir -p routing/api
+RUN mkdir -p monitor/api
 
 RUN protoc -I aftsi/ aftsi/aftsi.proto --go_out=plugins=grpc:aftsi/api
 RUN protoc -I keynode/ keynode/keynode.proto --go_out=plugins=grpc:keynode/api
 RUN protoc -I routing/ routing/router.proto --go_out=plugins=grpc:routing/api
+RUN protoc -I monitor/ monitor/monitor.proto --go_out=monitor/api
 
 WORKDIR $GOPATH/src/github.com/saurav-c/aftsi/cluster
 CMD bash ./init-tasc.sh

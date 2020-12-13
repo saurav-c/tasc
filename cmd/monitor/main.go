@@ -3,17 +3,18 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/golang/protobuf/proto"
-	zmq "github.com/pebbe/zmq4"
-	log "github.com/sirupsen/logrus"
 	"os"
 	"time"
-	mt "github.com/saurav-c/aftsi/proto/monitor"
+
+	"github.com/golang/protobuf/proto"
+	zmq "github.com/pebbe/zmq4"
+	mt "github.com/saurav-c/aftsi/proto/monitor/api"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
 	MONITOR_SERVER_PORT = 10000
-	PullTemplate = "tcp://*:%d"
+	PullTemplate        = "tcp://*:%d"
 )
 
 func createSocket(tp zmq.Type, context *zmq.Context, address string, bind bool) *zmq.Socket {

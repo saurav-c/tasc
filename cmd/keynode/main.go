@@ -3,11 +3,12 @@ package main
 import (
 	"errors"
 	"flag"
-	log "github.com/sirupsen/logrus"
 	"math/rand"
 	"strings"
 	"sync"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -79,17 +80,10 @@ func (k *KeyNode) _deleteFromPendingKVI(keys []string, keyEntry string, action i
 		cLock.Unlock()
 
 		dbKey := key + ":index"
-		if k.batchMode {
-			k._addToBuffer(dbKey, _convertStringToBytes(entry.keys))
-		} else {
-			kviKeys[i] = dbKey
-			kviValBytes[i] = _convertStringToBytes(entry.keys)
-		}
+		kviKeys[i] = dbKey
+		kviValBytes[i] = _convertStringToBytes(entry.keys)
 	}
-
-	if !k.batchMode {
-		k.StorageManager.MultiPut(kviKeys, kviValBytes)
-	}
+	k.StorageManager.MultiPut(kviKeys, kviValBytes)
 }
 
 // TODO: Modify Eviction Policy for Read Cache
@@ -145,7 +139,7 @@ func (k *KeyNode) _flushBuffer() error {
 }
 
 func (k *KeyNode) readKey(tid string, key string, readList []string, begints string,
-	lowerBound string)(keyVersion string, value []byte, coWritten []string, err error) {
+	lowerBound string) (keyVersion string, value []byte, coWritten []string, err error) {
 	// Check for Index Lock
 	k.committedLock.Lock()
 	if _, ok := k.committedKeysLock[key]; !ok {
@@ -417,7 +411,6 @@ func (k *KeyNode) shutdown(debugMode bool) {
 func main() {
 	debug := flag.Bool("debug", false, "Debug Mode")
 	flag.Parse()
-
 
 	keyNode, err := NewKeyNode(*debug)
 	if err != nil {

@@ -8,7 +8,7 @@ import (
 
 	"github.com/saurav-c/aftsi/config"
 	pb "github.com/saurav-c/aftsi/proto/aftsi/api"
-	mt "github.com/saurav-c/aftsi/proto/monitor"
+	mt "github.com/saurav-c/aftsi/proto/monitor/api"
 	log "github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 
@@ -134,7 +134,6 @@ func (monitor *Monitor) trackStat(msg string, latency float64) {
 
 func (monitor *Monitor) sendStats() {
 	for true {
-		log.Debug("Triggered sendStats")
 		time.Sleep(100 * time.Millisecond)
 		statsMap := make(map[string]*mt.Latencies)
 		monitor.lock.Lock()
@@ -155,7 +154,6 @@ func (monitor *Monitor) sendStats() {
 		}
 		data, _ := proto.Marshal(statsMsg)
 		monitor.pusher.SendBytes(data, zmq.DONTWAIT)
-		log.Debug("Sent stats to monitor")
 	}
 }
 

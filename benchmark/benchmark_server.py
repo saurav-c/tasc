@@ -17,23 +17,17 @@ def main():
         splits = command.split(':')
         num_threads = int(splits[0])
         num_requests = int(splits[1])
-        replicas = splits[2]
-        reads = int(splits[3])
-        length = int(splits[4])
+        elb_address = splits[2]
+        type_benchmark = splits[3]
 
         cmd = [
             './benchmark',
-            '-numThreads',  str(num_threads),
-            '-numRequests', str(num_requests),
-            '-address', replicas,
-            '-numReads',    str(reads),
-            '-length', str(length)
+            '-numThreads', str(num_threads),
+            '-numReq', str(num_requests),
+            '-address', elb_address,
+            '-type', type_benchmark
         ]
-
-        if len(splits) > 5:
-            cmd.append('-benchmarkType')
-            cmd.append(splits[5])
-
+        
         result = subprocess.run(cmd, stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE)
 

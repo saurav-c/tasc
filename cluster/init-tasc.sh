@@ -20,6 +20,10 @@ mkdir -p ~/.aws
 echo -e "[default]\nregion = us-east-1" > ~/.aws/config
 echo -e "[default]\naws_access_key_id = $AWS_ACCESS_KEY_ID\naws_secret_access_key = $AWS_SECRET_ACCESS_KEY" > ~/.aws/credentials
 
+if [[ "$ROLE" = "lb" ]]; then
+  mkdir -p /root/.kube
+fi
+
 cd $GOPATH/src/github.com/saurav-c/aftsi
 
 # Wait for the config file to be passed in.
@@ -30,6 +34,7 @@ done
 # Generate the YML config file.
 echo "ipAddress: $IP" >> config/tasc-config.yml
 echo "keyRouterIP: $KEY_ROUTER" >> config/tasc-config.yml
+echo "monitorIP: $MONITOR" >> config/tasc-config.yml
 LST=$(gen_yml_list "$NODE_IPS")
 echo "nodeIPs:" >> config/tasc-config.yml
 echo "$LST" >> config/tasc-config.yml
@@ -47,9 +52,14 @@ elif [[ "$ROLE" = "keyrouter" ]]; then
   cd $TASC_HOME/cmd/routing
   go build
   ./routing -mode key
+elif [[ "$ROLE" = "monitor" ]]; then
+  cd $TASC_HOME/cmd/monitor
+  go build
+  ./monitor
 elif [[ "$ROLE" = "benchmark" ]]; then
   cd $TASC_HOME/benchmark
   go build
+  python3 benchmark_server.py
 elif [[ "$ROLE" = "lb" ]]; then
   cd $TASC_HOME/cmd/lb
   go build

@@ -14,16 +14,12 @@ def main():
     parser.add_argument('-t', '--numThreads', nargs=1, type=int, metavar='T',
                         help='The number of threads per server to run.',
                         dest='threads', required=True)
-    parser.add_argument('-rp', '--replicas', nargs=1, type=str, metavar='P',
-                        help='A comma-separated list of Aft replicas',
+    parser.add_argument('-a', '--address', nargs=1, type=str, metavar='A',
+                        help='ELB Address for the Load Balancer Values', 
+                        dest='address', required=True)
+    parser.add_argument('-y', '--type', nargs=1, type=str, metavar='Y',
+                        help='Type of Benchmark to Run', dest='type',
                         required=True)
-    parser.add_argument('-tp', '--threadPerServer', nargs=1, type=int,
-                        metavar='U', help='The number of benchmark servers' +
-                        'per machine to contact', dest='tpm', required=True)
-    parser.add_argument('-nr', '--numReads', nargs=1, type=int,
-                        metavar='R', dest='nr', required=False, default=1)
-    parser.add_argument('-l', '--length', nargs=1, type=int,
-                        metavar='L', dest='len', required=False, default=2)
 
     args = parser.parse_args()
 
@@ -35,21 +31,19 @@ def main():
 
     print('Found %d servers:%s' % (len(servers), '\n\t-' + '\n\t-'.join(servers)))
 
-    message = ('%d:%d:%s:%d:%d:aft') % (args.threads[0], args.threads[0] *
-                              args.requests[0], args.replicas[0], args.nr[0],
-                                        args.len[0])
+    message = ('%d:%d:%s:%s') % (args.threads[0], args.threads[0] *
+                              args.requests[0], args.address[0], args.type[0])
 
     conns = []
     context = zmq.Context(1)
     print('Starting benchmark at %s' % (str(datetime.datetime.now())))
     for server in servers:
-        for _ in range(args.tpm[0]):
-            conn = context.socket(zmq.REQ)
-            address = ('tcp://%s:%d') % (server, 6500)
-            conn.connect(address)
-            conn.send_string(message)
+        conn = context.socket(zmq.REQ)
+        address = ('tcp://%s:6500') % server
+        conn.connect(address)
+        conn.send_string(message)
 
-            conns.append(conn)
+        conns.append(conn)
 
     for conn in conns:
         response = conn.recv_string()

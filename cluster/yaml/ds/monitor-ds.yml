@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: monitor-nodes
+  labels: 
+    role: monitor
+spec:
+  selector:
+    matchLabels:
+      role: monitor
+  template:
+    metadata:
+      labels:
+        role: monitor
+    spec:
+      nodeSelector:
+        role: monitor
+      hostNetwork: true
+      containers:
+      - name: monitor-container
+        image: tajshaik24/tasc
+        imagePullPolicy: Always
+        env: 
+        - name: ROLE
+          value: monitor

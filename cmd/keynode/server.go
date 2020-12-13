@@ -2,17 +2,18 @@ package main
 
 import (
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"os"
 	"sync"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/golang/protobuf/proto"
 	zmq "github.com/pebbe/zmq4"
 	"github.com/saurav-c/aftsi/config"
 	"github.com/saurav-c/aftsi/lib/storage"
 	pb "github.com/saurav-c/aftsi/proto/keynode/api"
-	mt "github.com/saurav-c/aftsi/proto/monitor"
+	mt "github.com/saurav-c/aftsi/proto/monitor/api"
 )
 
 const (
@@ -67,7 +68,6 @@ type KeyNode struct {
 	commitLock                 *sync.RWMutex
 	zmqInfo                    ZMQInfo
 	pusherCache                *SocketCache
-	batchMode                  bool
 	logFile                    *os.File
 	monitor                    *Monitor
 }
@@ -104,7 +104,6 @@ func (monitor *Monitor) trackStat(msg string, latency float64) {
 
 func (monitor *Monitor) sendStats() {
 	for true {
-		log.Debug("Triggered sendStats")
 		time.Sleep(100 * time.Millisecond)
 		statsMap := make(map[string]*mt.Latencies)
 		monitor.lock.Lock()
@@ -125,7 +124,6 @@ func (monitor *Monitor) sendStats() {
 		}
 		data, _ := proto.Marshal(statsMsg)
 		monitor.pusher.SendBytes(data, zmq.DONTWAIT)
-		log.Debug("Sent stats to monitor")
 	}
 }
 
@@ -221,8 +219,8 @@ func flusher(k *KeyNode) {
 }
 
 func (k *KeyNode) logExecutionTime(msg string, diff time.Duration) {
-	log.Debugf("%s: %f ms", msg, diff.Seconds() * 1000)
-	k.monitor.trackStat(msg, diff.Seconds() * 1000)
+	log.Debugf("%s: %f ms", msg, diff.Seconds()*1000)
+	k.monitor.trackStat(msg, diff.Seconds()*1000)
 }
 
 func startKeyNode(keyNode *KeyNode) {
@@ -373,8 +371,6 @@ func endTxnHandler(keyNode *KeyNode, req *pb.FinishRequest) {
 }
 
 func NewKeyNode(debugMode bool) (*KeyNode, error) {
-	// TODO: Integrate this into config manager
-	// Need to change parameters to fit around needs better
 	configValue := config.ParseConfig()
 	var storageManager storage.StorageManager
 	switch configValue.StorageType {
@@ -452,7 +448,6 @@ func NewKeyNode(debugMode bool) (*KeyNode, error) {
 		commitLock:                 &sync.RWMutex{},
 		zmqInfo:                    zmqInfo,
 		pusherCache:                &pusherCache,
-		batchMode:                  configValue.Batch,
 		logFile:                    file,
 		monitor:                    &monitor,
 	}, nil

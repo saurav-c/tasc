@@ -21,20 +21,21 @@ func main() {
 		fmt.Println("Please pass in the address of the TASC Transaction Router.")
 		return
 	}
-	elbAddress := os.Args[1]
+
+	elbEndpoint := os.Args[1]
 	zctx, err := zmq.NewContext()
 	if err != nil {
+		fmt.Printf("An error %s has occurred.\n", err)
 		return
 	}
+
 	sckt, err := zctx.NewSocket(zmq.REQ)
-	err = sckt.Connect(fmt.Sprintf("tcp://%s:8000", elbAddress))
-	defer sckt.Close()
+	err = sckt.Connect(fmt.Sprintf("tcp://%s:8000", elbEndpoint))
 	if err != nil {
-		fmt.Printf("Unexpected error:\n%v\n", err)
-		os.Exit(1)
+		fmt.Printf("An error %s has occurred.\n", err)
+		return
 	}
 
-	// client := rtr.NewRouterClient(conn)
 	reader := bufio.NewReader(os.Stdin)
 	tidClientMapping := map[string]pb.AftSIClient{}
 
@@ -46,17 +47,16 @@ func main() {
 		command = strings.TrimSpace(command)
 		switch command {
 		case "start":
-			start := time.Now()
 			sckt.SendBytes(nil, zmq.DONTWAIT)
-			txnAddress, _ := sckt.RecvBytes(0)
-			txnAddressString := string(txnAddress)
-			fmt.Println(txnAddressString)
-			conn, err := grpc.Dial(fmt.Sprintf("%s:5000", txnAddressString), grpc.WithInsecure())
+			txnAddressBytes, _ := sckt.RecvBytes(0)
+			txnAddress := string(txnAddressBytes)
+			fmt.Println(txnAddress)
+			conn, err := grpc.Dial(fmt.Sprintf("%s:5000", txnAddress), grpc.WithInsecure())
 			tascClient := pb.NewAftSIClient(conn)
 			start := time.Now()
 			tid, err := tascClient.StartTransaction(context.TODO(), &empty.Empty{})
 			end := time.Now()
-			//tidClientMapping[tid.Tid] = tascClient
+			tidClientMapping[tid.Tid] = tascClient
 			fmt.Printf("Start took: %f ms\n", 1000*end.Sub(start).Seconds())
 			if err != nil {
 				fmt.Printf("An error %s has occurred.\n", err)

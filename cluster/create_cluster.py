@@ -11,19 +11,23 @@ ec2_client = boto3.client('ec2', os.getenv('AWS_REGION', 'us-east-1'))
 def create_cluster(txn_count, keynode_count, lb_count, benchmark_count, config_file, 
             ssh_key, cluster_name, kops_bucket, aws_key_id, aws_key):
     prefix = './'
-    util.run_process(['./create_cluster_object.sh', kops_bucket, ssh_key])
+    util.run_process(['./create_cluster_object.sh', kops_bucket, ssh_key], 'kops')
 
     client, apps_client = util.init_k8s()
 
-    print('Creating %d key nodes...' % (keynode_count))
+    print('Creating Monitor Node...')
+    add_nodes(client, apps_client, config_file, "monitor", 1,
+              aws_key_id, aws_key, True, prefix)
+
+    print('Creating %d Key Nodes...' % (keynode_count))
     add_nodes(client, apps_client, config_file, "keynode", keynode_count, aws_key_id,
     aws_key, True, prefix)
 
-    print('Creating key node router')
+    print('Creating Keynode Router...')
     add_nodes(client, apps_client, config_file, "keyrouter", 1,
               aws_key_id, aws_key, True, prefix)
     
-    print('Creating %d load balancer nodes...' % lb_count)
+    print('Creating %d Load Balancer Nodes...' % lb_count)
     add_nodes(client, apps_client, config_file, 'lb', lb_count,
              aws_key_id, aws_key, True, prefix)
 
@@ -42,6 +46,11 @@ def create_cluster(txn_count, keynode_count, lb_count, benchmark_count, config_f
     add_nodes(client, apps_client, config_file, 'benchmark', benchmark_count,
               aws_key_id, aws_key, True, prefix)
 
+    benchmark_ips = util.get_node_ips(client, 'role=benchmark', 'ExternalIP')
+    with open('../benchmark/benchmarks.txt', 'w+') as f:
+        for ip in benchmark_ips:
+            f.write(ip + '\n')
+
     print('Finished creating all pods...')
 
     # Create the Transaction Router
@@ -56,9 +65,9 @@ def create_cluster(txn_count, keynode_count, lb_count, benchmark_count, config_f
                     'Values': [sg_name]}])['SecurityGroups'][0]
     print("Authorizing Ports for TASC...")
     permission = [{
-        'FromPort': 5000,
+        'FromPort': 0,
         'IpProtocol': 'tcp',
-        'ToPort': 9200,
+        'ToPort': 65535,
         'IpRanges': [{
             'CidrIp': '0.0.0.0/0'
         }]
@@ -105,7 +114,7 @@ if __name__ == '__main__':
                         default=os.path.join(os.environ['HOME'],
                                              '.ssh/id_rsa'))
 
-    cluster_name = util.check_or_get_env_arg('HYDRO_CLUSTER_NAME')
+    cluster_name = util.check_or_get_env_arg('TASC_CLUSTER_NAME')
     kops_bucket = util.check_or_get_env_arg('KOPS_STATE_STORE')
     aws_key_id = util.check_or_get_env_arg('AWS_ACCESS_KEY_ID')
     aws_key = util.check_or_get_env_arg('AWS_SECRET_ACCESS_KEY')

@@ -22,14 +22,14 @@ In order to utilize these scripts, you will need to do the following:
 
 ### Step 3: Odds and ends
 
-* Our cluster creation scripts depend on three environment variables: `HYDRO_CLUSTER_NAME`, and `KOPS_STATE_STORE`. Set the `HYDRO_CLUSTER_NAME` variable to the name of the Route53 domain that you're using (see Footnote 2 if you are not using a Route53 domain -- you will need to modify the cluster creation scripts). Set the `KOPS_STATE_STORE` variable to the S3 URL of S3 bucket you created in Step 2 (e.g., `s3://hydro-kops-state-store`).
+* Our cluster creation scripts depend on three environment variables: `TASC_CLUSTER_NAME`, and `KOPS_STATE_STORE`. Set the `TASC_CLUSTER_NAME` variable to the name of the Route53 domain that you're using (see Footnote 2 if you are not using a Route53 domain -- you will need to modify the cluster creation scripts). Set the `KOPS_STATE_STORE` variable to the S3 URL of S3 bucket you created in Step 2 (e.g., `s3://hydro-kops-state-store`).
 * As described in Footnote 1, make sure that your `$PATH` variable includes the path to the `aws` CLI tool. You can check if its on your path by running `which aws` -- if you see a valid path, then you're set.
 * As descried in Step 2, make sure you have run `aws configure` and set your region (by default, we use `us-east-1`) and the access key parameters for the kops user created in Step 2.
 
 ### Step 4: Creating your first cluster
 
-You're now ready to create your first cluster. To start off, we'll create a tiny cluster, with one type of each node. From the `$GOPATH/src/github.com/saurav-c/aftsi/cluster/` directory, run `python3 -m create_cluster -n 1 -k 1 -l 1`. This will spin up 1 load balancing node, 1 key node, and 1 TASC (transaction manager) node. This will take a while to run. Once it's finished, you can interact with the TASC system by with the outputted ELB (which serves as an entry point into the system).
+You're now ready to create your first cluster. To start off, we'll create a tiny cluster, with one type of each node. From the `$GOPATH/src/github.com/saurav-c/aftsi/cluster/` directory, run `python3 -m create_cluster -n 1 -k 1 -l 1 -b 1`. This will spin up 1 load balancing node, 1 key node, 1 benchmark server node, and 1 TASC (transaction manager) node. This will take a while to run. Once it's finished, you can interact with the TASC system by with the outputted ELB (which serves as an entry point into the system).
 
 <sup>1</sup> By default, the AWS CLI tool installs in `~/.local/bin` on Ubuntu. You will have to add this directory to your `$PATH`.
 
-<sup>2</sup> You can also run in local mode, where you set the `HYDRO_CLUSTER_NAME` environment variable to `{clustername}.k8s.local`. This setting doesn't require a domain name -- however, this mode limits cluster size because it only runs in mesh networking mode (which only allows up to 64 nodes, from what we can tell), and requires modifying our existing cluster creation scripts. We don't have documentation written up for this as its not a use case we intend to support.
+<sup>2</sup> You can also run in local mode, where you set the `TASC_CLUSTER_NAME` environment variable to `{clustername}.k8s.local`. This setting doesn't require a domain name -- however, this mode limits cluster size because it only runs in mesh networking mode (which only allows up to 64 nodes, from what we can tell), and requires modifying our existing cluster creation scripts. We don't have documentation written up for this as its not a use case we intend to support.

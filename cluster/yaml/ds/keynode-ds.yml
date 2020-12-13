@@ -32,3 +32,5 @@ spec:
           value: ""
         - name: KEY_ROUTER
           value: ""
+        - name: MONITOR
+          value: DUMMY_IP

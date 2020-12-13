@@ -16,20 +16,13 @@ def replace_yaml_val(yaml_dict, name, val):
             pair['value'] = val
             return
 
-
 def init_k8s():
-    cfg = k8s.config
-    cfg.load_kube_config()
-    client = k8s.client.CoreV1Api()
-    apps_client = k8s.client.AppsV1Api()
-
-    return client, apps_client
-
+    k8s.config.load_kube_config()
+    return k8s.client.CoreV1Api(), k8s.client.AppsV1Api()
 
 def load_yaml(filename, prefix=None):
     if prefix:
         filename = os.path.join(prefix, filename)
-
     try:
         with open(filename, 'r') as f:
             return yaml.safe_load(f.read())
@@ -43,9 +36,9 @@ def load_yaml(filename, prefix=None):
         sys.exit(1)
 
 
-def run_process(command):
+def run_process(command, cwd_path):
     try:
-        subprocess.run(command, cwd='kops', check=True)
+        subprocess.run(command, cwd=cwd_path, check=True)
     except subprocess.CalledProcessError as e:
         print(f'''Unexpected error while running command {e.cmd}
         {e.stderr}
