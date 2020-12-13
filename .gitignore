@@ -15,3 +15,4 @@ cmd/routing/routing
 client/client
 cli/cli
 benchmark/benchmark
+benchmark/benchmarks.txt

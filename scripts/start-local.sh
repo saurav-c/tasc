@@ -5,7 +5,6 @@ if [ -z "$1" ] && [ -z "$2" ]; then
   exit 1
 fi
 
-
 if [ "$1" = "y" ] || [ "$1" = "yes" ]; then
   echo "Compiling TASC..."
   ./scripts/build-local.sh
@@ -31,5 +30,5 @@ echo $MID >> pids
 
 if [ "$2" = "y" ] || [ "$2" = "yes" ]; then
   sleep 2 # wait for gRPC servers to start
-  ./cli/cli
+  ./cli/cli -local
 fi

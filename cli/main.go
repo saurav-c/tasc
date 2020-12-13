@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"flag"
 	"fmt"
 	"os"
 	"strings"
@@ -16,13 +17,9 @@ import (
 )
 
 func main() {
-	fmt.Println("TASC Command Line Interface")
-	if len(os.Args) == 1 {
-		fmt.Println("Please pass in the address of the TASC Transaction Router.")
-		return
-	}
+	local := flag.Bool("local", false, "Local Mode")
+	flag.Parse()
 
-	elbEndpoint := os.Args[1]
 	zctx, err := zmq.NewContext()
 	if err != nil {
 		fmt.Printf("An error %s has occurred.\n", err)
@@ -30,10 +27,22 @@ func main() {
 	}
 
 	sckt, err := zctx.NewSocket(zmq.REQ)
-	err = sckt.Connect(fmt.Sprintf("tcp://%s:8000", elbEndpoint))
-	if err != nil {
-		fmt.Printf("An error %s has occurred.\n", err)
-		return
+	defer sckt.Close()
+
+	fmt.Println("TASC Command Line Interface")
+
+	if !(*local) {
+		if len(os.Args) == 1 {
+			fmt.Println("Please pass in the address of the TASC Transaction Router.")
+			return
+		}
+
+		elbEndpoint := os.Args[1]
+		err = sckt.Connect(fmt.Sprintf("tcp://%s:8000", elbEndpoint))
+		if err != nil {
+			fmt.Printf("An error %s has occurred.\n", err)
+			return
+		}
 	}
 
 	reader := bufio.NewReader(os.Stdin)
@@ -47,9 +56,12 @@ func main() {
 		command = strings.TrimSpace(command)
 		switch command {
 		case "start":
-			sckt.SendBytes(nil, zmq.DONTWAIT)
-			txnAddressBytes, _ := sckt.RecvBytes(0)
-			txnAddress := string(txnAddressBytes)
+			txnAddress := "127.0.0.1"
+			if !(*local) {
+				sckt.SendBytes(nil, zmq.DONTWAIT)
+				txnAddressBytes, _ := sckt.RecvBytes(0)
+				txnAddress = string(txnAddressBytes)
+			}
 			fmt.Println(txnAddress)
 			conn, err := grpc.Dial(fmt.Sprintf("%s:5000", txnAddress), grpc.WithInsecure())
 			tascClient := pb.NewAftSIClient(conn)
