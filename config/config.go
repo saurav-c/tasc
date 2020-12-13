@@ -16,6 +16,7 @@ type TASCConfig struct {
 	KeyRouterIP string   `yaml:"keyRouterIP"`
 	NodeIPs     []string `yaml:"nodeIPs"`
 	AnnaELB     string   `yaml:"annaELB"`
+	MonitorIP   string   `yaml:"monitorIP"`
 }
 
 func ParseConfig() *TASCConfig {

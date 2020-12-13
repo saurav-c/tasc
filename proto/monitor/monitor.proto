@@ -1,0 +1,9 @@
+syntax="proto3";
+
+message Statistics {
+  map<string, Latencies> stats = 1;
+}
+
+message Latencies {
+  repeated double value = 1;
+}

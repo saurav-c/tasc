@@ -13,6 +13,10 @@ cd ../routing
 go build
 echo "Built Key Router"
 
+cd ../monitor
+go build
+echo "Built Monitoring Node"
+
 cd ../../cli
 go build
 

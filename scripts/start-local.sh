@@ -20,10 +20,14 @@ echo "Started Key Node"
 ./cmd/routing/routing -mode key &
 RID=$!
 echo "Started Key Router"
+./cmd/monitor/monitor &
+MID=$!
+echo "Started Monitoring Node"
 
 echo $TXID > pids
 echo $KID >> pids
 echo $RID >> pids
+echo $MID >> pids
 
 if [ "$2" = "y" ] || [ "$2" = "yes" ]; then
   sleep 2 # wait for gRPC servers to start
