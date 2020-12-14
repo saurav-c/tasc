@@ -2,13 +2,14 @@ package main
 
 import (
 	"fmt"
+	cmn "github.com/saurav-c/aftsi/lib/common"
+	mpb "github.com/saurav-c/aftsi/proto/monitor"
 	"os"
 	"sync"
 	"time"
 
 	"github.com/saurav-c/aftsi/config"
 	pb "github.com/saurav-c/aftsi/proto/aftsi"
-	mt "github.com/saurav-c/aftsi/proto/monitor"
 	log "github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 
@@ -50,9 +51,6 @@ const (
 
 	// In ms
 	FlushFrequency = 1000
-
-	// Monitor Node Port
-	monitorPushPort = 10000
 )
 
 type TransactionEntry struct {
@@ -84,9 +82,9 @@ type AftSIServer struct {
 	commitLock       *sync.Mutex
 	zmqInfo          ZMQInfo
 	Responder        *ResponseHandler
-	PusherCache      *SocketCache
+	PusherCache      *cmn.SocketCache
 	logFile          *os.File
-	monitor          *Monitor
+	monitor          *cmn.StatsMonitor
 }
 
 type ZMQInfo struct {
@@ -107,103 +105,6 @@ type ResponseHandler struct {
 	endMutex          *sync.RWMutex
 	createTxnChannels map[uint32](chan *pb.CreateTxnEntryResp)
 	createMutex       *sync.RWMutex
-}
-
-type SocketCache struct {
-	locks       map[string]*sync.Mutex
-	sockets     map[string]*zmq.Socket
-	lockMutex   *sync.RWMutex
-	socketMutex *sync.RWMutex
-}
-
-type Monitor struct {
-	pusher   *zmq.Socket
-	statsMap map[string][]float64
-	lock     *sync.Mutex
-}
-
-func (monitor *Monitor) trackStat(msg string, latency float64) {
-	msg = "TXNMANAGER" + "-" + msg
-	monitor.lock.Lock()
-	if _, ok := monitor.statsMap[msg]; !ok {
-		monitor.statsMap[msg] = make([]float64, 0)
-	}
-	monitor.statsMap[msg] = append(monitor.statsMap[msg], latency)
-	monitor.lock.Unlock()
-}
-
-func (monitor *Monitor) sendStats() {
-	for true {
-		time.Sleep(100 * time.Millisecond)
-		statsMap := make(map[string]*mt.Latencies)
-		monitor.lock.Lock()
-		if len(monitor.statsMap) == 0 {
-			monitor.lock.Unlock()
-			continue
-		}
-		for msg, lats := range monitor.statsMap {
-			latencies := &mt.Latencies{
-				Value: lats,
-			}
-			statsMap[msg] = latencies
-		}
-		monitor.statsMap = make(map[string][]float64)
-		monitor.lock.Unlock()
-		statsMsg := &mt.Statistics{
-			Stats: statsMap,
-		}
-		data, _ := proto.Marshal(statsMsg)
-		monitor.pusher.SendBytes(data, zmq.DONTWAIT)
-	}
-}
-
-func (cache *SocketCache) lock(ctx *zmq.Context, address string) {
-	cache.lockMutex.Lock()
-	_, ok := cache.locks[address]
-	if !ok {
-		cache.socketMutex.Lock()
-		cache.locks[address] = &sync.Mutex{}
-		cache.sockets[address] = createSocket(zmq.PUSH, ctx, address, false)
-		cache.socketMutex.Unlock()
-	}
-	addrLock := cache.locks[address]
-	cache.lockMutex.Unlock()
-	addrLock.Lock()
-}
-
-func (cache *SocketCache) unlock(address string) {
-	cache.lockMutex.RLock()
-	cache.locks[address].Unlock()
-	cache.lockMutex.RUnlock()
-}
-
-// Lock and Unlock need to be called on the Cache for this address
-func (cache *SocketCache) getSocket(address string) *zmq.Socket {
-	cache.socketMutex.RLock()
-	socket := cache.sockets[address]
-	cache.socketMutex.RUnlock()
-	return socket
-}
-
-func createSocket(tp zmq.Type, context *zmq.Context, address string, bind bool) *zmq.Socket {
-	sckt, err := context.NewSocket(tp)
-	if err != nil {
-		fmt.Println("Unexpected error while creating new socket:\n", err)
-		os.Exit(1)
-	}
-
-	if bind {
-		err = sckt.Bind(address)
-	} else {
-		err = sckt.Connect(address)
-	}
-
-	if err != nil {
-		fmt.Println("Unexpected error while binding/connecting socket:\n", err)
-		os.Exit(1)
-	}
-
-	return sckt
 }
 
 // Listens for incoming requests via ZMQ
@@ -317,13 +218,13 @@ func NewAftSIServer(debugMode bool) (*AftSIServer, int, error) {
 	KeyRouterClient := rtr.NewRouterClient(connKey)
 
 	// Setup Txn Manager ZMQ sockets
-	createTxnReqPuller := createSocket(zmq.PULL, zctx, fmt.Sprintf(PullTemplate, createTxnPortReq), true)
-	createTxnRespPuller := createSocket(zmq.PULL, zctx, fmt.Sprintf(PullTemplate, createTxnPortResp), true)
+	createTxnReqPuller := cmn.CreateSocket(zmq.PULL, zctx, fmt.Sprintf(PullTemplate, createTxnPortReq), true)
+	createTxnRespPuller := cmn.CreateSocket(zmq.PULL, zctx, fmt.Sprintf(PullTemplate, createTxnPortResp), true)
 
 	// Setup Key Node sockets
-	readPuller := createSocket(zmq.PULL, zctx, fmt.Sprintf(PullTemplate, ReadRespPullPort), true)
-	validatePuller := createSocket(zmq.PULL, zctx, fmt.Sprintf(PullTemplate, ValRespPullPort), true)
-	endTxnPuller := createSocket(zmq.PULL, zctx, fmt.Sprintf(PullTemplate, EndTxnRespPort), true)
+	readPuller := cmn.CreateSocket(zmq.PULL, zctx, fmt.Sprintf(PullTemplate, ReadRespPullPort), true)
+	validatePuller := cmn.CreateSocket(zmq.PULL, zctx, fmt.Sprintf(PullTemplate, ValRespPullPort), true)
+	endTxnPuller := cmn.CreateSocket(zmq.PULL, zctx, fmt.Sprintf(PullTemplate, EndTxnRespPort), true)
 
 	zmqInfo := ZMQInfo{
 		context:             zctx,
@@ -345,12 +246,7 @@ func NewAftSIServer(debugMode bool) (*AftSIServer, int, error) {
 		createMutex:       &sync.RWMutex{},
 	}
 
-	pusherCache := SocketCache{
-		locks:       make(map[string]*sync.Mutex),
-		sockets:     make(map[string]*zmq.Socket),
-		lockMutex:   &sync.RWMutex{},
-		socketMutex: &sync.RWMutex{},
-	}
+	pusherCache := cmn.NewSocketCache()
 
 	serverID := "0"
 
@@ -367,11 +263,9 @@ func NewAftSIServer(debugMode bool) (*AftSIServer, int, error) {
 	}
 	log.SetLevel(log.DebugLevel)
 
-	monitorPusher := createSocket(zmq.PUSH, zctx, fmt.Sprintf(PushTemplate, configValue.MonitorIP, monitorPushPort), false)
-	monitor := Monitor{
-		pusher:   monitorPusher,
-		statsMap: make(map[string][]float64),
-		lock:     &sync.Mutex{},
+	monitor, err := cmn.NewStatsMonitor(mpb.NodeType_TXNMANAGER, configValue.IpAddress, configValue.MonitorIP)
+	if err != nil {
+		log.Error("Unable to create statistics monitor")
 	}
 
 	return &AftSIServer{
@@ -389,8 +283,8 @@ func NewAftSIServer(debugMode bool) (*AftSIServer, int, error) {
 		ReadCacheLock:    &sync.RWMutex{},
 		zmqInfo:          zmqInfo,
 		Responder:        &responder,
-		PusherCache:      &pusherCache,
+		PusherCache:      pusherCache,
 		logFile:          file,
-		monitor:          &monitor,
+		monitor:          monitor,
 	}, 0, nil
 }

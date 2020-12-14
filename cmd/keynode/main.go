@@ -364,7 +364,7 @@ func (k *KeyNode) endTransaction(tid string, action int8, writeBuffer map[string
 	start := time.Now()
 	k._deleteFromPendingKVI(TxnKeys, keyVersion, TRANSACTION_SUCCESS)
 	end := time.Now()
-	go k.logExecutionTime("Delete From Pending KVI Time", end.Sub(start))
+	go k.monitor.TrackStat(tid, "Delete From Pending KVI Time", end.Sub(start))
 
 	return nil
 }

@@ -32,25 +32,17 @@ func _convertStringToBytes(stringSlice []string) []byte {
 	return []byte(stringByte)
 }
 
-func (monitor *Monitor) logExecutionTime(start time.Time, msg string) {
-	end := time.Now()
-	diff := end.Sub(start)
-	monitor.logTime(msg, diff)
-}
-
-func (monitor *Monitor) logTime(msg string, diff time.Duration) {
-	log.Debugf("%s: %f ms", msg, diff.Seconds()*1000)
-	monitor.trackStat(msg, diff.Seconds()*1000)
-}
-
 func (s *AftSIServer) StartTransaction(ctx context.Context, emp *empty.Empty) (*pb.TransactionID, error) {
-	defer s.monitor.logExecutionTime(time.Now(), "Start Txn Time")
+	start := time.Now()
+
 	// Generate TID
 	s.counterMutex.Lock()
 	counter := s.counter
 	s.counter += 1
 	s.counterMutex.Unlock()
 	tid := s.serverID + strconv.FormatUint(counter, 10)
+
+	defer s.monitor.TrackFuncExecTime(tid,"Start Txn Time", start)
 
 	s.CreateTransactionEntry(tid)
 	return &pb.TransactionID{
@@ -81,10 +73,11 @@ func (s *AftSIServer) CreateTransactionEntry(tid string) {
 }
 
 func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.TransactionResponse, error) {
-	defer s.monitor.logExecutionTime(time.Now(), "Read time")
 	// Parse read request fields
 	tid := readReq.GetTid()
 	key := readReq.GetKey()
+
+	defer s.monitor.TrackFuncExecTime(tid,"Read time", time.Now())
 
 	s.TransactionMutex.RLock()
 	txnEntry, ok := s.TransactionTable[tid]
@@ -168,10 +161,10 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 	data, _ := proto.Marshal(keyReq)
 	addr := fmt.Sprintf(PushTemplate, keyIP, readPullPort)
 
-	s.PusherCache.lock(s.zmqInfo.context, addr)
-	readPusher := s.PusherCache.getSocket(addr)
+	s.PusherCache.Lock(s.zmqInfo.context, addr)
+	readPusher := s.PusherCache.GetSocket(addr)
 	readPusher.SendBytes(data, zmq.DONTWAIT)
-	s.PusherCache.unlock(addr)
+	s.PusherCache.Unlock(addr)
 
 	readResponse := <-rChan
 
@@ -208,11 +201,12 @@ func (s *AftSIServer) Read(ctx context.Context, readReq *pb.ReadRequest) (*pb.Tr
 }
 
 func (s *AftSIServer) Write(ctx context.Context, writeReq *pb.WriteRequest) (*pb.TransactionResponse, error) {
-	defer s.monitor.logExecutionTime(time.Now(), "Write time")
 	// Parse read request fields
 	tid := writeReq.GetTid()
 	key := writeReq.GetKey()
 	val := writeReq.GetValue()
+
+	defer s.monitor.TrackFuncExecTime(tid, "Write time", time.Now())
 
 	s.TransactionMutex.RLock()
 	txnEntry, ok := s.TransactionTable[tid]
@@ -237,9 +231,9 @@ func (s *AftSIServer) Write(ctx context.Context, writeReq *pb.WriteRequest) (*pb
 }
 
 func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.TransactionID) (*pb.TransactionResponse, error) {
-	defer s.monitor.logExecutionTime(time.Now(), "Commit time")
-	actualStart := time.Now()
 	tid := req.GetTid()
+
+	defer s.monitor.TrackFuncExecTime(tid, "Commit time", time.Now())
 
 	cStart := time.Now()
 	s.TransactionMutex.RLock()
@@ -273,13 +267,13 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 		writeVals = append(writeVals, v)
 	}
 	cEnd := time.Now()
-	go s.monitor.logTime("Commit Setup Time", cEnd.Sub(cStart))
+	go s.monitor.TrackStat(tid,"Commit Setup Time", cEnd.Sub(cStart))
 
 	// Fetch KeyNode IP addresses
 	rStart := time.Now()
 	respRouter, err := s.keyRouterConn.MultipleLookUp(context.TODO(), &router.RouterReqMulti{Req: writeSet})
 	rEnd := time.Now()
-	go s.monitor.logTime("Router Lookup Time", rEnd.Sub(rStart))
+	go s.monitor.TrackStat(tid,"Router Lookup Time", rEnd.Sub(rStart))
 
 	if err != nil {
 		return &pb.TransactionResponse{E: pb.TransactionError_FAILURE}, err
@@ -316,7 +310,7 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 		}
 	}
 	end := time.Now()
-	go s.monitor.logTime("Phase 1 2PC Time", end.Sub(start))
+	go s.monitor.TrackStat(tid, "Phase 1 2PC Time", end.Sub(start))
 
 	endChannel := make(chan bool, len(keyMap))
 
@@ -338,18 +332,14 @@ func (s *AftSIServer) CommitTransaction(ctx context.Context, req *pb.Transaction
 		}
 	}
 	end = time.Now()
-	go s.monitor.logTime("Phase 2 2PC Time", end.Sub(start))
+	go s.monitor.TrackStat(tid, "Phase 2 2PC Time", end.Sub(start))
 
 	if toCommit {
 		// Wait for storage write to be done
 		<-storageChannel
 		sEnd := time.Now()
-		go s.monitor.logTime("Extra Storage Wait Time", sEnd.Sub(end))
-
+		go s.monitor.TrackStat(tid, "Extra Storage Wait Time", sEnd.Sub(end))
 		txnEntry.status = TxnCommitted
-		actualEnd := time.Now()
-		go s.monitor.logTime("Actual Commit Time", actualEnd.Sub(actualStart))
-
 		return &pb.TransactionResponse{
 			E: pb.TransactionError_SUCCESS,
 		}, nil
@@ -381,11 +371,11 @@ func (s *AftSIServer) validateTransaction(ipAddr string, keys []string,
 	}
 	data, _ := proto.Marshal(vReq)
 
-	s.PusherCache.lock(s.zmqInfo.context, addr)
-	validatePusher := s.PusherCache.getSocket(addr)
+	s.PusherCache.Lock(s.zmqInfo.context, addr)
+	validatePusher := s.PusherCache.GetSocket(addr)
 
 	validatePusher.SendBytes(data, zmq.DONTWAIT)
-	s.PusherCache.unlock(addr)
+	s.PusherCache.Unlock(addr)
 
 	// Timeout if no response heard
 	select {
@@ -452,11 +442,11 @@ func (s *AftSIServer) endTransaction(ipAddr string, tid string, toCommit bool, e
 
 	data, _ := proto.Marshal(endReq)
 
-	s.PusherCache.lock(s.zmqInfo.context, addr)
-	endPusher := s.PusherCache.getSocket(addr)
+	s.PusherCache.Lock(s.zmqInfo.context, addr)
+	endPusher := s.PusherCache.GetSocket(addr)
 
 	endPusher.SendBytes(data, zmq.DONTWAIT)
-	s.PusherCache.unlock(addr)
+	s.PusherCache.Unlock(addr)
 
 	// Timeout if no response heard
 	select {
@@ -473,8 +463,9 @@ func (s *AftSIServer) endTransaction(ipAddr string, tid string, toCommit bool, e
 }
 
 func (s *AftSIServer) AbortTransaction(ctx context.Context, req *pb.TransactionID) (*pb.TransactionResponse, error) {
-	defer s.monitor.logExecutionTime(time.Now(), "Abort time")
 	tid := req.GetTid()
+
+	defer s.monitor.TrackFuncExecTime(tid, "Abort time", time.Now())
 
 	s.TransactionMutex.RLock()
 	txnEntry, ok := s.TransactionTable[tid]
@@ -524,7 +515,7 @@ func main() {
 	defer aftsi.shutdown(*debug)
 
 	// Send statistics to monitoring node
-	go aftsi.monitor.sendStats()
+	go aftsi.monitor.SendStats(1 * time.Second)
 
 	log.Infof("Starting transaction manager %s", aftsi.serverID)
 	if err = server.Serve(lis); err != nil {
