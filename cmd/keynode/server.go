@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	cmn "github.com/saurav-c/aftsi/lib/common"
 	"os"
 	"sync"
 	"time"
@@ -13,7 +14,7 @@ import (
 	"github.com/saurav-c/aftsi/config"
 	"github.com/saurav-c/aftsi/lib/storage"
 	pb "github.com/saurav-c/aftsi/proto/keynode"
-	mt "github.com/saurav-c/aftsi/proto/monitor"
+	mpb "github.com/saurav-c/aftsi/proto/monitor"
 )
 
 const (
@@ -34,9 +35,6 @@ const (
 
 	// In Seconds
 	FlushFrequency = 1000
-
-	// Monitor Node Port
-	monitorPushPort = 10000
 )
 
 type pendingTxn struct {
@@ -67,9 +65,9 @@ type KeyNode struct {
 	commitBuffer               map[string][]byte
 	commitLock                 *sync.RWMutex
 	zmqInfo                    ZMQInfo
-	pusherCache                *SocketCache
+	pusherCache                *cmn.SocketCache
 	logFile                    *os.File
-	monitor                    *Monitor
+	monitor                    *cmn.StatsMonitor
 }
 
 type ZMQInfo struct {
@@ -77,82 +75,6 @@ type ZMQInfo struct {
 	readPuller     *zmq.Socket
 	validatePuller *zmq.Socket
 	endTxnPuller   *zmq.Socket
-}
-
-type SocketCache struct {
-	locks       map[string]*sync.Mutex
-	sockets     map[string]*zmq.Socket
-	lockMutex   *sync.RWMutex
-	socketMutex *sync.RWMutex
-}
-
-type Monitor struct {
-	pusher   *zmq.Socket
-	statsMap map[string][]float64
-	lock     *sync.Mutex
-}
-
-func (monitor *Monitor) trackStat(msg string, latency float64) {
-	msg = "KEYNODE" + "-" + msg
-	monitor.lock.Lock()
-	if _, ok := monitor.statsMap[msg]; !ok {
-		monitor.statsMap[msg] = make([]float64, 0)
-	}
-	monitor.statsMap[msg] = append(monitor.statsMap[msg], latency)
-	monitor.lock.Unlock()
-}
-
-func (monitor *Monitor) sendStats() {
-	for true {
-		time.Sleep(100 * time.Millisecond)
-		statsMap := make(map[string]*mt.Latencies)
-		monitor.lock.Lock()
-		if len(monitor.statsMap) == 0 {
-			monitor.lock.Unlock()
-			continue
-		}
-		for msg, lats := range monitor.statsMap {
-			latencies := &mt.Latencies{
-				Value: lats,
-			}
-			statsMap[msg] = latencies
-		}
-		monitor.statsMap = make(map[string][]float64)
-		monitor.lock.Unlock()
-		statsMsg := &mt.Statistics{
-			Stats: statsMap,
-		}
-		data, _ := proto.Marshal(statsMsg)
-		monitor.pusher.SendBytes(data, zmq.DONTWAIT)
-	}
-}
-
-func (cache *SocketCache) lock(ctx *zmq.Context, address string) {
-	cache.lockMutex.Lock()
-	_, ok := cache.locks[address]
-	if !ok {
-		cache.socketMutex.Lock()
-		cache.locks[address] = &sync.Mutex{}
-		cache.sockets[address] = createSocket(zmq.PUSH, ctx, address, false)
-		cache.socketMutex.Unlock()
-	}
-	addrLock := cache.locks[address]
-	cache.lockMutex.Unlock()
-	addrLock.Lock()
-}
-
-func (cache *SocketCache) unlock(address string) {
-	cache.lockMutex.RLock()
-	cache.locks[address].Unlock()
-	cache.lockMutex.RUnlock()
-}
-
-// Lock and Unlock need to be called on the Cache for this address
-func (cache *SocketCache) getSocket(address string) *zmq.Socket {
-	cache.socketMutex.RLock()
-	socket := cache.sockets[address]
-	cache.socketMutex.RUnlock()
-	return socket
 }
 
 func InsertParticularIndex(list []string, kv string) []string {
@@ -185,34 +107,8 @@ func FindIndex(list []string, kv string) int {
 	return -1
 }
 
-func createSocket(tp zmq.Type, context *zmq.Context, address string, bind bool) *zmq.Socket {
-	sckt, err := context.NewSocket(tp)
-	if err != nil {
-		fmt.Println("Unexpected error while creating new socket:\n", err)
-		os.Exit(1)
-	}
-
-	if bind {
-		err = sckt.Bind(address)
-	} else {
-		err = sckt.Connect(address)
-	}
-
-	if err != nil {
-		fmt.Println("Unexpected error while binding/connecting socket:\n", err)
-		os.Exit(1)
-	}
-
-	return sckt
-}
-
-func (k *KeyNode) logExecutionTime(msg string, diff time.Duration) {
-	log.Debugf("%s: %f ms", msg, diff.Seconds()*1000)
-	k.monitor.trackStat(msg, diff.Seconds()*1000)
-}
-
 func startKeyNode(keyNode *KeyNode) {
-	go keyNode.monitor.sendStats()
+	go keyNode.monitor.SendStats(1 * time.Second)
 
 	poller := zmq.NewPoller()
 	zmqInfo := keyNode.zmqInfo
@@ -257,7 +153,8 @@ func readHandler(keyNode *KeyNode, req *pb.KeyNodeRequest) {
 	keyVersion, val, coWrites, err := keyNode.readKey(req.GetTid(),
 		req.GetKey(), req.GetReadSet(), req.GetBeginTS(), req.GetLowerBound())
 	end := time.Now()
-	go keyNode.logExecutionTime("Read Key Time", end.Sub(start))
+
+	go keyNode.monitor.TrackStat(req.GetTid(), "Read Key Time", end.Sub(start))
 
 	var resp *pb.KeyNodeResponse
 
@@ -279,17 +176,18 @@ func readHandler(keyNode *KeyNode, req *pb.KeyNodeRequest) {
 
 	data, _ := proto.Marshal(resp)
 	addr := fmt.Sprintf(PushTemplate, req.GetTxnMngrIP(), readRespPort)
-	keyNode.pusherCache.lock(keyNode.zmqInfo.context, addr)
-	pusher := keyNode.pusherCache.getSocket(addr)
+	keyNode.pusherCache.Lock(keyNode.zmqInfo.context, addr)
+	pusher := keyNode.pusherCache.GetSocket(addr)
 	pusher.SendBytes(data, zmq.DONTWAIT)
-	keyNode.pusherCache.unlock(addr)
+	keyNode.pusherCache.Unlock(addr)
 }
 
 func validateHandler(keyNode *KeyNode, req *pb.ValidateRequest) {
 	start := time.Now()
 	action := keyNode.validate(req.GetTid(), req.GetBeginTS(), req.GetCommitTS(), req.GetKeys())
 	end := time.Now()
-	go keyNode.logExecutionTime("Validation Time", end.Sub(start))
+
+	go keyNode.monitor.TrackStat(req.GetTid(), "Validation Time", end.Sub(start))
 
 	var resp *pb.ValidateResponse
 
@@ -309,10 +207,10 @@ func validateHandler(keyNode *KeyNode, req *pb.ValidateRequest) {
 	data, _ := proto.Marshal(resp)
 
 	addr := fmt.Sprintf(PushTemplate, req.GetTxnMngrIP(), valRespPort)
-	keyNode.pusherCache.lock(keyNode.zmqInfo.context, addr)
-	pusher := keyNode.pusherCache.getSocket(addr)
+	keyNode.pusherCache.Lock(keyNode.zmqInfo.context, addr)
+	pusher := keyNode.pusherCache.GetSocket(addr)
 	pusher.SendBytes(data, zmq.DONTWAIT)
-	keyNode.pusherCache.unlock(addr)
+	keyNode.pusherCache.Unlock(addr)
 }
 
 func endTxnHandler(keyNode *KeyNode, req *pb.FinishRequest) {
@@ -334,7 +232,8 @@ func endTxnHandler(keyNode *KeyNode, req *pb.FinishRequest) {
 	start := time.Now()
 	err := keyNode.endTransaction(req.GetTid(), action, writeMap)
 	end := time.Now()
-	go keyNode.logExecutionTime("End Transaction Time", end.Sub(start))
+
+	go keyNode.monitor.TrackStat(req.GetTid(), "End Transaction Time", end.Sub(start))
 
 	var e pb.KeyError
 	if err != nil {
@@ -352,10 +251,10 @@ func endTxnHandler(keyNode *KeyNode, req *pb.FinishRequest) {
 	data, _ := proto.Marshal(resp)
 
 	addr := fmt.Sprintf(PushTemplate, req.GetTxnMngrIP(), endTxnRespPort)
-	keyNode.pusherCache.lock(keyNode.zmqInfo.context, addr)
-	pusher := keyNode.pusherCache.getSocket(addr)
+	keyNode.pusherCache.Lock(keyNode.zmqInfo.context, addr)
+	pusher := keyNode.pusherCache.GetSocket(addr)
 	pusher.SendBytes(data, zmq.DONTWAIT)
-	keyNode.pusherCache.unlock(addr)
+	keyNode.pusherCache.Unlock(addr)
 }
 
 func NewKeyNode(debugMode bool) (*KeyNode, error) {
@@ -378,9 +277,9 @@ func NewKeyNode(debugMode bool) (*KeyNode, error) {
 		return nil, err
 	}
 
-	readPuller := createSocket(zmq.PULL, zctx, fmt.Sprintf(PullTemplate, readPullPort), true)
-	validatePuller := createSocket(zmq.PULL, zctx, fmt.Sprintf(PullTemplate, validatePullPort), true)
-	endTxnPuller := createSocket(zmq.PULL, zctx, fmt.Sprintf(PullTemplate, endTxnPort), true)
+	readPuller := cmn.CreateSocket(zmq.PULL, zctx, fmt.Sprintf(PullTemplate, readPullPort), true)
+	validatePuller := cmn.CreateSocket(zmq.PULL, zctx, fmt.Sprintf(PullTemplate, validatePullPort), true)
+	endTxnPuller := cmn.CreateSocket(zmq.PULL, zctx, fmt.Sprintf(PullTemplate, endTxnPort), true)
 
 	zmqInfo := ZMQInfo{
 		context:        zctx,
@@ -389,12 +288,7 @@ func NewKeyNode(debugMode bool) (*KeyNode, error) {
 		endTxnPuller:   endTxnPuller,
 	}
 
-	pusherCache := SocketCache{
-		locks:       make(map[string]*sync.Mutex),
-		sockets:     make(map[string]*zmq.Socket),
-		lockMutex:   &sync.RWMutex{},
-		socketMutex: &sync.RWMutex{},
-	}
+	pusherCache := cmn.NewSocketCache()
 
 	var file *os.File
 	if !debugMode {
@@ -409,11 +303,9 @@ func NewKeyNode(debugMode bool) (*KeyNode, error) {
 	}
 	log.SetLevel(log.DebugLevel)
 
-	monitorPusher := createSocket(zmq.PUSH, zctx, fmt.Sprintf(PushTemplate, configValue.MonitorIP, monitorPushPort), false)
-	monitor := Monitor{
-		pusher:   monitorPusher,
-		statsMap: make(map[string][]float64),
-		lock:     &sync.Mutex{},
+	monitor, err := cmn.NewStatsMonitor(mpb.NodeType_KEYNODE, configValue.IpAddress, configValue.MonitorIP)
+	if err != nil {
+		log.Error("Unable to create statistics monitor")
 	}
 
 	return &KeyNode{
@@ -433,8 +325,8 @@ func NewKeyNode(debugMode bool) (*KeyNode, error) {
 		readCache:                  make(map[string][]byte),
 		readCacheLock:              &sync.RWMutex{},
 		zmqInfo:                    zmqInfo,
-		pusherCache:                &pusherCache,
+		pusherCache:                pusherCache,
 		logFile:                    file,
-		monitor:                    &monitor,
+		monitor:                    monitor,
 	}, nil
 }

@@ -1,9 +1,21 @@
 syntax="proto3";
 
 message Statistics {
-  map<string, Latencies> stats = 1;
+  string addr = 1;
+  NodeType node = 2;
+  map<string, LatencyList> stats = 3;
 }
 
-message Latencies {
-  repeated double value = 1;
+message LatencyList {
+  repeated Latency latencies = 1;
+}
+
+message Latency {
+  string tid = 1;
+  double value = 2;
+}
+
+enum NodeType {
+  TXNMANAGER = 0;
+  KEYNODE = 1;
 }
