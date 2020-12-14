@@ -12,6 +12,7 @@ cluster/__pycache__/
 cmd/keynode/keynode
 cmd/aftsi/aftsi
 cmd/routing/routing
+cmd/monitor/monitor
 client/client
 cli/cli
 benchmark/benchmark
@@ -20,3 +21,4 @@ benchmark/benchmarks.txt
 logs/
 *.log
 pids
+stats/

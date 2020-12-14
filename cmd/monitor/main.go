@@ -53,6 +53,10 @@ func main() {
 	}
 	log.SetOutput(file)
 
+	if _, err := os.Stat("stats"); os.IsNotExist(err) {
+		os.Mkdir("stats", os.ModePerm)
+	}
+
 	log.Info("Started monitoring node")
 
 	for true {
@@ -74,19 +78,36 @@ func logStatistics(data []byte) {
 	log.Debug("Received statistics message")
 	statResp := &mt.Statistics{}
 	proto.Unmarshal(data, statResp)
+
 	statsMap := statResp.GetStats()
+	nodeType := statResp.GetNode()
+	nodeAddr := statResp.GetAddr()
 
 	jdoc, err := json.Marshal(statsMap)
 	if err != nil {
 		log.Fatal(err)
 	}
-
 	jstring := string(jdoc)
 
-	f, err := os.OpenFile("stats.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	fileName := "stats"
+	if nodeType == mt.NodeType_TXNMANAGER {
+		fileName += "txn-manager-" + nodeAddr
+	} else if nodeType == mt.NodeType_KEYNODE {
+		fileName += "key-node-" + nodeAddr
+	} else {
+		log.Errorf("Unknown node type %s from node %s", nodeType, nodeAddr)
+		return
+	}
+
+	if _, err := os.Stat(fileName); os.IsNotExist(err) {
+		jstring = "[" + jstring
+	}
+
+	f, err := os.OpenFile(fileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		log.Fatal(err)
 	}
-	f.WriteString(jstring)
+
+	f.WriteString(jstring + ", ")
 	f.Close()
 }
