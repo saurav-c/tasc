@@ -6,6 +6,7 @@
 *.ipynb
 benchmark/.ipynb_checkpoints
 .DS_Store
+**/*.go
 
 cluster/__pycache__/
 

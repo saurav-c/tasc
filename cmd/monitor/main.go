@@ -89,11 +89,11 @@ func logStatistics(data []byte) {
 	}
 	jstring := string(jdoc)
 
-	fileName := "stats"
+	fileName := "stats/"
 	if nodeType == mt.NodeType_TXNMANAGER {
-		fileName += "txn-manager-" + nodeAddr
+		fileName += "txn-manager_" + nodeAddr
 	} else if nodeType == mt.NodeType_KEYNODE {
-		fileName += "key-node-" + nodeAddr
+		fileName += "key-node_" + nodeAddr
 	} else {
 		log.Errorf("Unknown node type %s from node %s", nodeType, nodeAddr)
 		return
