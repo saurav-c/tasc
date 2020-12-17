@@ -3,6 +3,7 @@ syntax="proto3";
 message RouterRequest {
     string tid = 1;
     repeated string keys = 2;
+    string ipAddress = 3;
 }
 
 message RouterResponse {

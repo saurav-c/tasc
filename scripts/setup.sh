@@ -50,31 +50,31 @@ cd $GOPATH/src/github.com/saurav-c
 sudo git clone https://github.com/saurav-c/aftsi
 
 # Configuring based on node desired
-cd aftsi/proto/
+cd tasc/proto/
 
 # Giving Ubuntu User Write Access in the Go folder
 sudo chmod 777 -R /home/ubuntu/go
 
 sudo mkdir -p keynode/api
-sudo mkdir -p aftsi/api
-sudo mkdir -p routing/api
+sudo mkdir -p tasc/api
+sudo mkdir -p router/api
 
-protoc -I aftsi/ aftsi/aftsi.proto --go_out=plugins=grpc:aftsi/api
+protoc -I tasc/ tasc/tasc.proto --go_out=plugins=grpc:tasc/api
 protoc -I keynode/ keynode/keynode.proto --go_out=plugins=grpc:keynode/api
-protoc -I routing/ routing/router.proto --go_out=plugins=grpc:routing/api
+protoc -I router/ router/router.proto --go_out=plugins=grpc:router/api
 
 if [[ "$1" = "aftsi" ]]
 then
   # Creating the executable for AFTSI
-  cd $GOPATH/src/github.com/saurav-c/aftsi/cmd/aftsi
+  cd $GOPATH/src/github.com/saurav-c/tasc/cmd/tasc
   sudo go build
-  ./aftsi
+  ./tasc
 fi
 
 if [[ "$1" = "keynode" ]]
 then
   # Creating the executable for Keynode
-  cd $GOPATH/src/github.com/saurav-c/aftsi/cmd/keynode
+  cd $GOPATH/src/github.com/saurav-c/tasc/cmd/keynode
   sudo go build
   ./keynode
 fi
@@ -82,7 +82,7 @@ fi
 if [[ "$1" = "cli" ]]
 then
   # Creating the executable for CLI
-  cd $GOPATH/src/github.com/saurav-c/aftsi/cli
+  cd $GOPATH/src/github.com/saurav-c/tasc/cli
   sudo go build
   ./cli
 fi
@@ -90,16 +90,16 @@ fi
 if [[ "$1" = "routing" ]]
 then
   # Creating the executable for Router
-  cd $GOPATH/src/github.com/saurav-c/aftsi/cmd/routing
+  cd $GOPATH/src/github.com/saurav-c/tasc/cmd/router
   sudo go build
   mode=$2
-  ./routing -mode $mode
+  ./router -mode $mode
 fi
 
 if [[ "$1" = "benchmark" ]]
 then
   # Creating the executable for Router
-  cd $GOPATH/src/github.com/saurav-c/aftsi/benchmark
+  cd $GOPATH/src/github.com/saurav-c/tasc/benchmark
   sudo go build
   ./benchmark -address $2 -type $3 -numReq $4 -numThreads $5 -rtr $6
 fi

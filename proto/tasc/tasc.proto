@@ -27,7 +27,7 @@ service Tasc {
 }
 
 // An enum that tracks the status of each transaction.
-enum TransactionStatus {
+enum TascTransactionStatus {
     // The default status indicates that the transaction is currently running.
     RUNNING = 0;
 
@@ -43,7 +43,7 @@ message TransactionTag {
     string tid = 1;
 
     // The current status of the transaction
-    TransactionStatus status = 2;
+    TascTransactionStatus status = 2;
 }
 
 message TascRequest {
@@ -66,5 +66,5 @@ message TascRequest {
 }
 
 message TransactionWriteSet {
-    repeated string keyVersion = 1;
+    repeated string keys = 1;
 }

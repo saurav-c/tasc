@@ -5,12 +5,14 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	cmn "github.com/saurav-c/aftsi/lib/common"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/golang/protobuf/ptypes/empty"
-	pb "github.com/saurav-c/aftsi/proto/aftsi"
+	pb "github.com/saurav-c/aftsi/proto/tasc"
 
 	zmq "github.com/pebbe/zmq4"
 	"google.golang.org/grpc"
@@ -46,7 +48,9 @@ func main() {
 	}
 
 	reader := bufio.NewReader(os.Stdin)
-	tidClientMapping := map[string]pb.AftSIClient{}
+	tidClientMapping := map[string]pb.TascClient{}
+	tidMap := map[string]string{}
+	tidCounter := 0
 
 	for {
 		fmt.Print("> ")
@@ -63,8 +67,8 @@ func main() {
 				txnAddress = string(txnAddressBytes)
 			}
 			fmt.Println(txnAddress)
-			conn, err := grpc.Dial(fmt.Sprintf("%s:5000", txnAddress), grpc.WithInsecure())
-			tascClient := pb.NewAftSIClient(conn)
+			conn, err := grpc.Dial(fmt.Sprintf("%s:%d", txnAddress, cmn.TxnManagerServerPort), grpc.WithInsecure())
+			tascClient := pb.NewTascClient(conn)
 			start := time.Now()
 			tid, err := tascClient.StartTransaction(context.TODO(), &empty.Empty{})
 			end := time.Now()
@@ -74,19 +78,34 @@ func main() {
 				fmt.Printf("An error %s has occurred.\n", err)
 				return
 			}
+			aliasTid := strconv.Itoa(tidCounter)
+			tidCounter++
+			tidMap[aliasTid] = tid.Tid
 			fmt.Printf("The tid we are using is: %s\n", tid.GetTid())
+			fmt.Printf("You can use a tid alias: %s\n", aliasTid)
 		case "read":
 			if len(splitStringInput) != 3 {
 				fmt.Println("Incorrect usage: read <TID> <key>")
 				continue
 			}
 			tid := strings.TrimSpace(splitStringInput[1])
-			keyToFetch := strings.TrimSpace(splitStringInput[2])
-			readReq := &pb.ReadRequest{
-				Tid: tid,
-				Key: keyToFetch,
+			tid, ok := tidMap[tid]
+			if !ok {
+				fmt.Printf("Alias tid %s not found\n", tid)
+				continue
 			}
-			tascClient := tidClientMapping[tid]
+			keyToFetch := strings.TrimSpace(splitStringInput[2])
+			var keyPairs []*pb.TascRequest_KeyPair
+			keyPairs = append(keyPairs, &pb.TascRequest_KeyPair{Key: keyToFetch})
+			readReq := &pb.TascRequest{
+				Tid:   tid,
+				Pairs: keyPairs,
+			}
+			tascClient, ok := tidClientMapping[tid]
+			if !ok {
+				fmt.Printf("Unknown tid %s", tid)
+				continue
+			}
 			start := time.Now()
 			response, err := tascClient.Read(context.TODO(), readReq)
 			end := time.Now()
@@ -95,21 +114,31 @@ func main() {
 				fmt.Printf("An error %s has occurred.\n", err)
 				return
 			}
-			fmt.Printf("The value received is: %s\n", string(response.Value))
+			fmt.Printf("The value received is: %s\n", string(response.Pairs[0].Value))
 		case "write":
 			if len(splitStringInput) != 4 {
 				fmt.Println("Incorrect usage: write <TID> <key> <value>")
 				continue
 			}
 			tid := strings.TrimSpace(splitStringInput[1])
-			keyToWrite := strings.TrimSpace(splitStringInput[2])
-			valueToWrite := strings.TrimSpace(splitStringInput[3])
-			writeReq := &pb.WriteRequest{
-				Tid:   tid,
-				Key:   keyToWrite,
-				Value: []byte(valueToWrite),
+			tid, ok := tidMap[tid]
+			if !ok {
+				fmt.Printf("Alias tid %s not found\n", tid)
+				continue
 			}
-			tascClient := tidClientMapping[tid]
+			keyToWrite := strings.TrimSpace(splitStringInput[2])
+			valueToWrite := []byte(strings.TrimSpace(splitStringInput[3]))
+			var keyPairs []*pb.TascRequest_KeyPair
+			keyPairs = append(keyPairs, &pb.TascRequest_KeyPair{Key: keyToWrite, Value: valueToWrite})
+			writeReq := &pb.TascRequest{
+				Tid:   tid,
+				Pairs: keyPairs,
+			}
+			tascClient, ok := tidClientMapping[tid]
+			if !ok {
+				fmt.Printf("Unknown tid %s", tid)
+				continue
+			}
 			start := time.Now()
 			_, err := tascClient.Write(context.TODO(), writeReq)
 			end := time.Now()
@@ -125,11 +154,17 @@ func main() {
 				continue
 			}
 			tid := strings.TrimSpace(splitStringInput[1])
-			TID := &pb.TransactionID{
-				Tid: tid,
-				E:   0,
+			tid, ok := tidMap[tid]
+			if !ok {
+				fmt.Printf("Alias tid %s not found\n", tid)
+				continue
 			}
-			tascClient := tidClientMapping[tid]
+			TID := &pb.TransactionTag{Tid:tid}
+			tascClient, ok := tidClientMapping[tid]
+			if !ok {
+				fmt.Printf("Unknown tid %s", tid)
+				continue
+			}
 			start := time.Now()
 			resp, err := tascClient.CommitTransaction(context.TODO(), TID)
 			end := time.Now()
@@ -138,23 +173,28 @@ func main() {
 				fmt.Printf("An error %s has occurred.\n", err)
 				return
 			}
-			if resp.GetE() == pb.TransactionError_FAILURE {
-				fmt.Println("Transaction ABORTED")
-				continue
+			if resp.Status != pb.TascTransactionStatus_COMMITTED {
+				fmt.Println("ABORTED")
+			} else {
+				fmt.Println("Successfully COMMITTED")
 			}
-
-			fmt.Println("The commit was successful.")
 		case "abort":
 			if len(splitStringInput) != 2 {
 				fmt.Println("Incorrect usage: abort <TID>")
 				continue
 			}
 			tid := strings.TrimSpace(splitStringInput[1])
-			TID := &pb.TransactionID{
-				Tid: tid,
-				E:   0,
+			tid, ok := tidMap[tid]
+			if !ok {
+				fmt.Printf("Alias tid %s not found\n", tid)
+				continue
 			}
-			tascClient := tidClientMapping[tid]
+			TID := &pb.TransactionTag{Tid:tid}
+			tascClient, ok := tidClientMapping[tid]
+			if !ok {
+				fmt.Printf("Unknown tid %s", tid)
+				continue
+			}
 			_, err := tascClient.AbortTransaction(context.TODO(), TID)
 			if err != nil {
 				fmt.Printf("An error %s has occurred.\n", err)

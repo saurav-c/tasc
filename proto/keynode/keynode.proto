@@ -34,7 +34,8 @@ message ValidateResponse {
 message EndRequest {
     string tid = 1;
     TransactionAction action = 2;
-    string ipAddress = 3;
+    repeated string writeSet = 3;
+    string ipAddress = 4;
 }
 
 message EndResponse {

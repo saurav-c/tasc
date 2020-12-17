@@ -1,7 +1,7 @@
 # Save current working directory
 CWD=`pwd`
 
-cd ./cmd/aftsi
+cd ./cmd/manager
 go build
 echo "Built Transaction Manager"
 

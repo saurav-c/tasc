@@ -23,7 +23,7 @@ func NewStatsMonitor(node mpb.NodeType, nodeAddr string, monitorAddr string) (*S
 	if err != nil {
 		return nil, err
 	}
-	statsPusher := CreateSocket(zmq.PUSH, zctx, fmt.Sprintf(PushTemplate, monitorAddr, monitorPushPort), false)
+	statsPusher := CreateSocket(zmq.PUSH, zctx, fmt.Sprintf(PushTemplate, monitorAddr, MonitorPushPort), false)
 	return &StatsMonitor{
 		pusher:   statsPusher,
 		stats:    make(map[string]*mpb.LatencyList),

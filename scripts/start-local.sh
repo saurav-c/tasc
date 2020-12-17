@@ -10,13 +10,13 @@ if [ "$1" = "y" ] || [ "$1" = "yes" ]; then
   ./scripts/build-local.sh
 fi
 
-./cmd/aftsi/aftsi &
+./cmd/manager/manager &
 TXID=$!
 echo "Started Transaction Manager"
 ./cmd/keynode/keynode &
 KID=$!
 echo "Started Key Node"
-./cmd/routing/routing -mode key &
+./cmd/routing/routing &
 RID=$!
 echo "Started Key Router"
 ./cmd/monitor/monitor &
