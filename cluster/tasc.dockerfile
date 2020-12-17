@@ -63,8 +63,8 @@ RUN rm -f config/tasc-config.yml
 # Produce all keynode, tasc, monitor, and routing pb.go files
 WORKDIR proto
 RUN protoc -I aftsi/ aftsi/aftsi.proto --go_out=plugins=grpc:aftsi/
-RUN protoc -I keynode/ keynode/keynode.proto --go_out=plugins=grpc:keynode/
 RUN protoc -I routing/ routing/router.proto --go_out=plugins=grpc:routing/
+RUN protoc -I keynode/ keynode/keynode.proto --go_out=keynode/
 RUN protoc -I monitor/ monitor/monitor.proto --go_out=monitor/
 
 WORKDIR $GOPATH/src/github.com/saurav-c/aftsi/cluster

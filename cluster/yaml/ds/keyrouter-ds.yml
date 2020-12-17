@@ -26,6 +26,8 @@ spec:
           limits:
             cpu: "500m"
         env:
+        - name: BRANCH
+          value: master
         - name: ROLE
           value: keyrouter
         - name: NODE_IPS

@@ -20,6 +20,8 @@ spec:
       - name: lb-container
         image: tajshaik24/tasc
         imagePullPolicy: Always
-        env: 
+        env:
+        - name: BRANCH
+          value: master
         - name: ROLE
           value: lb

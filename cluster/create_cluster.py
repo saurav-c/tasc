@@ -9,7 +9,7 @@ import util
 ec2_client = boto3.client('ec2', os.getenv('AWS_REGION', 'us-east-1'))
 
 def create_cluster(txn_count, keynode_count, lb_count, benchmark_count, config_file, 
-            ssh_key, cluster_name, kops_bucket, aws_key_id, aws_key):
+            branch_name, ssh_key, cluster_name, kops_bucket, aws_key_id, aws_key):
     prefix = './'
     util.run_process(['./create_cluster_object.sh', kops_bucket, ssh_key], 'kops')
 
@@ -17,19 +17,19 @@ def create_cluster(txn_count, keynode_count, lb_count, benchmark_count, config_f
 
     print('Creating Monitor Node...')
     add_nodes(client, apps_client, config_file, "monitor", 1,
-              aws_key_id, aws_key, True, prefix)
+              aws_key_id, aws_key, True, prefix, branch_name)
 
     print('Creating %d Key Nodes...' % (keynode_count))
     add_nodes(client, apps_client, config_file, "keynode", keynode_count, aws_key_id,
-    aws_key, True, prefix)
+                aws_key, True, prefix, branch_name)
 
     print('Creating Keynode Router...')
     add_nodes(client, apps_client, config_file, "keyrouter", 1,
-              aws_key_id, aws_key, True, prefix)
+              aws_key_id, aws_key, True, prefix, branch_name)
     
     print('Creating %d Load Balancer Nodes...' % lb_count)
     add_nodes(client, apps_client, config_file, 'lb', lb_count,
-             aws_key_id, aws_key, True, prefix)
+             aws_key_id, aws_key, True, prefix, branch_name)
 
     lb_pods = client.list_namespaced_pod(namespace=util.NAMESPACE,
                                          label_selector="role=lb").items
@@ -40,11 +40,11 @@ def create_cluster(txn_count, keynode_count, lb_count, benchmark_count, config_f
 
     print('Creating %d TASC nodes...' % (txn_count))
     add_nodes(client, apps_client, config_file, 'tasc', txn_count,
-              aws_key_id, aws_key, True, prefix)
+              aws_key_id, aws_key, True, prefix, branch_name)
 
     print('Creating %d Benchmark nodes...' % (benchmark_count))
     add_nodes(client, apps_client, config_file, 'benchmark', benchmark_count,
-              aws_key_id, aws_key, True, prefix)
+              aws_key_id, aws_key, True, prefix, branch_name)
 
     benchmark_ips = util.get_node_ips(client, 'role=benchmark', 'ExternalIP')
     with open('../benchmark/benchmarks.txt', 'w+') as f:
@@ -104,6 +104,10 @@ if __name__ == '__main__':
     parser.add_argument('-b', '--benchmark', nargs=1, type=int, metavar='L',
                         help='The number of benchmark nodes to start with ' +
                              '(required)', dest='benchmark', required=True)
+    parser.add_argument('--branch', nargs='?', type=str,
+                            help='The branch to start the cluster with'
+                            + ' (optional)', dest='branch',
+                            default='master')
     parser.add_argument('--config', nargs='?', type=str,
                         help='The configuration file to start the cluster with'
                         + ' (optional)', dest='config',
@@ -122,5 +126,5 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     create_cluster(args.nodes[0], args.keynodes[0], args.loadbalancer[0], 
-                args.benchmark[0], args.config, args.sshkey, cluster_name, 
+                args.benchmark[0], args.config, args.branch, args.sshkey, cluster_name,
                 kops_bucket, aws_key_id, aws_key)

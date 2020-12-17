@@ -8,7 +8,7 @@ ec2_client = boto3.client('ec2', os.getenv('AWS_REGION', 'us-east-1'))
 
 
 def add_nodes(client, apps_client, cfile, kind, count, aws_key_id=None,
-              aws_key=None, create=False, prefix=None):
+              aws_key=None, create=False, prefix=None, branch="master"):
     print('Adding %d %s server node(s) to cluster...' % (count, kind))
 
     prev_count = util.get_previous_count(client, kind)
@@ -24,6 +24,7 @@ def add_nodes(client, apps_client, cfile, kind, count, aws_key_id=None,
             env = container['env']
             util.replace_yaml_val(env, 'AWS_ACCESS_KEY_ID', aws_key_id)
             util.replace_yaml_val(env, 'AWS_SECRET_ACCESS_KEY', aws_key)
+            util.replace_yaml_val(env, 'BRANCH', branch)
             if kind == "keyrouter":
                 key_ips = util.get_node_ips(client, 'role=keynode', 'ExternalIP')
                 keynodes = ' '.join(key_ips)  

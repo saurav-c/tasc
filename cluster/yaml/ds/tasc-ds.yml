@@ -26,6 +26,8 @@ spec:
           limits:
             cpu: "500m"
         env:
+        - name: BRANCH
+          value: master
         - name: ROLE
           value: tasc
         - name: NODE_IPS

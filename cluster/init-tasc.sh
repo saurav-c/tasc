@@ -26,6 +26,10 @@ fi
 
 cd $GOPATH/src/github.com/saurav-c/aftsi
 
+git pull 
+git checkout ${BRANCH}
+git pull origin ${BRANCH}
+
 # Wait for the config file to be passed in.
 while [[ ! -f $GOPATH/src/github.com/saurav-c/aftsi/config/tasc-config.yml ]]; do
   sleep 1
