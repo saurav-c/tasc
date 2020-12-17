@@ -3,10 +3,10 @@ package main
 import (
 	"fmt"
 	zmq "github.com/pebbe/zmq4"
-	"github.com/saurav-c/aftsi/config"
-	cmn "github.com/saurav-c/aftsi/lib/common"
-	"github.com/saurav-c/aftsi/lib/storage"
-	mpb "github.com/saurav-c/aftsi/proto/monitor"
+	"github.com/saurav-c/tasc/config"
+	cmn "github.com/saurav-c/tasc/lib/common"
+	"github.com/saurav-c/tasc/lib/storage"
+	mpb "github.com/saurav-c/tasc/proto/monitor"
 	log "github.com/sirupsen/logrus"
 	"os"
 )

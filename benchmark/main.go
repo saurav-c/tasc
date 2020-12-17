@@ -17,7 +17,7 @@ import (
 	zmq "github.com/pebbe/zmq4"
 	"google.golang.org/grpc"
 
-	pb "github.com/saurav-c/aftsi/proto/aftsi"
+	pb "github.com/saurav-c/tasc/proto/tasc"
 )
 
 const (
@@ -148,7 +148,7 @@ func getTASCClientAddr(elbEndpoint string) (txnAddress string, err error) {
 //			txn, _ := clientConns[defaultTxn].StartTransaction(context.TODO(), &empty.Empty{})
 //			tid := txn.GetTid()
 //
-//			// Get Ip Addr of this txns manager
+//			// Get Ip Addr of this txns tasc
 //			rtrResp, _ := client.LookUp(context.TODO(), &rtr.RouterReq{
 //				Req: tid,
 //			})

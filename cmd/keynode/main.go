@@ -3,9 +3,9 @@ package main
 import (
 	"errors"
 	"github.com/golang/protobuf/proto"
-	cmn "github.com/saurav-c/aftsi/lib/common"
-	kpb "github.com/saurav-c/aftsi/proto/keynode"
-	tpb "github.com/saurav-c/aftsi/proto/tasc"
+	cmn "github.com/saurav-c/tasc/lib/common"
+	kpb "github.com/saurav-c/tasc/proto/keynode"
+	tpb "github.com/saurav-c/tasc/proto/tasc"
 	log "github.com/sirupsen/logrus"
 	"strings"
 	"sync"

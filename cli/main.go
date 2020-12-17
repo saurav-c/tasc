@@ -5,14 +5,14 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	cmn "github.com/saurav-c/aftsi/lib/common"
+	cmn "github.com/saurav-c/tasc/lib/common"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/golang/protobuf/ptypes/empty"
-	pb "github.com/saurav-c/aftsi/proto/tasc"
+	pb "github.com/saurav-c/tasc/proto/tasc"
 
 	zmq "github.com/pebbe/zmq4"
 	"google.golang.org/grpc"

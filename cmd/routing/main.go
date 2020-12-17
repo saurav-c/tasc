@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"github.com/golang/protobuf/proto"
 	zmq "github.com/pebbe/zmq4"
-	cmn "github.com/saurav-c/aftsi/lib/common"
-	rpb "github.com/saurav-c/aftsi/proto/router"
+	cmn "github.com/saurav-c/tasc/lib/common"
+	rpb "github.com/saurav-c/tasc/proto/router"
 	log "github.com/sirupsen/logrus"
 	"time"
 )

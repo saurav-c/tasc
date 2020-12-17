@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"github.com/golang/protobuf/proto"
 	zmq "github.com/pebbe/zmq4"
-	mpb "github.com/saurav-c/aftsi/proto/monitor"
+	mpb "github.com/saurav-c/tasc/proto/monitor"
 	log "github.com/sirupsen/logrus"
 	"sync"
 	"time"
