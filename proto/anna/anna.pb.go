@@ -114,7 +114,7 @@ const (
 	// The lattice type was not correctly specified or conflicted with an
 	// existing key.
 	AnnaError_LATTICE AnnaError = 4
-	// This error is returned by the routing tier if no servers are in the
+	// This error is returned by the router tier if no servers are in the
 	// cluster.
 	AnnaError_NO_SERVERS AnnaError = 5
 )
@@ -375,7 +375,7 @@ func (m *KeyResponse) GetError() AnnaError {
 	return AnnaError_NO_ERROR
 }
 
-// A request to the routing tier to retrieve server addresses corresponding to
+// A request to the router tier to retrieve server addresses corresponding to
 // individual keys.
 type KeyAddressRequest struct {
 	// The IP-port pair at which the client will await a response.
@@ -436,11 +436,11 @@ func (m *KeyAddressRequest) GetRequestId() string {
 	return ""
 }
 
-// A 1-to-1 response from the routing tier for individual KeyAddressRequests.
+// A 1-to-1 response from the router tier for individual KeyAddressRequests.
 type KeyAddressResponse struct {
 	// A batch of responses for individual keys.
 	Addresses []*KeyAddressResponse_KeyAddress `protobuf:"bytes,1,rep,name=addresses,proto3" json:"addresses,omitempty"`
-	// An error reported by the routing tier. This should only ever be a timeout.
+	// An error reported by the router tier. This should only ever be a timeout.
 	Error AnnaError `protobuf:"varint,2,opt,name=error,proto3,enum=AnnaError" json:"error,omitempty"`
 	// A unique ID used by the client to match asynchronous requests with
 	// responses.
