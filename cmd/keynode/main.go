@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"github.com/golang/protobuf/proto"
 	cmn "github.com/saurav-c/tasc/lib/common"
 	kpb "github.com/saurav-c/tasc/proto/keynode"
 	tpb "github.com/saurav-c/tasc/proto/tasc"
@@ -221,20 +220,15 @@ func (k *KeyNode) endTransaction(tid string, action kpb.TransactionAction, write
 	}
 
 	// Commit txn set and key versions
-	txnWriteSetChan := make(chan bool, 1)
 	txnWriteSet := &tpb.TransactionWriteSet{Keys:writeSet}
-	go func() {
-		k.CommittedTxnSet.put(tid, txnWriteSet)
-		data, _ := proto.Marshal(txnWriteSet)
-		k.StorageManager.Put(tid, data)
-		log.Debugf("Wrote txnSet for %s", tid)
-		txnWriteSetChan <- true
-	}()
+	k.CommittedTxnSet.put(tid, txnWriteSet)
 
 	if ok {
-		k.CommittedVersionIndex.commitVersions(pendingWrites, k.StorageManager)
+		start := time.Now()
+		k.CommittedVersionIndex.commitVersions(pendingWrites, k.StorageManager, k.Monitor)
+		end := time.Now()
+		go k.Monitor.TrackStat(tid, "Overall commit version index time", end.Sub(start))
 	}
-	<- txnWriteSetChan
 	return nil
 }
 
