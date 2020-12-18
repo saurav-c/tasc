@@ -47,7 +47,7 @@ def create_cluster(txn_count, keynode_count, lb_count, benchmark_count, config_f
               aws_key_id, aws_key, True, prefix, branch_name)
 
     benchmark_ips = util.get_node_ips(client, 'role=benchmark', 'ExternalIP')
-    with open('../benchmark/benchmarks.txt', 'w+') as f:
+    with open('../cmd/benchmark/benchmarks.txt', 'w+') as f:
         for ip in benchmark_ips:
             f.write(ip + '\n')
 
