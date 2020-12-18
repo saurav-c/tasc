@@ -7,10 +7,10 @@ import (
 	"github.com/saurav-c/tasc/lib/storage"
 	kpb "github.com/saurav-c/tasc/proto/keynode"
 	tpb "github.com/saurav-c/tasc/proto/tasc"
-	log "github.com/sirupsen/logrus"
 	"sort"
 	"strings"
 	"sync"
+	"time"
 )
 
 type TransactionSet struct {
@@ -75,7 +75,8 @@ func (idx *VersionIndex) deleteVersions(txnWriteSet *tpb.TransactionWriteSet) {
 	}
 }
 
-func (idx *VersionIndex) commitVersions(txnWriteSet *tpb.TransactionWriteSet, storageManager storage.StorageManager) {
+func (idx *VersionIndex) commitVersions(txnWriteSet *tpb.TransactionWriteSet, storageManager storage.StorageManager,
+	monitor *cmn.StatsMonitor) {
 	var wg sync.WaitGroup
 	wg.Add(len(txnWriteSet.Keys))
 
@@ -84,6 +85,7 @@ func (idx *VersionIndex) commitVersions(txnWriteSet *tpb.TransactionWriteSet, st
 			defer wg.Done()
 			split := strings.Split(keyVersion, cmn.KeyDelimeter)
 			key, version := split[0], split[1]
+			tid := strings.Split(version, cmn.VersionDelimeter)[1]
 
 			idx.mutex.RLock()
 			keyLock, ok := idx.locks[key]
@@ -114,8 +116,10 @@ func (idx *VersionIndex) commitVersions(txnWriteSet *tpb.TransactionWriteSet, st
 			keyLock.Unlock()
 
 			// Write index to storage
+			start := time.Now()
 			storageManager.Put(fmt.Sprintf(cmn.StorageIndexTemplate, key), data)
-			log.Debug("wrote key version index to storage")
+			end := time.Now()
+			go monitor.TrackStat(tid, "Storage write index time", end.Sub(start))
 		}()
 	}
 }
