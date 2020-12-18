@@ -6,14 +6,10 @@ import (
 	"github.com/golang/protobuf/proto"
 	zmq "github.com/pebbe/zmq4"
 	mt "github.com/saurav-c/tasc/proto/monitor"
+	cmn "github.com/saurav-c/tasc/lib/common"
 	log "github.com/sirupsen/logrus"
 	"os"
 	"time"
-)
-
-const (
-	MONITOR_SERVER_PORT = 10000
-	PullTemplate        = "tcp://*:%d"
 )
 
 func createSocket(tp zmq.Type, context *zmq.Context, address string, bind bool) *zmq.Socket {
@@ -39,7 +35,7 @@ func createSocket(tp zmq.Type, context *zmq.Context, address string, bind bool) 
 
 func main() {
 	zctx, _ := zmq.NewContext()
-	puller := createSocket(zmq.PULL, zctx, fmt.Sprintf(PullTemplate, MONITOR_SERVER_PORT), true)
+	puller := createSocket(zmq.PULL, zctx, fmt.Sprintf(cmn.PullTemplate, cmn.MonitorPushPort), true)
 	poller := zmq.NewPoller()
 	poller.Add(puller, zmq.POLLIN)
 

@@ -1,6 +1,9 @@
 package common
 
 const (
+	// Load Balancer ports
+	LoadBalancerPort = 8000
+
 	// Key Node ports
 	KeyReadPullPort     = 8000
 	KeyValidatePullPort = 8050

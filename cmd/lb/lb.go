@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	cmn "github.com/saurav-c/tasc/lib/common"
 	"math/rand"
 	"os"
 	"time"
@@ -12,11 +13,6 @@ import (
 	v1meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
-)
-
-const (
-	LbPort       = 8000
-	PullTemplate = "tcp://*:%d"
 )
 
 func createSocket(tp zmq.Type, context *zmq.Context, address string, bind bool) *zmq.Socket {
@@ -64,7 +60,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	lbSocket := createSocket(zmq.REP, context, fmt.Sprintf(PullTemplate, LbPort), true)
+	lbSocket := createSocket(zmq.REP, context, fmt.Sprintf(cmn.PullTemplate, cmn.LoadBalancerPort), true)
 	poller := zmq.NewPoller()
 	poller.Add(lbSocket, zmq.POLLIN)
 

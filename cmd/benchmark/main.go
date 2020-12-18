@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	cmn "github.com/saurav-c/tasc/lib/common"
 	"math/rand"
 	"os"
 	"time"
@@ -101,7 +102,7 @@ func getTASCClientAddr(elbEndpoint string) (txnAddress string, err error) {
 	if err != nil {
 		return "", err
 	}
-	err = sckt.Connect(fmt.Sprintf("tcp://%s:8000", elbEndpoint))
+	err = sckt.Connect(fmt.Sprintf("tcp://%s:%d", elbEndpoint, cmn.LoadBalancerPort))
 	if err != nil {
 		return "", err
 	}
@@ -114,7 +115,7 @@ func getTASCClientAddr(elbEndpoint string) (txnAddress string, err error) {
 func runTascWrites(elbAddr string, numReq int) (map[int][]float64, map[int][]float64) {
 	// Establish connection
 	txnManagerAddr, err := getTASCClientAddr(elbAddr)
-	conn, err := grpc.Dial(fmt.Sprintf("%s:5000", txnManagerAddr), grpc.WithInsecure())
+	conn, err := grpc.Dial(fmt.Sprintf("%s:%d", txnManagerAddr, cmn.TxnManagerServerPort), grpc.WithInsecure())
 	if err != nil {
 		fmt.Printf("Unexpected error:\n%v\n", err)
 		os.Exit(1)
@@ -176,7 +177,7 @@ func throughputPerClient(
 		fmt.Printf("Unexpected error:\n%v\n", err)
 		os.Exit(1)
 	}
-	conn, err := grpc.Dial(fmt.Sprintf("%s:5000", txnManagerAddr), grpc.WithInsecure())
+	conn, err := grpc.Dial(fmt.Sprintf("%s:%d", txnManagerAddr, cmn.TxnManagerServerPort), grpc.WithInsecure())
 	if err != nil {
 		fmt.Printf("Unexpected error:\n%v\n", err)
 		os.Exit(1)
@@ -251,7 +252,7 @@ func keyNodeWriteTest(elbEndpoint string, numReq int, keys []string) []float64 {
 		fmt.Printf("Unexpected error:\n%v\n", err)
 		os.Exit(1)
 	}
-	conn, err := grpc.Dial(fmt.Sprintf("%s:5000", txnManagerAddr), grpc.WithInsecure())
+	conn, err := grpc.Dial(fmt.Sprintf("%s:%d", txnManagerAddr, cmn.TxnManagerServerPort), grpc.WithInsecure())
 	if err != nil {
 		fmt.Printf("Unexpected error:\n%v\n", err)
 		os.Exit(1)
