@@ -1,5 +1,7 @@
 syntax="proto3";
 
+package tasc;
+
 message KeyNodeRequest {
     string tid = 1;
     string key = 2;
