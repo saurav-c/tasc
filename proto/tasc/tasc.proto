@@ -1,5 +1,7 @@
 syntax="proto3";
 
+package tasc;
+
 import "google/protobuf/empty.proto";
 
 service Tasc {

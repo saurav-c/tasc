@@ -1,5 +1,7 @@
 syntax="proto3";
 
+package tasc;
+
 message Statistics {
   string addr = 1;
   NodeType node = 2;
