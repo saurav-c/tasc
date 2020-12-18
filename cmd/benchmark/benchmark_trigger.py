@@ -18,7 +18,7 @@ def main():
     parser.add_argument('-w', '--writes', nargs=1, type=int, metavar='Y',
                         help='The number of writes to be done.',
                         dest='writes', required=True)
-    parser.add_argument('-r', '--reads', nargs=1, type=int, metavar='Y',
+    parser.add_argument('-d', '--reads', nargs=1, type=int, metavar='Y',
                         help='The number of reads to be done.',
                         dest='reads', required=True)
     parser.add_argument('-y', '--type', nargs=1, type=str, metavar='Y',

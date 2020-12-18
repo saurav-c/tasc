@@ -45,9 +45,9 @@ echo "$LST" >> config/tasc-config.yml
 
 # Start the process.
 if [[ "$ROLE" = "tasc" ]]; then
-  cd $TASC_HOME/cmd/tasc
+  cd $TASC_HOME/cmd/manager
   go build
-  ./tasc
+  ./manager
 elif [[ "$ROLE" = "keynode" ]]; then
   cd $TASC_HOME/cmd/keynode
   go build
