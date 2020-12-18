@@ -1,111 +1,55 @@
 package main
 
 import (
-	"context"
 	"crypto/sha1"
 	"encoding/binary"
-	"flag"
 	"fmt"
-	"log"
-	"math/rand"
-	"net"
+	"github.com/golang/protobuf/proto"
+	zmq "github.com/pebbe/zmq4"
+	cmn "github.com/saurav-c/tasc/lib/common"
+	rpb "github.com/saurav-c/tasc/proto/router"
+	log "github.com/sirupsen/logrus"
 	"time"
-
-	"github.com/saurav-c/aftsi/config"
-
-	"github.com/golang/protobuf/ptypes/empty"
-	pb "github.com/saurav-c/aftsi/proto/routing"
-	"google.golang.org/grpc"
 )
 
-const (
-	TxnRouterPort = ":5006"
-	KeyRouterPort = ":5007"
-)
-
-func (r *RouterServer) FetchNew(ctx context.Context, emp *empty.Empty) (*pb.RouterResponse, error) {
-	fmt.Println("Received request")
-	index := rand.Intn(len(r.router))
-	ipAddress := r.router[index]
-	return &pb.RouterResponse{
-		Ip: ipAddress,
-	}, nil
-}
-
-func (r *RouterServer) LookUp(ctx context.Context, req *pb.RouterReq) (*pb.RouterResponse, error) {
-	fmt.Println("Received request")
-	keyLookup := req.GetReq()
+func (r *RouterServer) lookup(key string) string {
 	h := sha1.New()
-	keySha := h.Sum([]byte(keyLookup))
+	keySha := h.Sum([]byte(key))
 	intSha := binary.BigEndian.Uint64(keySha)
-	index := intSha % uint64(len(r.router))
-	ipAddress := r.router[index]
-	return &pb.RouterResponse{
-		Ip: ipAddress,
-	}, nil
+	index := intSha % uint64(len(r.NodeIPs))
+	ipAddress := r.NodeIPs[index]
+	return ipAddress
 }
 
-func (r *RouterServer) MultipleLookUp(ctx context.Context, multi *pb.RouterReqMulti) (*pb.MultiRouterResponse, error) {
-	fmt.Println("Received request")
-	keyLookups := multi.GetReq()
-	h := sha1.New()
-	ipMap := make(map[string][]string)
-	for _, elem := range keyLookups {
-		keySha := h.Sum([]byte(elem))
-		intSha := binary.BigEndian.Uint64(keySha)
-		index := intSha % uint64(len(r.router))
-		nodeIP := r.router[index]
-
-		if _, ok := ipMap[nodeIP]; !ok {
-			ipMap[nodeIP] = make([]string, 0)
-		}
-		ipMap[nodeIP] = append(ipMap[nodeIP], elem)
+func (r *RouterServer) lookupHandler(data []byte) {
+	log.Debug("Received lookup request")
+	request := &rpb.RouterRequest{}
+	proto.Unmarshal(data, request)
+	keyMap := map[string]string{}
+	for _, key := range request.Keys {
+		keyMap[key] = r.lookup(key)
 	}
 
-	ipMapResponse := make(map[string]*pb.MultiResponse)
-	for ip, set := range ipMap {
-		ipMapResponse[ip] = &pb.MultiResponse{
-			Resp: set,
-		}
+	response := &rpb.RouterResponse{
+		Tid:        request.Tid,
+		AddressMap: keyMap,
 	}
+	respData, _ := proto.Marshal(response)
 
-	return &pb.MultiRouterResponse{
-		IpMap: ipMapResponse,
-	}, nil
+	addr := fmt.Sprintf(cmn.PushTemplate, request.IpAddress, cmn.TxnRoutingPullPort)
+	log.Debugf("Sending routing response to %s", addr)
+	r.PusherCache.Lock(r.ZmqInfo.context, addr)
+	socket := r.PusherCache.GetSocket(addr)
+	socket.SendBytes(respData, zmq.DONTWAIT)
+	r.PusherCache.Unlock(addr)
+	log.Debug("Sent routing response")
 }
 
 func main() {
-	mode := flag.String("mode", "", "Router mode")
-	flag.Parse()
-
-	RouterPort := ""
-	if *mode == "txn" {
-		RouterPort = ":5006"
-	} else if *mode == "key" {
-		RouterPort = ":5007"
-	} else {
-		fmt.Println(*mode)
-		log.Fatal("Wrong mode")
-	}
-
-	configValue := config.ParseConfig()
-	IpAddresses := configValue.NodeIPs
-
-	lis, err := net.Listen("tcp", RouterPort)
+	router, err := NewRouter()
 	if err != nil {
-		log.Fatal("Could not start server on port %s: %v\n", RouterPort, err)
+		log.Fatal("Could not start router: %v\n", err)
 	}
-
-	server := grpc.NewServer()
-
-	router, err := NewRouter(IpAddresses)
-	if err != nil {
-		log.Fatal("Could not start server on port %s: %v\n", RouterPort, err)
-	}
-	pb.RegisterRouterServer(server, router)
-
-	fmt.Printf("Starting server at %s.\n", time.Now().String())
-	if err = server.Serve(lis); err != nil {
-		log.Fatal("Could not start server on port %s: %v\n", RouterPort, err)
-	}
+	log.Infof("Starting router at %s.\n", time.Now().String())
+	router.listener()
 }

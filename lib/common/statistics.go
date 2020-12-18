@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"github.com/golang/protobuf/proto"
 	zmq "github.com/pebbe/zmq4"
-	mpb "github.com/saurav-c/aftsi/proto/monitor"
+	mpb "github.com/saurav-c/tasc/proto/monitor"
 	log "github.com/sirupsen/logrus"
 	"sync"
 	"time"
@@ -23,7 +23,7 @@ func NewStatsMonitor(node mpb.NodeType, nodeAddr string, monitorAddr string) (*S
 	if err != nil {
 		return nil, err
 	}
-	statsPusher := CreateSocket(zmq.PUSH, zctx, fmt.Sprintf(PushTemplate, monitorAddr, monitorPushPort), false)
+	statsPusher := CreateSocket(zmq.PUSH, zctx, fmt.Sprintf(PushTemplate, monitorAddr, MonitorPushPort), false)
 	return &StatsMonitor{
 		pusher:   statsPusher,
 		stats:    make(map[string]*mpb.LatencyList),

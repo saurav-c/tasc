@@ -13,7 +13,7 @@ RUN mkdir $GOPATH/pkg
 
 # Setting up ENV Variables
 ENV PATH $PATH:$GOPATH/bin
-ENV TASC_HOME $GOPATH/src/github.com/saurav-c/aftsi
+ENV TASC_HOME $GOPATH/src/github.com/saurav-c/tasc
 
 # Install Go, other Ubuntu dependencies.
 RUN apt-get update
@@ -42,6 +42,7 @@ RUN go get -u github.com/golang/protobuf/protoc-gen-go
 RUN go get -u github.com/pebbe/zmq4
 RUN go get -u github.com/aws/aws-sdk-go
 RUN go get -u github.com/google/uuid
+RUN go get -u github.com/nu7hatch/gouuid
 RUN go get -u github.com/montanaflynn/stats
 RUN go get -u k8s.io/client-go/kubernetes
 RUN go get -u k8s.io/client-go/tools/clientcmd
@@ -54,18 +55,18 @@ RUN pip3 install zmq
 # Clone the TASC code.
 RUN mkdir -p $GOPATH/src/github.com/saurav-c
 WORKDIR $GOPATH/src/github.com/saurav-c
-RUN git clone https://github.com/saurav-c/aftsi
-WORKDIR aftsi
+RUN git clone https://github.com/saurav-c/tasc
+WORKDIR tasc
 
 # If file exists, delete it
 RUN rm -f config/tasc-config.yml
 
 # Produce all keynode, tasc, monitor, and routing pb.go files
 WORKDIR proto
-RUN protoc -I aftsi/ aftsi/aftsi.proto --go_out=plugins=grpc:aftsi/
-RUN protoc -I routing/ routing/router.proto --go_out=plugins=grpc:routing/
+RUN protoc -I tasc/ tasc/tasc.proto --go_out=plugins=grpc:tasc/
 RUN protoc -I keynode/ keynode/keynode.proto --go_out=keynode/
+RUN protoc -I router/ router/router.proto --go_out=router/
 RUN protoc -I monitor/ monitor/monitor.proto --go_out=monitor/
 
-WORKDIR $GOPATH/src/github.com/saurav-c/aftsi/cluster
+WORKDIR $GOPATH/src/github.com/saurav-c/tasc/cluster
 CMD bash ./init-tasc.sh

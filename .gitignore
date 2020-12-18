@@ -4,20 +4,20 @@
 .idea/
 .vscode/
 *.ipynb
-benchmark/.ipynb_checkpoints
+cmd/benchmark/.ipynb_checkpoints
 .DS_Store
 **/*.go
 
 cluster/__pycache__/
 
 cmd/keynode/keynode
-cmd/aftsi/aftsi
+cmd/manager/manager
 cmd/routing/routing
 cmd/monitor/monitor
 client/client
-cli/cli
-benchmark/benchmark
-benchmark/benchmarks.txt
+cmd/cli/cli
+cmd/benchmark/benchmark
+cmd/benchmark/benchmarks.txt
 
 logs/
 *.log

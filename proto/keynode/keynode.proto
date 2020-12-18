@@ -4,10 +4,9 @@ message KeyNodeRequest {
     string tid = 1;
     string key = 2;
     repeated string readSet = 3;
-    string beginTS = 4;
+    int64 beginTs = 4;
     string lowerBound = 5;
-    string txnMngrIP = 6;
-    uint32 channelID = 7;
+    string ipAddress = 6;
 }
 
 message KeyNodeResponse {
@@ -15,39 +14,34 @@ message KeyNodeResponse {
     string keyVersion = 2;
     bytes value = 3;
     repeated string coWrittenSet = 4;
-    KeyError error = 5;
-    uint32 channelID = 6;
+    bool ok = 5;
 }
 
 message ValidateRequest {
     string tid = 1;
-    string beginTS = 2;
-    string commitTS = 3;
+    int64 beginTS = 2;
+    int64 commitTS = 3;
     repeated string keys = 4;
-    string txnMngrIP = 5;
-    uint32 channelID = 6;
+    string ipAddress = 5;
 }
 
 message ValidateResponse {
     string tid = 1;
-    bool ok = 2;
-    KeyError error = 3;
-    uint32 channelID = 4;
+    string ipAddress = 2;
+    TransactionAction action = 3;
 }
 
-message FinishRequest {
+message EndRequest {
     string tid = 1;
-    TransactionAction s = 2;
+    TransactionAction action = 2;
     repeated string writeSet = 3;
-    repeated bytes writeBuffer = 4;
-    string txnMngrIP = 5;
-    uint32 channelID = 6;
+    string ipAddress = 4;
 }
 
-message FinishResponse {
+message EndResponse {
     string tid = 1;
-    KeyError error = 2;
-    uint32 channelID = 3;
+    string ipAddress = 2;
+    bool ok = 3;
 }
 
 enum TransactionAction {
@@ -55,7 +49,6 @@ enum TransactionAction {
     ABORT = 1;
 }
 
-enum KeyError {
-    K_SUCCESS = 0;
-    K_FAILURE = 1;
+message KeyVersionList {
+    repeated string versions = 1;
 }

@@ -24,7 +24,7 @@ func ParseConfig() *TASCConfig {
 	if home == "" {
 		home = build.Default.GOPATH
 	}
-	confPath := filepath.Join(home, "src", "github.com", "saurav-c", "aftsi", "config", "tasc-config.yml")
+	confPath := filepath.Join(home, "src", "github.com", "saurav-c", "tasc", "config", "tasc-config.yml")
 	bts, err := ioutil.ReadFile(confPath)
 	if err != nil {
 		log.Fatal("Unable to read config file.\n")

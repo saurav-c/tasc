@@ -1,0 +1,15 @@
+syntax="proto3";
+
+message RouterRequest {
+    string tid = 1;
+    repeated string keys = 2;
+    string ipAddress = 3;
+}
+
+message RouterResponse {
+    string tid = 1;
+    // Map of Key to Ip Address
+    map<string, string> addressMap = 2;
+}
+
+

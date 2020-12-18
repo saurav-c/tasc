@@ -1,0 +1,70 @@
+syntax="proto3";
+
+import "google/protobuf/empty.proto";
+
+service Tasc {
+    // Starts a new transaction in the system and returns a unique
+    // transaction ID. Updates made in the context of this transaction
+    // will not be persisted until CommitTransaction is called.
+    rpc StartTransaction(google.protobuf.Empty) returns (TransactionTag) {}
+
+    // Fetch a value from the storage engine.
+    rpc Read(TascRequest) returns (TascRequest) {}
+
+    // Tentatively write a value or batch of values to the storage engine.
+    // The writes are not committed until CommitTransaction is called.
+    // Calling AbortTransaction will drop these writes.
+    rpc Write(TascRequest) returns (TascRequest) {}
+
+    // Commits the buffered writes to the storage engine. Commit
+    // will only happen if there are no concurrent write conflicts
+    // under snapshot isolation semantics.
+    rpc CommitTransaction(TransactionTag) returns (TransactionTag) {}
+
+    // Aborts all of the updates by this transaction and the transaction
+    // is ended.
+    rpc AbortTransaction(TransactionTag) returns (TransactionTag) {}
+}
+
+// An enum that tracks the status of each transaction.
+enum TascTransactionStatus {
+    // The default status indicates that the transaction is currently running.
+    RUNNING = 0;
+
+    // This status indicates that the transaction has successfully committed.
+    COMMITTED = 1;
+
+    // This status indicates that the transaction has successfully aborted.
+    ABORTED = 2;
+}
+
+message TransactionTag {
+    // The ID of the transaction
+    string tid = 1;
+
+    // The current status of the transaction
+    TascTransactionStatus status = 2;
+}
+
+message TascRequest {
+    // A request to read or write an individual key. If the value is specified,
+    // the request is treated as a write, and if it is not, the request is
+    // treated as a read.
+    message KeyPair {
+        // The key being requested.
+        string key = 1;
+
+        // An optional value for write requests.
+        bytes value = 2;
+    }
+
+    // The transaction ID associated with this request.
+    string tid = 1;
+
+    // A list of requested keys, along with optional byte strings for write requests.
+    repeated KeyPair pairs = 2;
+}
+
+message TransactionWriteSet {
+    repeated string keys = 1;
+}

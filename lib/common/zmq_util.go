@@ -7,11 +7,6 @@ import (
 	"sync"
 )
 
-const (
-	PullTemplate = "tcp://*:%d"
-	PushTemplate = "tcp://%s:%d"
-)
-
 type SocketCache struct {
 	locks       map[string]*sync.Mutex
 	sockets     map[string]*zmq.Socket
