@@ -4,11 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	cmn "github.com/saurav-c/tasc/lib/common"
-	"math/rand"
-	"os"
-	"time"
-
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/endpoints"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -16,21 +11,26 @@ import (
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/montanaflynn/stats"
 	zmq "github.com/pebbe/zmq4"
-	"google.golang.org/grpc"
-
+	cmn "github.com/saurav-c/tasc/lib/common"
+	storage "github.com/saurav-c/tasc/lib/storage"
 	pb "github.com/saurav-c/tasc/proto/tasc"
+	"google.golang.org/grpc"
+	"math/rand"
+	"os"
+	"time"
 )
 
 const (
-	benchmarks = "tascWrites, throughput, keyNodeNum, dynamoWrites, dynamoBatchWrites"
+	benchmarks = "tascWrites, throughput, keyNodeNum, dynamoWrites, dynamoBatchWrites, annaDirect"
 )
 
 var address = flag.String("address", "", "ELB Address")
-var numWrites = flag.Int("numWrites", 1000, "The number of writes to do")
-var numReads = flag.Int("numReads", 2, "The number of reads to do per transaction")
+var numWrites = flag.Int("numWrites", 1, "The number of writes to do")
+var numReads = flag.Int("numReads", 1, "The number of reads to do per transaction")
 var benchmarkType = flag.String("type", "", "The type of benchmark to run: "+benchmarks)
 var numRequests = flag.Int("numReq", 1000, "Number of requests to run")
-var numThreads = flag.Int("numThreads", 10, "The total number of parallel threads in the benchmark")
+var numThreads = flag.Int("numThreads", 1, "The total number of parallel threads in the benchmark")
+var myAddress = flag.String("myAddr", "", "IP Address of this machine")
 
 func main() {
 	flag.Parse()
@@ -89,6 +89,19 @@ func main() {
 		{
 			latencies := runDynamoBatchWrites(*numRequests)
 			printWriteLatencies(latencies, "End to End Latencies")
+		}
+	case "annaDirect":
+		{
+			latency := make(chan []float64)
+			for i := 0; i < *numThreads; i++ {
+				go runAnna(*address, *myAddress, i, *numRequests, *numReads, *numWrites, latency)
+			}
+			latencies := []float64{}
+			for i := 0; i < *numThreads; i++ {
+				latencyArray := <-latency
+				latencies = append(latencies, latencyArray...)
+			}
+			printLatencies(latencies, "Anna End to End Latencies")
 		}
 	}
 }
@@ -382,6 +395,34 @@ func runDynamoBatchWrites(numRequests int) map[int][]float64 {
 		}
 	}
 	return latencies
+}
+
+func runAnna(elbAddr string, ipAddress string, threadId int, numRequests int, numReads int, numWrites int, latency chan[]float64) {
+	latencies := []float64{}
+	annaClient := storage.NewAnnaClient(elbAddr, ipAddress, false, threadId)
+
+	for i := 0; i < numRequests; i++ {
+		writeData := make([]byte, 4096)
+		rand.Read(writeData)
+
+		start := time.Now()
+		// Writes
+		keys := []string{}
+		for j := 0; j < numWrites; j++ {
+			key := fmt.Sprintf("key-%d-%d-%s", threadId, j, ipAddress)
+			keys = append(keys, key)
+			annaClient.Put(key, writeData)
+		}
+
+		// Reads
+		for j := 0; j < numReads; j++ {
+			key := keys[j % len(keys)]
+			annaClient.Get(key)
+		}
+		end := time.Now()
+		latencies = append(latencies, end.Sub(start).Seconds())
+	}
+	latency <- latencies
 }
 
 /*
