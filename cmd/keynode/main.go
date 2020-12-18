@@ -227,6 +227,7 @@ func (k *KeyNode) endTransaction(tid string, action kpb.TransactionAction, write
 		k.CommittedTxnSet.put(tid, txnWriteSet)
 		data, _ := proto.Marshal(txnWriteSet)
 		k.StorageManager.Put(tid, data)
+		log.Debugf("Wrote txnSet for %s", tid)
 		txnWriteSetChan <- true
 	}()
 
