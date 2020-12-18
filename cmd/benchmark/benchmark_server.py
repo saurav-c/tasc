@@ -11,14 +11,19 @@ def main():
     while True:
         command = benchmark_socket.recv_string()
         splits = command.split(':')
-        num_threads = int(splits[0])
-        num_requests = int(splits[1])
-        elb_address = splits[2]
-        type_benchmark = splits[3]
+        elb_address = splits[0]
+        type_benchmark = splits[1]
+        num_threads = int(splits[2])
+        num_requests = int(splits[3])
+        num_reads = int(splits[4])
+        num_writes = int(splits[5])
+
 
         cmd = [
             './benchmark',
             '-numThreads', str(num_threads),
+            '-numWrites', str(num_writes),
+            '-numReads', str(num_reads),
             '-numReq', str(num_requests),
             '-address', elb_address,
             '-type', type_benchmark

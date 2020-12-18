@@ -15,6 +15,12 @@ def main():
     parser.add_argument('-a', '--address', nargs=1, type=str, metavar='A',
                         help='ELB Address for the Load Balancer Values.', 
                         dest='address', required=True)
+    parser.add_argument('-w', '--writes', nargs=1, type=int, metavar='Y',
+                        help='The number of writes to be done.',
+                        dest='writes', required=True)
+    parser.add_argument('-r', '--reads', nargs=1, type=int, metavar='Y',
+                        help='The number of reads to be done.',
+                        dest='reads', required=True)
     parser.add_argument('-y', '--type', nargs=1, type=str, metavar='Y',
                         help='The type of benchmark to be run on the server.', 
                         dest='type', required=True)
@@ -28,7 +34,7 @@ def main():
 
     print('Found %d servers: \n%s' % (len(servers), ' '.join(servers)))
 
-    message = ('%d:%d:%s:%s') % (args.threads[0], args.requests[0], args.address[0], args.type[0])
+    message = ('%s:%s:%d:%d:%d:%d') % (args.address[0], args.type[0], args.threads[0], args.requests[0], args.reads[0], args.writes[0])
 
     conns = []
     context = zmq.Context(1)
@@ -43,6 +49,7 @@ def main():
     print('Printing output from benchmark runs...')
     for conn in conns:
         response = conn.recv_string()
+        print("Benchmark output from one benchmark server: ")
         print(str(response))
 
     print('Finished!')

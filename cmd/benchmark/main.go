@@ -25,6 +25,8 @@ const (
 )
 
 var address = flag.String("address", "", "ELB Address")
+var numWrites = flag.Int("numWrites", 1000, "The number of writes to do")
+var numReads = flag.Int("numReads", 2, "The number of reads to do per transaction")
 var benchmarkType = flag.String("type", "", "The type of benchmark to run: "+benchmarks)
 var numRequests = flag.Int("numReq", 1000, "Number of requests to run")
 var numThreads = flag.Int("numThreads", 10, "The total number of parallel threads in the benchmark")
@@ -42,7 +44,7 @@ func main() {
 			totalTimeChannel := make(chan float64)
 
 			for i := 0; i < *numThreads; i++ {
-				go throughputPerClient(i, *address, *numRequests, 4, 2, latency, totalTimeChannel)
+				go throughputPerClient(i, *address, *numRequests, *numWrites, *numReads, latency, totalTimeChannel)
 			}
 
 			latencies := []float64{}
@@ -192,7 +194,7 @@ func throughputPerClient(
 		txn, _ := client.StartTransaction(context.TODO(), &empty.Empty{})
 		tid := txn.GetTid()
 		for j := 0; j < numWrites; j++ {
-			key := fmt.Sprintf("aftsiThroughput-%d-%d-%d", uniqueThread, i, j)
+			key := fmt.Sprintf("tascThroughput-%d-%d-%d", uniqueThread, i, j)
 			writes := []*pb.TascRequest_KeyPair{
 				{
 					Key: key,
@@ -211,7 +213,7 @@ func throughputPerClient(
 		}
 		for j := 0; j < numReads; j++ {
 			readKey := rand.Intn(numWrites)
-			key := fmt.Sprintf("aftsiThroughput-%d-%d-%d", uniqueThread, i, readKey)
+			key := fmt.Sprintf("tascThroughput-%d-%d-%d", uniqueThread, i, readKey)
 			reads := []*pb.TascRequest_KeyPair{
 				{
 					Key: key,
