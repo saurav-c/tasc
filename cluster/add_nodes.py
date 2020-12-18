@@ -63,5 +63,5 @@ def add_nodes(client, apps_client, cfile, kind, count, aws_key_id=None,
 
         for pname, cname in created_pods:
             util.copy_file_to_pod(client, 'tasc-config.yml', pname,
-                                  '/go/src/github.com/saurav-c/aftsi/config', cname)
+                                  '/go/src/github.com/saurav-c/tasc/config', cname)
         os.system('rm ./tasc-config.yml')

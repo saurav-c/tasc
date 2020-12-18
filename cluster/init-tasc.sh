@@ -24,14 +24,14 @@ if [[ "$ROLE" = "lb" ]]; then
   mkdir -p /root/.kube
 fi
 
-cd $GOPATH/src/github.com/saurav-c/aftsi
+cd $GOPATH/src/github.com/saurav-c/tasc
 
 git pull 
 git checkout ${BRANCH}
 git pull origin ${BRANCH}
 
 # Wait for the config file to be passed in.
-while [[ ! -f $GOPATH/src/github.com/saurav-c/aftsi/config/tasc-config.yml ]]; do
+while [[ ! -f $GOPATH/src/github.com/saurav-c/tasc/config/tasc-config.yml ]]; do
   sleep 1
 done
 
@@ -45,9 +45,9 @@ echo "$LST" >> config/tasc-config.yml
 
 # Start the process.
 if [[ "$ROLE" = "tasc" ]]; then
-  cd $TASC_HOME/cmd/aftsi
+  cd $TASC_HOME/cmd/tasc
   go build
-  ./aftsi
+  ./tasc
 elif [[ "$ROLE" = "keynode" ]]; then
   cd $TASC_HOME/cmd/keynode
   go build
@@ -61,7 +61,7 @@ elif [[ "$ROLE" = "monitor" ]]; then
   go build
   ./monitor
 elif [[ "$ROLE" = "benchmark" ]]; then
-  cd $TASC_HOME/benchmark
+  cd $TASC_HOME/cmd/benchmark
   go build
   python3 benchmark_server.py
 elif [[ "$ROLE" = "lb" ]]; then

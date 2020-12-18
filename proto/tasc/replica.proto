@@ -1,6 +1,6 @@
 syntax="proto3";
 
-service ReplicaAftSI {
+service ReplicaTasc {
     rpc UpdateEntry(TransactionUpdate) returns (UpdateError) {}
 }
 

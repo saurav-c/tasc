@@ -8,7 +8,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 
-	pb "github.com/saurav-c/aftsi/proto/aft"
+	pb "github.com/saurav-c/tasc/proto/aft"
 )
 
 const (

@@ -47,7 +47,7 @@ sudo mkdir -p $GOPATH/src/github.com/saurav-c
 cd $GOPATH/src/github.com/saurav-c
 
 # Cloning GitHub repo
-sudo git clone https://github.com/saurav-c/aftsi
+sudo git clone https://github.com/saurav-c/tasc
 
 # Configuring based on node desired
 cd tasc/proto/
@@ -55,17 +55,14 @@ cd tasc/proto/
 # Giving Ubuntu User Write Access in the Go folder
 sudo chmod 777 -R /home/ubuntu/go
 
-sudo mkdir -p keynode/api
-sudo mkdir -p tasc/api
-sudo mkdir -p router/api
+protoc -I tasc/ tasc/tasc.proto --go_out=plugins=grpc:tasc/
+protoc -I keynode/ keynode/keynode.proto --go_out=keynode/
+protoc -I router/ router/router.proto --go_out=router/
+protoc -I monitor/ monitor/monitor.proto --go_out=monitor/
 
-protoc -I tasc/ tasc/tasc.proto --go_out=plugins=grpc:tasc/api
-protoc -I keynode/ keynode/keynode.proto --go_out=plugins=grpc:keynode/api
-protoc -I router/ router/router.proto --go_out=plugins=grpc:router/api
-
-if [[ "$1" = "aftsi" ]]
+if [[ "$1" = "tasc" ]]
 then
-  # Creating the executable for AFTSI
+  # Creating the executable for TASC
   cd $GOPATH/src/github.com/saurav-c/tasc/cmd/tasc
   sudo go build
   ./tasc
@@ -99,7 +96,7 @@ fi
 if [[ "$1" = "benchmark" ]]
 then
   # Creating the executable for Router
-  cd $GOPATH/src/github.com/saurav-c/tasc/benchmark
+  cd $GOPATH/src/github.com/saurav-c/tasc/cmd/benchmark
   sudo go build
   ./benchmark -address $2 -type $3 -numReq $4 -numThreads $5 -rtr $6
 fi
