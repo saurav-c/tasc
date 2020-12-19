@@ -82,15 +82,15 @@ func (anna *AnnaStorageManager) getClient() *AnnaClient {
 	// threads that operate per-machine.
 	anna.clientLock.Lock()
 	client := anna.freeClients[0]
-	anna.freeClients = anna.freeClients[1:]
-	anna.clientLock.Unlock()
+	//anna.freeClients = anna.freeClients[1:]
+	//anna.clientLock.Unlock()
 
 	return client
 }
 
 func (anna *AnnaStorageManager) releaseClient(client *AnnaClient) {
-	anna.clientLock.Lock()
-	anna.freeClients = append(anna.freeClients, client)
+	//anna.clientLock.Lock()
+	//anna.freeClients = append(anna.freeClients, client)
 	anna.clientLock.Unlock()
 }
 
