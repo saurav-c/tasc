@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/golang/protobuf/proto"
 
@@ -31,7 +32,7 @@ func (anna *AnnaStorageManager) MultiGetTransactionWriteSet(transactionKeys *[]s
 
 func NewAnnaStorageManager(ipAddress string, elbAddress string) *AnnaStorageManager {
 	clients := []*AnnaClient{}
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 100; i++ {
 		anna := NewAnnaClient(elbAddress, ipAddress, false, i)
 		clients = append(clients, anna)
 	}
@@ -81,16 +82,21 @@ func (anna *AnnaStorageManager) getClient() *AnnaClient {
 	// We don't need to wait for clients because there will only ever by 3 client
 	// threads that operate per-machine.
 	anna.clientLock.Lock()
+	for len(anna.freeClients) == 0 {
+		anna.clientLock.Unlock()
+		time.Sleep(100 * time.Microsecond)
+		anna.clientLock.Lock()
+	}
 	client := anna.freeClients[0]
-	//anna.freeClients = anna.freeClients[1:]
-	//anna.clientLock.Unlock()
+	anna.freeClients = anna.freeClients[1:]
+	anna.clientLock.Unlock()
 
 	return client
 }
 
 func (anna *AnnaStorageManager) releaseClient(client *AnnaClient) {
-	//anna.clientLock.Lock()
-	//anna.freeClients = append(anna.freeClients, client)
+	anna.clientLock.Lock()
+	anna.freeClients = append(anna.freeClients, client)
 	anna.clientLock.Unlock()
 }
 
