@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	cmn "github.com/saurav-c/tasc/lib/common"
+	"github.com/saurav-c/tasc/lib/storage"
 	"math/rand"
 	"os"
 	"time"
@@ -17,7 +18,7 @@ import (
 	"github.com/montanaflynn/stats"
 	zmq "github.com/pebbe/zmq4"
 	"google.golang.org/grpc"
-
+	
 	pb "github.com/saurav-c/tasc/proto/tasc"
 )
 
@@ -31,6 +32,7 @@ var numReads = flag.Int("numReads", 2, "The number of reads to do per transactio
 var benchmarkType = flag.String("type", "", "The type of benchmark to run: "+benchmarks)
 var numRequests = flag.Int("numReq", 1000, "Number of requests to run")
 var numThreads = flag.Int("numThreads", 10, "The total number of parallel threads in the benchmark")
+var annaELB = flag.String("anna", "", "Anna ELB Address")
 
 func main() {
 	flag.Parse()
@@ -45,7 +47,7 @@ func main() {
 			totalTimeChannel := make(chan float64)
 
 			for i := 0; i < *numThreads; i++ {
-				go throughputPerClient(i, *address, *numRequests, *numWrites, *numReads, latency, totalTimeChannel)
+				go throughputPerClient(i, *address, *numRequests, *numWrites, *numReads, latency, totalTimeChannel, false)
 			}
 
 			latencies := []float64{}
@@ -62,33 +64,15 @@ func main() {
 			printLatencies(latencies, "End to End Latencies")
 			printThroughput(throughputs, *numThreads, "Throughput of the system")
 		}
-	case "keyNodeNum":
+	case "dynamo":
 		{
-			l1 := keyNodeWriteTest(*address, *numRequests, []string{"apple"})
-			//l2 := keyNodeWriteTest(*address, *numRequests, []string{"apple", "ban"})
-			//l3 := keyNodeWriteTest(*address, *numRequests, []string{"apple", "ban", "goo"})
-			//l4 := keyNodeWriteTest(*address, *numRequests, []string{"apple", "goo", "banana", "sauravchh"})
-
-			printLatencies(l1, "1 Key Node")
-			//printLatencies(l2, "2 Key Nodes")
-			//printLatencies(l3, "3 Key Nodes")
-			//printLatencies(l4, "4 Key Nodes")
+			latencies := runDynamo(*numRequests, *numWrites, *numReads)
+			printLatencies(latencies, "End to End Latencies")
 		}
-	case "tascWrites":
+	case "anna":
 		{
-			latencies, writeLatencies := runTascWrites(*address, *numRequests)
-			printWriteLatencies(latencies, "End to End Latencies")
-			printWriteLatencies(writeLatencies, "Write Latencies")
-		}
-	case "dynamoWrites":
-		{
-			latencies := runDynamoWrites(*numRequests)
-			printWriteLatencies(latencies, "End to End Latencies")
-		}
-	case "dynamoBatchWrites":
-		{
-			latencies := runDynamoBatchWrites(*numRequests)
-			printWriteLatencies(latencies, "End to End Latencies")
+			latencies := runAnna(*numRequests, *numWrites, *numReads, *annaELB, *address)
+			printLatencies(latencies, "End to End Latencies")
 		}
 	}
 }
@@ -112,70 +96,23 @@ func getTASCClientAddr(elbEndpoint string) (txnAddress string, err error) {
 	return string(txnAddressBytes), nil
 }
 
-func runTascWrites(elbAddr string, numReq int) (map[int][]float64, map[int][]float64) {
-	// Establish connection
-	txnManagerAddr, err := getTASCClientAddr(elbAddr)
-	conn, err := grpc.Dial(fmt.Sprintf("%s:%d", txnManagerAddr, cmn.TxnManagerServerPort), grpc.WithInsecure())
-	if err != nil {
-		fmt.Printf("Unexpected error:\n%v\n", err)
-		os.Exit(1)
-	}
-	defer conn.Close()
-	client := pb.NewTascClient(conn)
-
-	latencies := make(map[int][]float64, 3)
-	writeLatencies := make(map[int][]float64, 3)
-
-	writeData := make([]byte, 4096)
-	rand.Read(writeData)
-
-	for _, numWrites := range []int{1, 5, 10} {
-		for i := 0; i < numReq; i++ {
-			txnStart := time.Now()
-			txn, _ := client.StartTransaction(context.TODO(), &empty.Empty{})
-			tid := txn.GetTid()
-			writeStart := time.Now()
-			for j := 0; j < numWrites; j++ {
-				key := fmt.Sprintf("tascWrite-%s-%s-%s", string(numWrites), string(i), string(j))
-				writes := []*pb.TascRequest_KeyPair{
-					{
-						Key: key,
-						Value: writeData,
-					},
-				}
-				write := &pb.TascRequest{
-					Tid:   tid,
-					Pairs: writes,
-				}
-				client.Write(context.TODO(), write)
-			}
-			writeEnd := time.Now()
-			resp, _ := client.CommitTransaction(context.TODO(), &pb.TransactionTag{
-				Tid: tid,
-			})
-			txnEnd := time.Now()
-			if resp.Status != pb.TascTransactionStatus_COMMITTED {
-				panic("Commit failed")
-			}
-			writeLatencies[numWrites] = append(writeLatencies[numWrites], 1000*writeEnd.Sub(writeStart).Seconds())
-			latencies[numWrites] = append(latencies[numWrites], 1000*txnEnd.Sub(txnStart).Seconds())
-		}
-	}
-	return latencies, writeLatencies
-}
-
 func throughputPerClient(
 	uniqueThread int,
-	elbEndpoint string,
+	address string,
 	numReq int,
 	numWrites int,
 	numReads int,
 	latency chan []float64,
-	totalTime chan float64) {
-	txnManagerAddr, err := getTASCClientAddr(elbEndpoint)
-	if err != nil {
-		fmt.Printf("Unexpected error:\n%v\n", err)
-		os.Exit(1)
+	totalTime chan float64,
+	useELB bool) {
+	txnManagerAddr := address
+	if useELB {
+		addr, err := getTASCClientAddr(address)
+		txnManagerAddr = addr
+		if err != nil {
+			fmt.Printf("Unexpected error:\n%v\n", err)
+			os.Exit(1)
+		}
 	}
 	conn, err := grpc.Dial(fmt.Sprintf("%s:%d", txnManagerAddr, cmn.TxnManagerServerPort), grpc.WithInsecure())
 	if err != nil {
@@ -185,13 +122,12 @@ func throughputPerClient(
 	client := pb.NewTascClient(conn)
 
 	latencies := make([]float64, 0)
-
-	benchStart := time.Now()
 	writeData := make([]byte, 4096)
 	rand.Read(writeData)
 
+	totalBench := float64(0)
 	for i := 0; i < numReq; i++ {
-		txnStart := time.Now()
+		totalTime := float64(0)
 		txn, _ := client.StartTransaction(context.TODO(), &empty.Empty{})
 		tid := txn.GetTid()
 		for j := 0; j < numWrites; j++ {
@@ -206,14 +142,21 @@ func throughputPerClient(
 				Tid:   tid,
 				Pairs: writes,
 			}
+			start := time.Now()
 			_, err := client.Write(context.TODO(), write)
+			end := time.Now()
 			if err != nil {
 				fmt.Println("Writes are failing")
 				fmt.Println(err)
+			} else {
+				totalTime += end.Sub(start).Seconds()
 			}
 		}
 		for j := 0; j < numReads; j++ {
-			readKey := rand.Intn(numWrites)
+			readKey := j
+			if numWrites > 0 {
+				readKey = rand.Intn(numWrites)
+			}
 			key := fmt.Sprintf("tascThroughput-%d-%d-%d", uniqueThread, i, readKey)
 			reads := []*pb.TascRequest_KeyPair{
 				{
@@ -224,162 +167,122 @@ func throughputPerClient(
 				Tid:   tid,
 				Pairs: reads,
 			}
+			start := time.Now()
 			_, err = client.Read(context.TODO(), read)
+			end := time.Now()
 			if err != nil {
 				fmt.Println("Reads are failing")
 				fmt.Println(err)
+			} else {
+				totalTime += end.Sub(start).Seconds()
 			}
 		}
+		start := time.Now()
 		resp, err := client.CommitTransaction(context.TODO(), &pb.TransactionTag{
 			Tid: tid,
 		})
-		txnEnd := time.Now()
+		end := time.Now()
 		if resp.Status != pb.TascTransactionStatus_COMMITTED {
 			fmt.Println("Commit failed")
 			fmt.Println(err)
 		}
-		latencies = append(latencies, txnEnd.Sub(txnStart).Seconds())
+		totalTime += end.Sub(start).Seconds()
+		latencies = append(latencies, totalTime)
+		totalBench += totalTime
 	}
-	benchEnd := time.Now()
 	latency <- latencies
-	totalTime <- benchEnd.Sub(benchStart).Seconds()
-}
-
-func keyNodeWriteTest(elbEndpoint string, numReq int, keys []string) []float64 {
-	// Establish connection
-	txnManagerAddr, err := getTASCClientAddr(elbEndpoint)
-	if err != nil {
-		fmt.Printf("Unexpected error:\n%v\n", err)
-		os.Exit(1)
-	}
-	conn, err := grpc.Dial(fmt.Sprintf("%s:%d", txnManagerAddr, cmn.TxnManagerServerPort), grpc.WithInsecure())
-	if err != nil {
-		fmt.Printf("Unexpected error:\n%v\n", err)
-		os.Exit(1)
-	}
-	defer conn.Close()
-	client := pb.NewTascClient(conn)
-
-	latencies := make([]float64, 1000)
-
-	writeData := make([]byte, 4096)
-	rand.Read(writeData)
-
-	for i := 0; i < numReq; i++ {
-		txnStart := time.Now()
-		txn, _ := client.StartTransaction(context.TODO(), &empty.Empty{})
-		tid := txn.GetTid()
-
-		for _, k := range keys {
-			writes := []*pb.TascRequest_KeyPair{
-				{
-					Key: k,
-					Value: writeData,
-				},
-			}
-			write := &pb.TascRequest{
-				Tid:   tid,
-				Pairs: writes,
-			}
-			client.Write(context.TODO(), write)
-		}
-		resp, _ := client.CommitTransaction(context.TODO(), &pb.TransactionTag{
-			Tid: tid,
-		})
-		txnEnd := time.Now()
-		if resp.Status != pb.TascTransactionStatus_COMMITTED {
-			panic("Commit failed")
-		}
-		latencies[i] = 1000 * txnEnd.Sub(txnStart).Seconds()
-	}
-
-	return latencies
+	totalTime <- totalBench
 }
 
 /*
 * FUNCTIONS FOR TESTING DYNAMODB THROUGHPUT/WRITE LATENCY
  */
 
-func runDynamoWrites(numRequests int) map[int][]float64 {
-
+func runDynamo(numRequests int, numWrites int, numReads int) []float64 {
 	dc := awsdynamo.New(session.New(), &aws.Config{
 		Region: aws.String(endpoints.UsEast1RegionID),
 	})
 
-	latencies := make(map[int][]float64, numRequests)
+	latencies := []float64{}
 	writeData := make([]byte, 4096)
 	rand.Read(writeData)
 
-	for _, numWrites := range []int{1, 5, 10} {
-		for i := 0; i < numRequests; i++ {
-			start := time.Now()
-			for j := 0; j < numWrites; j++ {
-				input := &awsdynamo.PutItemInput{
-					Item: map[string]*awsdynamo.AttributeValue{
-						"Key": {
-							S: aws.String("direct" + string(numWrites) + string(i) + string(j)),
-						},
-						"Value": {
-							B: writeData,
-						},
+	for i := 0; i < numRequests; i++ {
+		start := time.Now()
+		var inputs []*awsdynamo.WriteRequest
+		for j := 0; j < numWrites; j++ {
+			input := &awsdynamo.PutRequest{
+				Item: map[string]*awsdynamo.AttributeValue{
+					"Key": {
+						S: aws.String("dynamo" + string(i) + string(j)),
 					},
-					TableName: aws.String("Aftsi-Benchmark"),
-				}
-				_, err := dc.PutItem(input)
-				if err != nil {
-					fmt.Println(err)
-					panic("Error writing to Dynamo")
-				}
+					"Value": {
+						B: writeData,
+					},
+				},
 			}
-			end := time.Now()
-			latencies[numWrites] = append(latencies[numWrites], 1000*end.Sub(start).Seconds())
+			inputs = append(inputs, &awsdynamo.WriteRequest{
+				PutRequest: input,
+			})
 		}
-	}
-	return latencies
-}
-
-func runDynamoBatchWrites(numRequests int) map[int][]float64 {
-	dc := awsdynamo.New(session.New(), &aws.Config{
-		Region: aws.String(endpoints.UsEast1RegionID),
-	})
-
-	latencies := make(map[int][]float64, numRequests)
-	writeData := make([]byte, 4096)
-	rand.Read(writeData)
-
-	for _, numWrites := range []int{1, 5, 10} {
-		for i := 0; i < numRequests; i++ {
-			start := time.Now()
-
-			var inputs []*awsdynamo.WriteRequest
-			for j := 0; j < numWrites; j++ {
-				input := &awsdynamo.PutRequest{
-					Item: map[string]*awsdynamo.AttributeValue{
-						"Key": {
-							S: aws.String("directBatch" + string(numWrites) + string(i) + string(j)),
-						},
-						"Value": {
-							B: writeData,
-						},
-					},
-				}
-				inputs = append(inputs, &awsdynamo.WriteRequest{
-					PutRequest: input,
-				})
-			}
+		if numWrites > 0 {
 			writeReq := make(map[string][]*awsdynamo.WriteRequest)
 			writeReq["Aftsi-Benchmark"] = inputs
 			_, err := dc.BatchWriteItem(&awsdynamo.BatchWriteItemInput{
 				RequestItems: writeReq,
 			})
-			end := time.Now()
 			if err != nil {
 				fmt.Println(err)
 				panic("Error writing to DynamoDB")
 			}
-
-			latencies[numWrites] = append(latencies[numWrites], 1000*end.Sub(start).Seconds())
 		}
+
+		for j := 0; j < numReads; j++ {
+			key := map[string]*awsdynamo.AttributeValue{
+				"DataKey": {
+					S: aws.String("dynamo" + string(i) + string(j)),
+				},
+			}
+			input := &awsdynamo.GetItemInput{
+				Key:       key,
+				TableName: aws.String("Aftsi-Benchmark"),
+			}
+			_, err := dc.GetItem(input)
+			if err != nil {
+				fmt.Println(err)
+				panic("Error reading from DynamoDB")
+			}
+		}
+		end := time.Now()
+		latencies = append(latencies, end.Sub(start).Seconds())
+	}
+	return latencies
+}
+
+func runAnna(numRequests int, numWrites int, numReads int, elb string, myAddr string) []float64 {
+	latencies := []float64{}
+	annaClient := storage.NewAnnaClient(elb, myAddr, false, 0)
+
+	for i := 0; i < numRequests; i++ {
+		writeData := make([]byte, 4096)
+		rand.Read(writeData)
+
+		start := time.Now()
+		// Writes
+		keys := []string{}
+		for j := 0; j < numWrites; j++ {
+			key := fmt.Sprintf("key-%d-%d", i, j)
+			keys = append(keys, key)
+			annaClient.Put(key, writeData)
+		}
+
+		// Reads
+		for j := 0; j < numReads; j++ {
+			key := fmt.Sprintf("key-%d-%d", i, j)
+			annaClient.Get(key)
+		}
+		end := time.Now()
+		latencies = append(latencies, end.Sub(start).Seconds())
 	}
 	return latencies
 }
