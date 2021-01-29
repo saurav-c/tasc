@@ -20,11 +20,6 @@ spec:
       - name: tasc-container
         image: tajshaik24/tasc
         imagePullPolicy: Always
-        resources:
-          requests:
-            cpu: "250m"
-          limits:
-            cpu: "500m"
         env:
         - name: BRANCH
           value: master
