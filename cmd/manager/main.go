@@ -8,8 +8,8 @@ import (
 	uuid "github.com/nu7hatch/gouuid"
 	zmq "github.com/pebbe/zmq4"
 	cmn "github.com/saurav-c/tasc/lib/common"
+	"github.com/saurav-c/tasc/lib/routing"
 	kpb "github.com/saurav-c/tasc/proto/keynode"
-	rpb "github.com/saurav-c/tasc/proto/router"
 	tpb "github.com/saurav-c/tasc/proto/tasc"
 	log "github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
@@ -38,7 +38,7 @@ func (t *TxnManager) StartTransaction(ctx context.Context, _ *empty.Empty) (*tpb
 		readChan:     make(chan *kpb.KeyNodeResponse),
 		valChan:      make(chan *kpb.ValidateResponse),
 		endTxnChan:   make(chan *kpb.EndResponse),
-		rtrChan:      make(chan *rpb.RouterResponse),
+		rtrChan:      make(chan *routing.RoutingResponse),
 	}
 	bufferEntry := WriteBufferEntry{buffer: map[string][]byte{}}
 
@@ -110,11 +110,12 @@ func (t *TxnManager) Read(ctx context.Context, requests *tpb.TascRequest) (*tpb.
 		data, _ := proto.Marshal(readRequest)
 
 		routingResp := <-txnEntry.rtrChan
-		keyNodeIp, ok := routingResp.AddressMap[key]
+		keyNodeIPs, ok := routingResp.Addresses[key]
 		if !ok {
 			log.Errorf("Unable to perform routing lookup for key %s", key)
 			continue
 		}
+		keyNodeIp := keyNodeIPs[0]
 		addr := fmt.Sprintf(cmn.PushTemplate, keyNodeIp, cmn.KeyReadPullPort)
 
 		start := time.Now()
@@ -150,21 +151,9 @@ func (t *TxnManager) Read(ctx context.Context, requests *tpb.TascRequest) (*tpb.
 }
 
 func (t *TxnManager) routerLookup(tid string, keys []string) {
-	rtrReq := &rpb.RouterRequest{
-		Tid:       tid,
-		Keys:      keys,
-		IpAddress: t.IpAddress,
-	}
-	data, _ := proto.Marshal(rtrReq)
-
-	addr := fmt.Sprintf(cmn.PushTemplate, t.RouterIpAddress, cmn.RouterPullPort)
 	start := time.Now()
-	t.PusherCache.Lock(t.ZmqInfo.context, addr)
-	validatePusher := t.PusherCache.GetSocket(addr)
-	validatePusher.SendBytes(data, zmq.DONTWAIT)
-	t.PusherCache.Unlock(addr)
+	t.RouterManager.Lookup(tid, keys)
 	end := time.Now()
-
 	go t.Monitor.TrackStat(tid, "Router pusher time", end.Sub(start))
 }
 
@@ -225,7 +214,8 @@ func (t *TxnManager) CommitTransaction(ctx context.Context, tag *tpb.Transaction
 	keyAddressMap := make(map[string][]string)
 	phase1WaitMap := make(map[string]string)
 	phase2WaitMap := make(map[string]string)
-	for key, ipAddress := range routerResp.AddressMap {
+	for key, ipAddresses := range routerResp.Addresses {
+		ipAddress := ipAddresses[0]
 		if _, ok := keyAddressMap[ipAddress]; !ok {
 			keyAddressMap[ipAddress] = []string{}
 			phase1WaitMap[ipAddress] = ""

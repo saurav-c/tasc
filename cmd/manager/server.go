@@ -6,10 +6,10 @@ import (
 	zmq "github.com/pebbe/zmq4"
 	"github.com/saurav-c/tasc/config"
 	cmn "github.com/saurav-c/tasc/lib/common"
+	"github.com/saurav-c/tasc/lib/routing"
 	"github.com/saurav-c/tasc/lib/storage"
 	key "github.com/saurav-c/tasc/proto/keynode"
 	mpb "github.com/saurav-c/tasc/proto/monitor"
-	rtr "github.com/saurav-c/tasc/proto/router"
 	log "github.com/sirupsen/logrus"
 	"os"
 	"sync"
@@ -35,9 +35,9 @@ type TxnManager struct {
 	StorageManager   storage.StorageManager
 	ZmqInfo          *ZMQInfo
 	PusherCache      *cmn.SocketCache
-	RouterIpAddress  string
 	LogFile          *os.File
 	Monitor          *cmn.StatsMonitor
+	RouterManager    routing.RouterManager
 }
 
 type TransactionTable struct {
@@ -54,7 +54,7 @@ type TransactionTableEntry struct {
 	readChan     chan *key.KeyNodeResponse
 	valChan      chan *key.ValidateResponse
 	endTxnChan   chan *key.EndResponse
-	rtrChan      chan *rtr.RouterResponse
+	rtrChan      chan *routing.RoutingResponse
 }
 
 type WriteBuffer struct {
@@ -87,7 +87,7 @@ func NewTransactionManager(threadId int) (*TxnManager, error) {
 	case "local":
 		storageManager = storage.NewLocalStoreManager()
 	case "anna":
-		storageManager = storage.NewAnnaStorageManager(configValue.IpAddress, configValue.AnnaELB)
+		storageManager = storage.NewAnnaStorageManager(configValue.PublicIP, configValue.AnnaELB)
 	default:
 		log.Fatal(fmt.Sprintf("Unrecognized storageType %s. Valid types are: anna, local, dynamo", configValue.StorageType))
 	}
@@ -129,7 +129,7 @@ func NewTransactionManager(threadId int) (*TxnManager, error) {
 		mutex:  &sync.RWMutex{},
 	}
 
-	routerIp := configValue.KeyRouterIP
+	rtrManager := routing.NewAnnaRoutingManager(configValue.IpAddress, configValue.RoutingILB)
 
 	return &TxnManager{
 		Id:               id.String(),
@@ -141,7 +141,7 @@ func NewTransactionManager(threadId int) (*TxnManager, error) {
 		StorageManager:   storageManager,
 		ZmqInfo:          &zmqInfo,
 		PusherCache:      pusherCache,
-		RouterIpAddress:  routerIp,
+		RouterManager:    rtrManager,
 		LogFile:          logFile,
 		Monitor:          monitor,
 	}, nil
