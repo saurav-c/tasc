@@ -1,5 +1,5 @@
 FROM ubuntu:18.04
-MAINTAINER Taj Shaik <tajshaik24@gmail.com> version: 1.0
+MAINTAINER Saurav Chhatrapati <sauravc@berkeley.edu> version: 1.0
 
 USER root
 ENV GOPATH /go
@@ -65,7 +65,6 @@ RUN rm -f config/tasc-config.yml
 WORKDIR proto
 RUN protoc -I tasc/ tasc/tasc.proto --go_out=plugins=grpc:tasc/
 RUN protoc -I keynode/ keynode/keynode.proto --go_out=keynode/
-RUN protoc -I router/ router/router.proto --go_out=router/
 RUN protoc -I monitor/ monitor/monitor.proto --go_out=monitor/
 
 WORKDIR $GOPATH/src/github.com/saurav-c/tasc/cluster
