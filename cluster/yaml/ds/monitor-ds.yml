@@ -18,10 +18,14 @@ spec:
       hostNetwork: true
       containers:
       - name: monitor-container
-        image: tajshaik24/tasc
+        image: sauravchh/tasc
         imagePullPolicy: Always
         env:
         - name: BRANCH
           value: master
         - name: ROLE
           value: monitor
+        - name: AWS_ACCESS_KEY_ID
+          value: ACCESS_KEY_ID_DUMMY
+        - name: AWS_SECRET_ACCESS_KEY
+          value: AWS_SECRET_KEY_DUMMY

@@ -18,16 +18,12 @@ spec:
       hostNetwork: true
       containers:
       - name: keynode-container
-        image: tajshaik24/tasc
+        image: sauravchh/tasc
         imagePullPolicy: Always
         env:
         - name: BRANCH
           value: master
         - name: ROLE
           value: keynode
-        - name: NODE_IPS
-          value: ""
-        - name: KEY_ROUTER
-          value: ""
         - name: MONITOR
           value: DUMMY_IP

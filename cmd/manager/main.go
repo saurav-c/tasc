@@ -53,6 +53,7 @@ func (t *TxnManager) StartTransaction(ctx context.Context, _ *empty.Empty) (*tpb
 	return &tpb.TransactionTag{
 		Tid:    tid,
 		Status: tpb.TascTransactionStatus_RUNNING,
+		TxnManagerIP: t.PublicIP,
 	}, nil
 }
 

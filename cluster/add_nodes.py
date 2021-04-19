@@ -22,16 +22,12 @@ def add_nodes(client, apps_client, cfile, kind, count, aws_key_id=None,
 
         for container in yml['spec']['template']['spec']['containers']:
             env = container['env']
+            util.replace_yaml_val(env, 'BRANCH', branch)
             util.replace_yaml_val(env, 'AWS_ACCESS_KEY_ID', aws_key_id)
             util.replace_yaml_val(env, 'AWS_SECRET_ACCESS_KEY', aws_key)
-            util.replace_yaml_val(env, 'BRANCH', branch)
-            if kind == "keyrouter":
-                key_ips = util.get_node_ips(client, 'role=keynode', 'ExternalIP')
-                keynodes = ' '.join(key_ips)  
-                util.replace_yaml_val(env, 'NODE_IPS', keynodes)
             if kind == "tasc":
-                keyrouter_ip = util.get_node_ips(client, 'role=keyrouter', 'ExternalIP')[0]
-                util.replace_yaml_val(env, 'KEY_ROUTER', keyrouter_ip)
+                routing_svc = util.get_service_address(client, 'routing-service')
+                util.replace_yaml_val(env, 'ROUTING_ILB', routing_svc)
                 monitor_ip = util.get_node_ips(client, 'role=monitor', 'ExternalIP')[0]
                 util.replace_yaml_val(env, 'MONITOR', monitor_ip)
             if kind == "keynode":
@@ -59,9 +55,11 @@ def add_nodes(client, apps_client, cfile, kind, count, aws_key_id=None,
                 created_pods.append((pname, cname))
 
         # Copy the KVS config into all recently created pods.
-        os.system('cp %s ./tasc-config.yml' % cfile)
+        cfile_name = './tasc-config.yml' if kind != 'routing' else './anna-config.yml'
+        cfile_dir = '/go/src/github.com/saurav-c/tasc/config' if kind != 'routing' else 'hydro/anna/conf'
+        os.system('cp %s ' + cfile_name % cfile)
 
         for pname, cname in created_pods:
-            util.copy_file_to_pod(client, 'tasc-config.yml', pname,
-                                  '/go/src/github.com/saurav-c/tasc/config', cname)
-        os.system('rm ./tasc-config.yml')
+            util.copy_file_to_pod(client, cfile_name[2:], pname,
+                                  cfile_dir, cname)
+        os.system('rm ' + cfile_name)

@@ -1,2 +1,6 @@
 storageType: anna
-annaELB: a13c2e2cc49e744e69b5d74cbc56d8d8-78274810.us-east-1.elb.amazonaws.com
+annaELB: ""
+privateIP: 127.0.0.1
+publicIP: 127.0.0.1
+routingILB: 127.0.0.1
+monitorIP: 127.0.0.1
