@@ -15,6 +15,9 @@ RUN mkdir $GOPATH/pkg
 ENV PATH $PATH:$GOPATH/bin
 ENV TASC_HOME $GOPATH/src/github.com/saurav-c/tasc
 
+# Go ENV Variable
+ENV GO111MODULE auto
+
 # Install Go, other Ubuntu dependencies.
 RUN apt-get update
 RUN apt-get install -y software-properties-common
@@ -63,12 +66,7 @@ WORKDIR tasc
 ADD "https://www.random.org/cgi-bin/randbyte?nbytes=10&format=h" skipcache
 RUN git pull
 
-# If file exists, delete it
-RUN rm -f config/tasc-config.yml
-
 # Produce all keynode, tasc, monitor, and routing pb.go files
-#WORKDIR proto
-#RUN protoc -I tasc/ tasc/tasc.proto --go_out=plugins=grpc:tasc/ --go_opt=Mtasc/tasc.proto=github.com/saurav-c/tasc
 WORKDIR $TASC_HOME/proto/tasc
 RUN protoc -I . tasc.proto --go_out=plugins=grpc:. --go_opt=Mtasc.proto=github.com/saurav-c/tasc
 WORKDIR $TASC_HOME/proto/keynode

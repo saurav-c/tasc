@@ -22,14 +22,10 @@ echo -e "[default]\naws_access_key_id = $AWS_ACCESS_KEY_ID\naws_secret_access_ke
 PRIVATE_IP=`ifconfig eth0 | grep 'inet' | grep -v inet6 | sed -e 's/^[ \t]*//' | cut -d' ' -f2`
 PUBLIC_IP=`curl http://169.254.169.254/latest/meta-data/public-ipv4`
 
-if [[ "$ROLE" = "lb" ]]; then
-  mkdir -p /root/.kube
-fi
-
 # Fetch most recent version of code
 cd $TASC_HOME
-git fetch -p origin
-git checkout -b origin/${BRANCH}
+git fetch origin
+git checkout -b brnch origin/${BRANCH}
 
 if [[ "$ROLE" = "manager" ]]; then
   mkdir -p /root/.kube

@@ -27,3 +27,7 @@ spec:
           value: keynode
         - name: MONITOR
           value: DUMMY_IP
+        - name: AWS_ACCESS_KEY_ID
+          value: ACCESS_KEY_ID_DUMMY
+        - name: AWS_SECRET_ACCESS_KEY
+          value: AWS_SECRET_KEY_DUMMY
