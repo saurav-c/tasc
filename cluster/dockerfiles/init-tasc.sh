@@ -40,6 +40,15 @@ done
 echo "privateIP: $PRIVATE_IP" >> config/tasc-config.yml
 echo "publicIP: $PUBLIC_IP" >> config/tasc-config.yml
 
+# Compile protos
+cd $TASC_HOME/proto/tasc
+protoc -I . tasc.proto --go_out=plugins=grpc:. --go_opt=Mtasc.proto=./
+cd $TASC_HOME/proto/keynode
+protoc -I . keynode.proto --go_out=. --go_opt=Mkeynode.proto=./
+cd $TASC_HOME/proto/monitor
+protoc -I . monitor.proto --go_out=. --go_opt=Mmonitor.proto=./
+
+
 # Start the process.
 if [[ "$ROLE" = "tasc" ]]; then
   echo "monitorIP: $MONITOR" >> config/tasc-config.yml
