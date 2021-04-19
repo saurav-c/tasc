@@ -30,7 +30,9 @@ def add_nodes(client, apps_client, cfile, kind, count, aws_key_id=None,
                 util.replace_yaml_val(env, 'ROUTING_ILB', routing_svc)
                 monitor_ip = util.get_node_ips(client, 'role=monitor', 'ExternalIP')[0]
                 util.replace_yaml_val(env, 'MONITOR', monitor_ip)
-            if kind == "keynode":
+                worker_svc = util.get_service_address(client, 'worker-service')
+                util.replace_yaml_val(env, 'WORKER_ILB', worker_svc)
+            if kind == "keynode" or kind == 'worker':
                 monitor_ip = util.get_node_ips(client, 'role=monitor', 'ExternalIP')[0]
                 util.replace_yaml_val(env, 'MONITOR', monitor_ip)
 

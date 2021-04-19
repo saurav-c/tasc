@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: worker-nodes
+  labels:
+    role: worker
+spec:
+  selector:
+    matchLabels:
+      role: worker
+  template:
+    metadata:
+      labels:
+        role: worker
+    spec:
+      nodeSelector:
+        role: worker
+      hostNetwork: true
+      containers:
+      - name: worker-container
+        image: sauravchh/tasc
+        imagePullPolicy: Always
+        env:
+        - name: BRANCH
+          value: master
+        - name: ROLE
+          value: worker
+        - name: ROUTING_ILB
+          value: DUMMY_IP
+        - name: MONITOR
+          value: DUMMY_IP
+        - name: AWS_ACCESS_KEY_ID
+          value: ACCESS_KEY_ID_DUMMY
+        - name: AWS_SECRET_ACCESS_KEY
+          value: AWS_SECRET_KEY_DUMMY
