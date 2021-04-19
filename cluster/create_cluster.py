@@ -8,10 +8,10 @@ import util
 
 ec2_client = boto3.client('ec2', os.getenv('AWS_REGION', 'us-east-1'))
 
-def create_cluster(txn_count, keynode_count, lb_count, benchmark_count, config_file, 
-            branch_name, ssh_key, cluster_name, kops_bucket, aws_key_id, aws_key):
+def create_cluster(txn_count, keynode_count, rtr_count, benchmark_count, config_file,
+            branch_name, ssh_key, cluster_name, kops_bucket, aws_key_id, aws_key, anna_config_file):
     prefix = './'
-    util.run_process(['./create_cluster_object.sh', kops_bucket, ssh_key], 'kops')
+    util.run_process(['./create_cluster_object.sh', kops_bucket, ssh_key])
 
     client, apps_client = util.init_k8s()
 
@@ -23,41 +23,35 @@ def create_cluster(txn_count, keynode_count, lb_count, benchmark_count, config_f
     add_nodes(client, apps_client, config_file, "keynode", keynode_count, aws_key_id,
                 aws_key, True, prefix, branch_name)
 
-    print('Creating Keynode Router...')
-    add_nodes(client, apps_client, config_file, "keyrouter", 1,
+    print('Creating %d Anna Routing Nodes...' % (rtr_count))
+    add_nodes(client, apps_client, anna_config_file, "routing", rtr_count,
               aws_key_id, aws_key, True, prefix, branch_name)
-    
-    print('Creating %d Load Balancer Nodes...' % lb_count)
-    add_nodes(client, apps_client, config_file, 'lb', lb_count,
-             aws_key_id, aws_key, True, prefix, branch_name)
 
-    lb_pods = client.list_namespaced_pod(namespace=util.NAMESPACE,
-                                         label_selector="role=lb").items
-    kubecfg = os.path.join(os.environ['HOME'], '.kube/config')
-    for pod in lb_pods:
-        util.copy_file_to_pod(client, kubecfg, pod.metadata.name,
-                              '/root/.kube', 'lb-container')
+    print('Creating routing service...')
+    service_spec = util.load_yaml('yaml/services/routing.yml', prefix)
+    client.create_namespaced_service(namespace=util.NAMESPACE,
+                                     body=service_spec)
+    util.get_service_address(client, 'routing-service')
 
     print('Creating %d TASC nodes...' % (txn_count))
     add_nodes(client, apps_client, config_file, 'tasc', txn_count,
               aws_key_id, aws_key, True, prefix, branch_name)
 
-    print('Creating %d Benchmark nodes...' % (benchmark_count))
-    add_nodes(client, apps_client, config_file, 'benchmark', benchmark_count,
-              aws_key_id, aws_key, True, prefix, branch_name)
-
-    benchmark_ips = util.get_node_ips(client, 'role=benchmark', 'ExternalIP')
-    with open('../cmd/benchmark/benchmarks.txt', 'w+') as f:
-        for ip in benchmark_ips:
-            f.write(ip + '\n')
-
-    print('Finished creating all pods...')
-
-    # Create the Transaction Router
     print('Creating TASC service...')
     service_spec = util.load_yaml('yaml/services/tasc.yml', prefix)
     client.create_namespaced_service(namespace=util.NAMESPACE,
                                      body=service_spec)
+
+    # print('Creating %d Benchmark nodes...' % (benchmark_count))
+    # add_nodes(client, apps_client, config_file, 'benchmark', benchmark_count,
+    #           aws_key_id, aws_key, True, prefix, branch_name)
+    #
+    # benchmark_ips = util.get_node_ips(client, 'role=benchmark', 'ExternalIP')
+    # with open('../cmd/benchmark/benchmarks.txt', 'w+') as f:
+    #     for ip in benchmark_ips:
+    #         f.write(ip + '\n')
+
+    print('Finished creating all pods...')
 
     sg_name = 'nodes.' + cluster_name
     sg = ec2_client.describe_security_groups(
@@ -76,7 +70,7 @@ def create_cluster(txn_count, keynode_count, lb_count, benchmark_count, config_f
     ec2_client.authorize_security_group_ingress(GroupId=sg['GroupId'],
                                                 IpPermissions=permission)
 
-    print("The TASC LB Endpoint: " + util.get_service_address(client, "tasc-service"))
+    print("\nThe TASC ELB Endpoint: " + util.get_service_address(client, "tasc-service") + "\n")
     print('Finished!')
 
 
@@ -98,8 +92,8 @@ if __name__ == '__main__':
     parser.add_argument('-k', '--keynodes', nargs=1, type=int, metavar='K',
                         help='The number of keynodes to start with ' +
                              '(required)', dest='keynodes', required=True)
-    parser.add_argument('-l', '--loadbalancer', nargs=1, type=int, metavar='L',
-                        help='The number of load balancer nodes to start with ' +
+    parser.add_argument('-r', '--routers', nargs=1, type=int, metavar='L',
+                        help='The number of (Anna) router nodes to start with ' +
                              '(required)', dest='loadbalancer', required=True)
     parser.add_argument('-b', '--benchmark', nargs=1, type=int, metavar='L',
                         help='The number of benchmark nodes to start with ' +
@@ -112,6 +106,10 @@ if __name__ == '__main__':
                         help='The configuration file to start the cluster with'
                         + ' (optional)', dest='config',
                         default='../config/tasc-base.yml')
+    parser.add_argument('--anna-config', nargs='?', type=str,
+                        help='The configuration file for Anna routing cluster'
+                             + ' (optional)', dest='config',
+                        default='../../conf/anna-base.yml')
     parser.add_argument('--ssh-key', nargs='?', type=str,
                         help='The SSH key used to configure and connect to ' +
                         'each node (optional)', dest='sshkey',
@@ -125,6 +123,6 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    create_cluster(args.nodes[0], args.keynodes[0], args.loadbalancer[0], 
+    create_cluster(args.nodes[0], args.keynodes[0], args.routers[0],
                 args.benchmark[0], args.config, args.branch, args.sshkey, cluster_name,
                 kops_bucket, aws_key_id, aws_key)

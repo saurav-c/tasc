@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: routing-service
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-internal: "true"
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 6450
+    targetPort: 6450
+    name: routing-0
+  - port: 6451
+    targetPort: 6451
+    name: routing-1
+  - port: 6452
+    targetPort: 6452
+    name: routing-2
+  - port: 6453
+    targetPort: 6453
+    name: routing-3
+  selector:
+    role: routing

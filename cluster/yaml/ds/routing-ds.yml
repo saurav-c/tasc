@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: routing-nodes
+  labels: 
+    role: routing
+spec:
+  selector:
+    matchLabels:
+      role: routing
+  template:
+    metadata:
+      labels:
+        role: routing
+    spec:
+      nodeSelector:
+        role: routing
+      hostNetwork: true
+      containers:
+      - name: routing-container
+        image: hydroproject/anna
+        env: 
+        - name: SERVER_TYPE
+          value: r
+        - name: MON_IPS
+          value: 0.0.0.0
+        - name: REPO_ORG
+          value: saurav-c
+        - name: REPO_BRANCH
+          value: test

@@ -46,6 +46,9 @@ message TransactionTag {
 
     // The current status of the transaction
     TascTransactionStatus status = 2;
+
+    // Transaction Manager IP Address
+    string TxnManagerIP = 3;
 }
 
 message TascRequest {

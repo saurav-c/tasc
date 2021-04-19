@@ -29,6 +29,7 @@ type TxnManager struct {
 	Id               string
 	ThreadId         int
 	IpAddress        string
+	PublicIP         string
 	TransactionTable *TransactionTable
 	WriteBuffer      *WriteBuffer
 	StorageManager   storage.StorageManager
@@ -134,6 +135,7 @@ func NewTransactionManager(threadId int) (*TxnManager, error) {
 		Id:               id.String(),
 		ThreadId:         threadId,
 		IpAddress:        configValue.IpAddress,
+		PublicIP:         configValue.PublicIP,
 		TransactionTable: table,
 		WriteBuffer:      buffer,
 		StorageManager:   storageManager,
