@@ -37,7 +37,7 @@ func (t *TxnManager) StartTransaction(ctx context.Context, _ *empty.Empty) (*tpb
 		status:       Running,
 		readChan:     make(chan *kpb.KeyNodeResponse),
 		valChan:      make(chan *kpb.ValidateResponse),
-		endTxnChan:   make(chan *kpb.EndResponse),
+		endTxnChan:   make(chan *tpb.TransactionTag),
 		rtrChan:      make(chan *routing.RoutingResponse),
 	}
 	bufferEntry := WriteBufferEntry{buffer: map[string][]byte{}}
@@ -241,18 +241,16 @@ func (t *TxnManager) CommitTransaction(ctx context.Context, tag *tpb.Transaction
 	go t.Monitor.TrackStat(tid, "Phase 1 2PC Time", end.Sub(start))
 
 	start = time.Now()
-	for keyNodeAddress, _ := range keyAddressMap {
-		if action == kpb.TransactionAction_COMMIT {
-			txnEntry.status = Committing
-			go t.endTransaction(keyNodeAddress, tid, action, writeVersionSet)
-		} else {
-			txnEntry.status = Aborting
-			go t.endTransaction(keyNodeAddress, tid, action, nil)
-		}
+	if action == kpb.TransactionAction_COMMIT {
+		txnEntry.status = Committing
+		go t.endTransaction(tid, tpb.TascTransactionStatus_COMMITTED, writeVersionSet)
+	} else {
+		txnEntry.status = Aborting
+		go t.endTransaction(tid, tpb.TascTransactionStatus_ABORTED, nil)
 	}
 
 	// Wait for Phase 2 responses
-	ok := t.collectEndTxnResponses(tid, txnEntry.endTxnChan, phase2WaitMap)
+	ok := t.collectEndTxnResponses(txnEntry.endTxnChan)
 	end = time.Now()
 
 	go t.Monitor.TrackStat(tid, "Phase 2 2PC Time", end.Sub(start))
@@ -260,9 +258,7 @@ func (t *TxnManager) CommitTransaction(ctx context.Context, tag *tpb.Transaction
 	// Rollback transaction
 	if !ok && action == kpb.TransactionAction_COMMIT {
 		action = kpb.TransactionAction_ABORT
-		for keyNodeAddress, _ := range keyAddressMap {
-			go t.endTransaction(keyNodeAddress, tid, action, nil)
-		}
+		go t.endTransaction(tid, tpb.TascTransactionStatus_ABORTED, nil)
 	}
 
 	if action == kpb.TransactionAction_COMMIT {
@@ -348,52 +344,13 @@ func (t *TxnManager) collectValidateResponses(tid string, valRespChan chan *kpb.
 	}
 }
 
-func (t *TxnManager) endTransaction(keyNodeAddress string, tid string, action kpb.TransactionAction,
-	writeSet []string) {
-	addr := fmt.Sprintf(cmn.PushTemplate, keyNodeAddress, cmn.KeyEndTxnPullPort)
-	endReq := &kpb.EndRequest{
-		Tid:       tid,
-		Action:    action,
-		WriteSet:  writeSet,
-		IpAddress: t.IpAddress,
-	}
-	data, _ := proto.Marshal(endReq)
-
-	start := time.Now()
-	t.PusherCache.Lock(t.ZmqInfo.context, addr)
-	endPusher := t.PusherCache.GetSocket(addr)
-	endPusher.SendBytes(data, zmq.DONTWAIT)
-	t.PusherCache.Unlock(addr)
-	end := time.Now()
-
-	go t.Monitor.TrackStat(tid, "End pusher time", end.Sub(start))
+func (t *TxnManager) endTransaction(tid string, status tpb.TascTransactionStatus, writeSet []string) {
+	t.WorkerConn.SendWork(tid, status, writeSet)
 }
 
-func (t *TxnManager) collectEndTxnResponses(tid string, endRespChan chan *kpb.EndResponse,
-	keyMap map[string]string) bool {
-	keyNodeCount := len(keyMap)
-	recvCount := 0
-	timeout := time.NewTimer(1 * time.Second)
-	for {
-		select {
-		case resp := <-endRespChan:
-			if !resp.Ok {
-				return false
-			}
-			recvCount += 1
-			if recvCount == keyNodeCount {
-				return true
-			}
-			delete(keyMap, resp.IpAddress)
-		case <-timeout.C:
-			var nodes []string
-			for keyNode, _ := range keyMap {
-				nodes = append(nodes, keyNode)
-			}
-			log.Errorf("Phase 2 Timeout waiting for: %v", nodes)
-			return false
-		}
-	}
+func (t *TxnManager) collectEndTxnResponses(endRespChan chan *tpb.TransactionTag) bool {
+	<- endRespChan
+	return true
 }
 
 func (t *TxnManager) writeToStorage(tid string, endTs int64, entry *WriteBufferEntry, writeChan chan bool) {

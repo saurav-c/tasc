@@ -17,6 +17,7 @@ type TASCConfig struct {
 	PublicIP    string `yaml:"publicIP"`
 	RoutingILB  string `yaml:"routingILB"`
 	MonitorIP   string `yaml:"monitorIP"`
+	WorkerILB   string `yaml:"workerILB"`
 }
 
 func ParseConfig() *TASCConfig {

@@ -6,6 +6,7 @@ import (
 	"github.com/saurav-c/tasc/lib/routing"
 	annapb "github.com/saurav-c/tasc/proto/anna"
 	kpb "github.com/saurav-c/tasc/proto/keynode"
+	tpb "github.com/saurav-c/tasc/proto/tasc"
 	log "github.com/sirupsen/logrus"
 	"time"
 )
@@ -78,10 +79,10 @@ func (t *TxnManager) validateHandler(data []byte) {
 }
 
 func (t *TxnManager) endTxnHandler(data []byte) {
-	resp := &kpb.EndResponse{}
+	resp := &tpb.TransactionTag{}
 	err := proto.Unmarshal(data, resp)
 	if err != nil {
-		log.Error("Unable to parse KeyNode end transaction response")
+		log.Error("Unable to parse worker ACK")
 		return
 	}
 	tid := resp.GetTid()
