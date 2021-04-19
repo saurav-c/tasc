@@ -11,7 +11,7 @@ ec2_client = boto3.client('ec2', os.getenv('AWS_REGION', 'us-east-1'))
 def create_cluster(txn_count, keynode_count, rtr_count, benchmark_count, config_file,
             branch_name, ssh_key, cluster_name, kops_bucket, aws_key_id, aws_key, anna_config_file):
     prefix = './'
-    util.run_process(['./create_cluster_object.sh', kops_bucket, ssh_key])
+    util.run_process(['./create_cluster_object.sh', kops_bucket, ssh_key], 'kops')
 
     client, apps_client = util.init_k8s()
 
