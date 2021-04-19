@@ -94,7 +94,7 @@ if __name__ == '__main__':
                              '(required)', dest='keynodes', required=True)
     parser.add_argument('-r', '--routers', nargs=1, type=int, metavar='L',
                         help='The number of (Anna) router nodes to start with ' +
-                             '(required)', dest='loadbalancer', required=True)
+                             '(required)', dest='routers', required=True)
     parser.add_argument('-b', '--benchmark', nargs=1, type=int, metavar='L',
                         help='The number of benchmark nodes to start with ' +
                              '(required)', dest='benchmark', required=True)
@@ -108,7 +108,7 @@ if __name__ == '__main__':
                         default='../config/tasc-base.yml')
     parser.add_argument('--anna-config', nargs='?', type=str,
                         help='The configuration file for Anna routing cluster'
-                             + ' (optional)', dest='config',
+                             + ' (optional)', dest='annaconfig',
                         default='../../conf/anna-base.yml')
     parser.add_argument('--ssh-key', nargs='?', type=str,
                         help='The SSH key used to configure and connect to ' +
@@ -125,4 +125,4 @@ if __name__ == '__main__':
 
     create_cluster(args.nodes[0], args.keynodes[0], args.routers[0],
                 args.benchmark[0], args.config, args.branch, args.sshkey, cluster_name,
-                kops_bucket, aws_key_id, aws_key)
+                kops_bucket, aws_key_id, aws_key, args.annaconfig)
