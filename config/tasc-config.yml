@@ -1,6 +1,0 @@
-storageType: local
-keyRouterIP: 127.0.0.1
-ipAddress: 127.0.0.1
-nodeIPs:
-  - 127.0.0.1
-monitorIP: 127.0.0.1

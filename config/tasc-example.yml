@@ -1,0 +1,6 @@
+storageType: anna
+annaELB: ""
+privateIP: 127.0.0.1
+publicIP: 127.0.0.1
+routingILB: 127.0.0.1
+monitorIP: 127.0.0.1
