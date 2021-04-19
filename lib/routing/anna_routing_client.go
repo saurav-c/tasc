@@ -1,11 +1,11 @@
 package routing
 
 import (
+	"fmt"
 	"github.com/golang/protobuf/proto"
 	zmq "github.com/pebbe/zmq4"
 	cmn "github.com/saurav-c/tasc/lib/common"
 	annapb "github.com/saurav-c/tasc/proto/anna"
-	"golang.org/x/tools/go/ssa/interp/testdata/src/fmt"
 	"math/rand"
 	"os"
 )

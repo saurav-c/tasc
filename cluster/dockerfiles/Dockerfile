@@ -68,11 +68,11 @@ RUN git pull
 
 # Produce all keynode, tasc, monitor, and routing pb.go files
 WORKDIR $TASC_HOME/proto/tasc
-RUN protoc -I . tasc.proto --go_out=plugins=grpc:. --go_opt=Mtasc.proto=github.com/saurav-c/tasc
+RUN protoc -I . tasc.proto --go_out=plugins=grpc:. --go_opt=Mtasc.proto=./
 WORKDIR $TASC_HOME/proto/keynode
-RUN protoc -I . keynode.proto --go_out=. --go_opt=Mkeynode.proto=github.com/saurav-c/tasc
+RUN protoc -I . keynode.proto --go_out=. --go_opt=Mkeynode.proto=./
 WORKDIR $TASC_HOME/proto/monitor
-RUN protoc -I . monitor.proto --go_out=. --go_opt=Mmonitor.proto=github.com/saurav-c/tasc
+RUN protoc -I . monitor.proto --go_out=. --go_opt=Mmonitor.proto=./
 
-WORKDIR $GOPATH/src/github.com/saurav-c/tasc/cluster
+WORKDIR $GOPATH/src/github.com/saurav-c/tasc/cluster/dockerfiles
 CMD bash ./init-tasc.sh
