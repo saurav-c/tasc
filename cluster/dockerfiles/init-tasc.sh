@@ -48,6 +48,7 @@ protoc -I . keynode.proto --go_out=. --go_opt=Mkeynode.proto=./
 cd $TASC_HOME/proto/monitor
 protoc -I . monitor.proto --go_out=. --go_opt=Mmonitor.proto=./
 
+cd $TASC_HOME
 
 # Start the process.
 if [[ "$ROLE" = "tasc" ]]; then
