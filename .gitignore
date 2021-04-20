@@ -13,10 +13,13 @@ cmd/keynode/keynode
 cmd/manager/manager
 cmd/routing/routing
 cmd/monitor/monitor
+cmd/worker/worker
 client/client
 cmd/cli/cli
 cmd/benchmark/benchmark
 cmd/benchmark/benchmarks.txt
+
+config/tasc-config.yml
 
 logs/
 *.log

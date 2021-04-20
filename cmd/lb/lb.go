@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	cmn "github.com/saurav-c/tasc/lib/common"
+	log "github.com/sirupsen/logrus"
 	"math/rand"
 	"os"
 	"time"
@@ -64,6 +65,8 @@ func main() {
 	poller := zmq.NewPoller()
 	poller.Add(lbSocket, zmq.POLLIN)
 
+	logger := cmn.InitLogger("logs", "lb", log.DebugLevel)
+
 	updateStart := time.Now()
 	for true {
 		sockets, _ := poller.Poll(10 * time.Millisecond)
@@ -87,6 +90,7 @@ func main() {
 			}
 
 			addresses = newAddresses
+			go logAddresses(addresses)
 			updateStart = time.Now()
 		}
 	}
@@ -114,4 +118,11 @@ func getNodeAddress(addresses []v1.NodeAddress, tp v1.NodeAddressType) string {
 	}
 
 	return ""
+}
+
+func logAddresses(addrs []string) {
+	log.Info("TASC Node Addresses...")
+	for _, addr := range addrs {
+		log.Info("\t-" + addr)
+	}
 }

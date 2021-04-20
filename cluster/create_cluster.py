@@ -8,7 +8,7 @@ import util
 
 ec2_client = boto3.client('ec2', os.getenv('AWS_REGION', 'us-east-1'))
 
-def create_cluster(txn_count, keynode_count, rtr_count, benchmark_count, config_file,
+def create_cluster(txn_count, keynode_count, rtr_count, lb_count, benchmark_count, config_file,
             branch_name, ssh_key, cluster_name, kops_bucket, aws_key_id, aws_key, anna_config_file):
     prefix = './'
     util.run_process(['./create_cluster_object.sh', kops_bucket, ssh_key], 'kops')
@@ -37,7 +37,11 @@ def create_cluster(txn_count, keynode_count, rtr_count, benchmark_count, config_
     add_nodes(client, apps_client, config_file, 'tasc', txn_count,
               aws_key_id, aws_key, True, prefix, branch_name)
 
-    print('Creating TASC service...')
+    print('Creating %d Load Balancers...' % (lb_count))
+    add_nodes(client, apps_client, config_file, 'lb', lb_count,
+              aws_key_id, aws_key, True, prefix, branch_name)
+
+    print('Creating TASC Load Balancing service...')
     service_spec = util.load_yaml('yaml/services/tasc.yml', prefix)
     client.create_namespaced_service(namespace=util.NAMESPACE,
                                      body=service_spec)
@@ -95,6 +99,9 @@ if __name__ == '__main__':
     parser.add_argument('-r', '--routers', nargs=1, type=int, metavar='L',
                         help='The number of (Anna) router nodes to start with ' +
                              '(required)', dest='routers', required=True)
+    parser.add_argument('-l', '--loadbalancer', nargs=1, type=int, metavar='L',
+                        help='The number of load balancer nodes to start with ' +
+                             '(required)', dest='lb', required=True)
     parser.add_argument('-b', '--benchmark', nargs=1, type=int, metavar='L',
                         help='The number of benchmark nodes to start with ' +
                              '(required)', dest='benchmark', required=True)
@@ -123,6 +130,6 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    create_cluster(args.nodes[0], args.keynodes[0], args.routers[0],
+    create_cluster(args.nodes[0], args.keynodes[0], args.routers[0], args.lb[0],
                 args.benchmark[0], args.config, args.branch, args.sshkey, cluster_name,
                 kops_bucket, aws_key_id, aws_key, args.annaconfig)
