@@ -73,6 +73,10 @@ elif [[ "$ROLE" = "worker" ]]; then
   cd $TASC_HOME/cmd/worker
   go build
   ./worker
+elif [[ "$ROLE" = "lb" ]]; then
+  cd $TASC_HOME/cmd/lb
+  go build
+  ./lb
 elif [[ "$ROLE" = "benchmark" ]]; then
   cd $TASC_HOME/cmd/benchmark
   go build

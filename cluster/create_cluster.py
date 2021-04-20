@@ -43,7 +43,6 @@ def create_cluster(txn_count, keynode_count, rtr_count, worker_count, lb_count, 
                                      body=service_spec)
     util.get_service_address(client, 'worker-service')
 
-
     print('Creating %d TASC nodes...' % (txn_count))
     add_nodes(client, apps_client, config_file, 'tasc', txn_count,
               aws_key_id, aws_key, True, prefix, branch_name)
@@ -51,6 +50,14 @@ def create_cluster(txn_count, keynode_count, rtr_count, worker_count, lb_count, 
     print('Creating %d Load Balancers...' % (lb_count))
     add_nodes(client, apps_client, config_file, 'lb', lb_count,
               aws_key_id, aws_key, True, prefix, branch_name)
+
+    # Copy files to load balancers for kubectl
+    lb_pods = client.list_namespaced_pod(namespace=util.NAMESPACE,
+                                         label_selector="role=lb").items
+    kubecfg = os.path.join(os.environ['HOME'], '.kube/config')
+    for pod in lb_pods:
+        util.copy_file_to_pod(client, kubecfg, pod.metadata.name,
+                              '/root/.kube', 'lb-container')
 
     print('Creating TASC Load Balancing service...')
     service_spec = util.load_yaml('yaml/services/tasc.yml', prefix)
