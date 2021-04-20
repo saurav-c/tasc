@@ -66,7 +66,7 @@ elif [[ "$ROLE" = "monitor" ]]; then
   cd $TASC_HOME/cmd/monitor
   go build
   ./monitor
-elif [[ "$ROLE" = "worker" ]] ]; then
+elif [[ "$ROLE" = "worker" ]]; then
   echo "monitorIP: $MONITOR" >> config/tasc-config.yml
   echo "routingILB: $ROUTING_ILB" >> config/tasc-config.yml
   cd $TASC_HOME/cmd/worker
