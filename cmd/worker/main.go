@@ -133,9 +133,11 @@ func (w *TxnWorker) rtrHandler(data []byte) {
 func main() {
 	worker, err := NewTransactionWorker()
 	if err != nil {
-		log.Fatal("Unable to create transaction worker")
+		log.Fatal("Unable to create transaction worker: " + err.Error())
 		os.Exit(1)
 	}
+
+	log.Println("Started worker at " + worker.IpAddress)
 
 	// Start listening for transaction updates
 	worker.listen()
