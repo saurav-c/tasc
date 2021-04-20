@@ -35,7 +35,7 @@ func main() {
 
 	if !(*local) {
 		if len(os.Args) == 1 {
-			fmt.Println("Please pass in the address of the TASC Transaction Router.")
+			fmt.Println("Please pass in the address of the TASC ELB.")
 			return
 		}
 
@@ -48,7 +48,8 @@ func main() {
 	}
 
 	reader := bufio.NewReader(os.Stdin)
-	tidClientMapping := map[string]pb.TascClient{}
+	clientMap := map[string]pb.TascClient{}
+	tidClientMap := map[string]*pb.TascClient{}
 	tidMap := map[string]string{}
 	tidCounter := 0
 
@@ -66,23 +67,38 @@ func main() {
 				txnAddressBytes, _ := sckt.RecvBytes(0)
 				txnAddress = string(txnAddressBytes)
 			}
-			fmt.Println(txnAddress)
-			conn, err := grpc.Dial(fmt.Sprintf("%s:%d", txnAddress, cmn.TxnManagerServerPort), grpc.WithInsecure())
-			tascClient := pb.NewTascClient(conn)
+			fmt.Printf("Using Txn Manager at %s\n", txnAddress)
+
+			if _, ok := clientMap[txnAddress]; !ok {
+				conn, err := grpc.Dial(fmt.Sprintf("%s:%d", txnAddress, cmn.TxnManagerServerPort),
+					grpc.WithInsecure())
+				if err != nil {
+					fmt.Printf("Error connecting to Txn Manager %s: %s\n", txnAddress, err.Error())
+					continue
+				}
+				tascClient := pb.NewTascClient(conn)
+				clientMap[txnAddress] = tascClient
+			}
+
+			tascClient := clientMap[txnAddress]
+
 			start := time.Now()
 			tid, err := tascClient.StartTransaction(context.TODO(), &empty.Empty{})
 			end := time.Now()
-			tidClientMapping[tid.Tid] = tascClient
 			fmt.Printf("Start took: %f ms\n", 1000*end.Sub(start).Seconds())
+
 			if err != nil {
 				fmt.Printf("An error %s has occurred.\n", err)
 				return
 			}
+
+			tidClientMap[tid.Tid] = &tascClient
+
 			aliasTid := strconv.Itoa(tidCounter)
 			tidCounter++
 			tidMap[aliasTid] = tid.Tid
 			fmt.Printf("The tid we are using is: %s\n", tid.GetTid())
-			fmt.Printf("You can use a tid alias: %s\n", aliasTid)
+			fmt.Printf("You should use a tid alias: %s\n", aliasTid)
 		case "read":
 			if len(splitStringInput) != 3 {
 				fmt.Println("Incorrect usage: read <TID> <key>")
@@ -101,19 +117,23 @@ func main() {
 				Tid:   tid,
 				Pairs: keyPairs,
 			}
-			tascClient, ok := tidClientMapping[tid]
+			tascClientPtr, ok := tidClientMap[tid]
 			if !ok {
-				fmt.Printf("Unknown tid %s", tid)
+				fmt.Printf("Unknown tid %s\n", tid)
 				continue
 			}
+			tascClient := *tascClientPtr
+
 			start := time.Now()
 			response, err := tascClient.Read(context.TODO(), readReq)
 			end := time.Now()
 			fmt.Printf("Read took: %f ms\n", 1000*end.Sub(start).Seconds())
+
 			if err != nil {
 				fmt.Printf("An error %s has occurred.\n", err)
 				return
 			}
+
 			fmt.Printf("The value received is: %s\n", string(response.Pairs[0].Value))
 		case "write":
 			if len(splitStringInput) != 4 {
@@ -134,19 +154,23 @@ func main() {
 				Tid:   tid,
 				Pairs: keyPairs,
 			}
-			tascClient, ok := tidClientMapping[tid]
+			tascClientPtr, ok := tidClientMap[tid]
 			if !ok {
-				fmt.Printf("Unknown tid %s", tid)
+				fmt.Printf("Unknown tid %s\n", tid)
 				continue
 			}
+			tascClient := *tascClientPtr
+
 			start := time.Now()
 			_, err := tascClient.Write(context.TODO(), writeReq)
 			end := time.Now()
 			fmt.Printf("Write took: %f ms\n", 1000*end.Sub(start).Seconds())
+
 			if err != nil {
 				fmt.Printf("An error %s has occurred.\n", err)
-				return
+				continue
 			}
+
 			fmt.Println("The write was successful.")
 		case "commit":
 			if len(splitStringInput) != 2 {
@@ -160,19 +184,23 @@ func main() {
 				continue
 			}
 			TID := &pb.TransactionTag{Tid:tid}
-			tascClient, ok := tidClientMapping[tid]
+			tascClientPtr, ok := tidClientMap[tid]
 			if !ok {
-				fmt.Printf("Unknown tid %s", tid)
+				fmt.Printf("Unknown tid %s\n", tid)
 				continue
 			}
+			tascClient := *tascClientPtr
+
 			start := time.Now()
 			resp, err := tascClient.CommitTransaction(context.TODO(), TID)
 			end := time.Now()
 			fmt.Printf("Commit took: %f ms\n", 1000*end.Sub(start).Seconds())
+
 			if err != nil {
 				fmt.Printf("An error %s has occurred.\n", err)
 				return
 			}
+
 			if resp.Status != pb.TascTransactionStatus_COMMITTED {
 				fmt.Println("ABORTED")
 			} else {
@@ -190,15 +218,21 @@ func main() {
 				continue
 			}
 			TID := &pb.TransactionTag{Tid:tid}
-			tascClient, ok := tidClientMapping[tid]
+			tascClientPtr, ok := tidClientMap[tid]
 			if !ok {
-				fmt.Printf("Unknown tid %s", tid)
+				fmt.Printf("Unknown tid %s\n", tid)
 				continue
 			}
+			tascClient := *tascClientPtr
+
+			start := time.Now()
 			_, err := tascClient.AbortTransaction(context.TODO(), TID)
+			end := time.Now()
+			fmt.Printf("Abort took: %f ms\n", 1000*end.Sub(start).Seconds())
+
 			if err != nil {
 				fmt.Printf("An error %s has occurred.\n", err)
-				return
+				continue
 			}
 			fmt.Println("The abort was successful.")
 		default:
