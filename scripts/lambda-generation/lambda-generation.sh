@@ -14,7 +14,7 @@ echo "export GOPATH=~/go" >> ~/.bashrc
 echo "PATH=$PATH:$GOPATH/bin" >> ~/.bashrc
 echo "export GOBIN=$GOPATH/bin" >> ~/.bashrc
 
-sudo yum install -y golang git wget unzip python3 curl unzip ca-certificates net-tools curl zeromq python3-devel
+sudo yum install -y golang git wget unzip python3 curl unzip ca-certificates net-tools curl zeromq python3-devel gcc-c++
 
 # Install protobuf
 sudo wget https://github.com/protocolbuffers/protobuf/releases/download/v3.10.0/protoc-3.10.0-linux-x86_64.zip
@@ -34,8 +34,8 @@ cd tasc/proto
 sudo chmod 777 -R /home/ec2-user/go
 
 # Installing all Python packages
-python3 -m pip install grpcio
-python3 -m pip install grpcio-tools
+sudo python3 -m pip install grpcio
+sudo python3 -m pip install grpcio-tools
 
 python3 -m grpc_tools.protoc -I tasc/ tasc/tasc.proto --python_out=tasc/ --grpc_python_out=tasc/
 
