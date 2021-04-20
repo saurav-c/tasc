@@ -8,8 +8,10 @@ import (
 	cmn "github.com/saurav-c/tasc/lib/common"
 	"github.com/saurav-c/tasc/lib/routing"
 	"github.com/saurav-c/tasc/lib/storage"
+	"github.com/saurav-c/tasc/lib/worker"
 	key "github.com/saurav-c/tasc/proto/keynode"
 	mpb "github.com/saurav-c/tasc/proto/monitor"
+	tpb "github.com/saurav-c/tasc/proto/tasc"
 	log "github.com/sirupsen/logrus"
 	"os"
 	"sync"
@@ -38,6 +40,7 @@ type TxnManager struct {
 	LogFile          *os.File
 	Monitor          *cmn.StatsMonitor
 	RouterManager    routing.RouterManager
+	WorkerConn       *worker.WorkerConn
 }
 
 type TransactionTable struct {
@@ -53,7 +56,7 @@ type TransactionTableEntry struct {
 	status       TransactionStatus
 	readChan     chan *key.KeyNodeResponse
 	valChan      chan *key.ValidateResponse
-	endTxnChan   chan *key.EndResponse
+	endTxnChan   chan *tpb.TransactionTag
 	rtrChan      chan *routing.RoutingResponse
 }
 
@@ -96,7 +99,7 @@ func NewTransactionManager(threadId int) (*TxnManager, error) {
 		context:      zctx,
 		readPuller:   cmn.CreateSocket(zmq.PULL, zctx, fmt.Sprintf(cmn.PullTemplate, cmn.TxnReadPullPort), true),
 		valPuller:    cmn.CreateSocket(zmq.PULL, zctx, fmt.Sprintf(cmn.PullTemplate, cmn.TxnValidatePullPort), true),
-		endTxnPuller: cmn.CreateSocket(zmq.PULL, zctx, fmt.Sprintf(cmn.PullTemplate, cmn.TxnEndTxnPullPort), true),
+		endTxnPuller: cmn.CreateSocket(zmq.PULL, zctx, fmt.Sprintf(cmn.PullTemplate, cmn.TxnAckPullPort), true),
 		rtrPuller:    cmn.CreateSocket(zmq.PULL, zctx, fmt.Sprintf(cmn.PullTemplate, cmn.TxnRoutingPullPort), true),
 	}
 
@@ -130,6 +133,7 @@ func NewTransactionManager(threadId int) (*TxnManager, error) {
 	}
 
 	rtrManager := routing.NewAnnaRoutingManager(configValue.IpAddress, configValue.RoutingILB)
+	wcn := worker.NewWorkerConn(configValue.IpAddress, configValue.WorkerILB)
 
 	return &TxnManager{
 		Id:               id.String(),
@@ -144,5 +148,6 @@ func NewTransactionManager(threadId int) (*TxnManager, error) {
 		RouterManager:    rtrManager,
 		LogFile:          logFile,
 		Monitor:          monitor,
+		WorkerConn:       wcn,
 	}, nil
 }

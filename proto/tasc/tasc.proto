@@ -73,3 +73,8 @@ message TascRequest {
 message TransactionWriteSet {
     repeated string keys = 1;
 }
+
+message TransactionResult {
+    TransactionTag tag  = 1;
+    TransactionWriteSet writeset = 2;
+}

@@ -33,6 +33,17 @@ def create_cluster(txn_count, keynode_count, rtr_count, lb_count, benchmark_coun
                                      body=service_spec)
     util.get_service_address(client, 'routing-service')
 
+    print('Creating %d Worker Nodes...' % (worker_count))
+    add_nodes(client, apps_client, config_file, "worker", worker_count, aws_key_id,
+              aws_key, True, prefix, branch_name)
+
+    print('Creating Worker Service...')
+    service_spec = util.load_yaml('yaml/services/worker.yml', prefix)
+    client.create_namespaced_service(namespace=util.NAMESPACE,
+                                     body=service_spec)
+    util.get_service_address(client, 'worker-service')
+
+
     print('Creating %d TASC nodes...' % (txn_count))
     add_nodes(client, apps_client, config_file, 'tasc', txn_count,
               aws_key_id, aws_key, True, prefix, branch_name)
@@ -95,7 +106,10 @@ if __name__ == '__main__':
                         '(required)', dest='nodes', required=True)
     parser.add_argument('-k', '--keynodes', nargs=1, type=int, metavar='K',
                         help='The number of keynodes to start with ' +
-                             '(required)', dest='keynodes', required=True)
+                        '(required)', dest='keynodes', required=True)
+    parser.add_argument('-w', '--workers', nargs=1, type=int, metavar='K',
+                        help='The number of workers to start with ' +
+                             '(required)', dest='workers', required=True)
     parser.add_argument('-r', '--routers', nargs=1, type=int, metavar='L',
                         help='The number of (Anna) router nodes to start with ' +
                              '(required)', dest='routers', required=True)

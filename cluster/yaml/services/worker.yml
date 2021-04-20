@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: worker-service
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-internal: "true"
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 12000
+    targetPort: 12000
+    name: worker-0
+  selector:
+    role: worker

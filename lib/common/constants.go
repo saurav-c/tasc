@@ -15,12 +15,17 @@ const (
 	TxnValidatePullPort  = 9100
 	TxnEndTxnPullPort    = 9150
 	TxnRoutingPullPort   = 9200
+	TxnAckPullPort       = 9250
 
 	// Monitor ports
 	MonitorPushPort = 10000
 
 	// Router ports
 	RouterPullPort = 11000
+
+	// Worker ports
+	WorkerPullPort    = 12000
+	WorkerRtrPullPort = 12050
 
 	// Trasaction ID Template
 	TidTemplate = "%s-%d-%s"
