@@ -5,6 +5,7 @@ import os
 import boto3
 from add_nodes import add_nodes
 import util
+import requests
 
 ec2_client = boto3.client('ec2', os.getenv('AWS_REGION', 'us-east-1'))
 
@@ -33,6 +34,8 @@ def create_cluster(txn_count, keynode_count, rtr_count, worker_count, lb_count, 
     routing_pods_ips = util.get_pod_ips(client, 'role=routing', is_running=True)
     while len(routing_pods_ips) < rtr_count:
         routing_pods_ips = util.get_pod_ips(client, 'role=routing', is_running=True)
+
+    authorize_self(client)
 
     print('Creating %d Key Nodes...' % (keynode_count))
     add_nodes(client, apps_client, config_file, "keynode", keynode_count, aws_key_id,
@@ -103,6 +106,28 @@ def create_cluster(txn_count, keynode_count, rtr_count, worker_count, lb_count, 
 
     print("\nThe TASC ELB Endpoint: " + util.get_service_address(client, "tasc-service") + "\n")
     print('Finished!')
+
+def authorize_self(cluster_name):
+    r = requests.get('http://169.254.169.254/latest/meta-data/public-ipv4')
+    ip = r.content.decode()
+
+    sg_name = 'nodes.' + cluster_name
+    sg = ec2_client.describe_security_groups(
+        Filters=[{'Name': 'group-name',
+                  'Values': [sg_name]}])['SecurityGroups'][0]
+    print("Authorizing access from this machine...")
+    permission = [{
+        'FromPort': 0,
+        'IpProtocol': 'tcp',
+        'ToPort': 65535,
+        'IpRanges': [{
+            'CidrIp': ip
+        }]
+    }]
+
+    ec2_client.authorize_security_group_ingress(GroupId=sg['GroupId'],
+                                                IpPermissions=permission)
+
 
 
 if __name__ == '__main__':

@@ -20,5 +20,6 @@ def send_msg(routers, msg):
     for router in routers:
         dst = 'tcp://' + router + ':' + str(MEMBERSHIP_PORT)
         sock = context.socket(zmq.PUSH)
+        sock.setsockopt(zmq.LINGER, 0) # Allows for breakdown of socket
         sock.connect(dst)
         sock.send_string(msg)

@@ -28,7 +28,7 @@ git fetch origin
 git checkout -b brnch origin/${BRANCH}
 
 if [[ "$ROLE" = "lb" ]]; then
-  mkdir -p /root/.kube
+  mkdir -p ~/.kube
 fi
 
 # Wait for the config file to be passed in.
