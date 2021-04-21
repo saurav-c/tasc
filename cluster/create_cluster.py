@@ -19,10 +19,6 @@ def create_cluster(txn_count, keynode_count, rtr_count, worker_count, lb_count, 
     add_nodes(client, apps_client, config_file, "monitor", 1,
               aws_key_id, aws_key, True, prefix, branch_name)
 
-    print('Creating %d Key Nodes...' % (keynode_count))
-    add_nodes(client, apps_client, config_file, "keynode", keynode_count, aws_key_id,
-                aws_key, True, prefix, branch_name)
-
     print('Creating %d Anna Routing Nodes...' % (rtr_count))
     add_nodes(client, apps_client, anna_config_file, "routing", rtr_count,
               aws_key_id, aws_key, True, prefix, branch_name)
@@ -32,6 +28,15 @@ def create_cluster(txn_count, keynode_count, rtr_count, worker_count, lb_count, 
     client.create_namespaced_service(namespace=util.NAMESPACE,
                                      body=service_spec)
     util.get_service_address(client, 'routing-service')
+
+    # Wait for all routing nodes to be ready
+    routing_pods_ips = util.get_pod_ips(client, 'role=routing', is_running=True)
+    while len(routing_pods_ips) < rtr_count:
+        routing_pods_ips = util.get_pod_ips(client, 'role=routing', is_running=True)
+
+    print('Creating %d Key Nodes...' % (keynode_count))
+    add_nodes(client, apps_client, config_file, "keynode", keynode_count, aws_key_id,
+              aws_key, True, prefix, branch_name)
 
     print('Creating %d Worker Nodes...' % (worker_count))
     add_nodes(client, apps_client, config_file, "worker", worker_count, aws_key_id,
@@ -50,7 +55,10 @@ def create_cluster(txn_count, keynode_count, rtr_count, worker_count, lb_count, 
     print('Creating %d Load Balancers...' % (lb_count))
     add_nodes(client, apps_client, config_file, 'lb', lb_count,
               aws_key_id, aws_key, True, prefix, branch_name)
-    util.get_pod_ips(client, 'role=lb', is_running=True)
+    
+    lb_pod_ips = util.get_pod_ips(client, 'role=lb', is_running=True)
+    while len(lb_pod_ips) < lb_count:
+        lb_pod_ips = util.get_pod_ips(client, 'role=lb', is_running=True)
 
     # Copy files to load balancers for kubectl
     lb_pods = client.list_namespaced_pod(namespace=util.NAMESPACE,

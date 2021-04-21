@@ -1,0 +1,24 @@
+#!/usr/bin/env python3
+
+import zmq
+
+MEMBERSHIP_PORT = 6400
+
+def join_hash_ring(routers, public_ip, private_ip):
+    msg = create_membership_msg('join', public_ip, private_ip)
+    send_msg(routers, msg)
+
+def depart_hash_ring(routers, public_ip, private_ip):
+    msg = create_membership_msg('depart', public_ip, private_ip)
+    send_msg(routers, msg)
+
+def create_membership_msg(event, public, private):
+    return event + ':' + 'MEMORY' + ':' + public + ':' + private + ':' + '0'
+
+def send_msg(routers, msg):
+    context = zmq.Context(1)
+    for router in routers:
+        dst = 'tcp://' + router + ':' + str(MEMBERSHIP_PORT)
+        sock = context.socket(zmq.PUSH)
+        sock.connect(dst)
+        sock.send_string(msg)

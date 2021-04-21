@@ -3,6 +3,7 @@
 import os
 import boto3
 import util
+import routing_util
 
 ec2_client = boto3.client('ec2', os.getenv('AWS_REGION', 'us-east-1'))
 
@@ -56,7 +57,9 @@ def add_nodes(client, apps_client, cfile, kind, count, aws_key_id=None,
                                           kind).items
 
         # Generate list of all recently created pods.
+        created_pod_ips = []
         for pod in pods:
+            created_pod_ips.append(pod.status.pod_ip)
             pname = pod.metadata.name
             for container in pod.spec.containers:
                 cname = container.name
@@ -71,3 +74,10 @@ def add_nodes(client, apps_client, cfile, kind, count, aws_key_id=None,
             util.copy_file_to_pod(client, cfile_name[2:], pname,
                                   cfile_dir, cname)
         os.system('rm ' + cfile_name)
+
+        # Notify routers about new key nodes
+        if kind == 'keynode':
+            rtr_ips = util.get_pod_ips(client, 'role=routing', is_running=True)
+            for ip in created_pod_ips:
+                routing_util.join_hash_ring(rtr_ips, ip, ip)
+
