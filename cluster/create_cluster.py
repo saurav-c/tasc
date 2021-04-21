@@ -121,7 +121,7 @@ def authorize_self(cluster_name):
         'IpProtocol': 'tcp',
         'ToPort': 65535,
         'IpRanges': [{
-            'CidrIp': ip
+            'CidrIp': ip + '/32'
         }]
     }]
 
