@@ -35,7 +35,7 @@ def create_cluster(txn_count, keynode_count, rtr_count, worker_count, lb_count, 
     while len(routing_pods_ips) < rtr_count:
         routing_pods_ips = util.get_pod_ips(client, 'role=routing', is_running=True)
 
-    authorize_self(client)
+    authorize_self(cluster_name)
 
     print('Creating %d Key Nodes...' % (keynode_count))
     add_nodes(client, apps_client, config_file, "keynode", keynode_count, aws_key_id,
