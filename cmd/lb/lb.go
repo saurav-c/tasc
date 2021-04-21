@@ -44,7 +44,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	config, err := clientcmd.BuildConfigFromFlags("", "/root/.kube/config")
+	config, err := clientcmd.BuildConfigFromFlags("", "~/.kube/config")
 	if err != nil {
 		panic(err.Error())
 	}

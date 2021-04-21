@@ -69,7 +69,7 @@ def create_cluster(txn_count, keynode_count, rtr_count, worker_count, lb_count, 
     kubecfg = os.path.join(os.environ['HOME'], '.kube/config')
     for pod in lb_pods:
         util.copy_file_to_pod(client, kubecfg, pod.metadata.name,
-                              '/root/.kube', 'lb-container')
+                              '~/.kube', 'lb-container')
 
     print('Creating TASC Load Balancing service...')
     service_spec = util.load_yaml('yaml/services/tasc.yml', prefix)
