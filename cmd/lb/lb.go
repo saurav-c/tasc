@@ -66,6 +66,7 @@ func main() {
 	poller.Add(lbSocket, zmq.POLLIN)
 
 	logger := cmn.InitLogger("logs", "lb", log.DebugLevel)
+	defer logger.Close()
 
 	updateStart := time.Now()
 	for true {
@@ -85,7 +86,7 @@ func main() {
 		if updateEnd.Sub(updateStart).Seconds() > 1.0 {
 			newAddresses, err := getAddresses(client)
 			if err != nil {
-				fmt.Println("Unable to retrieve addresses. Not updating list...\n", err)
+				log.Debug("Unable to retrieve addresses. Not updating list...\n", err)
 				continue
 			}
 
