@@ -31,5 +31,7 @@ rm tmp.yml
 echo "Creating cluster on AWS..."
 kops update cluster --name ${TASC_CLUSTER_NAME} --yes
 
+kops export kubecfg --admin
+
 ./validate_cluster.sh
 
