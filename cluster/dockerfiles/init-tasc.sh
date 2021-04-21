@@ -27,7 +27,7 @@ cd $TASC_HOME
 git fetch origin
 git checkout -b brnch origin/${BRANCH}
 
-if [[ "$ROLE" = "manager" ]]; then
+if [[ "$ROLE" = "lb" ]]; then
   mkdir -p /root/.kube
 fi
 
