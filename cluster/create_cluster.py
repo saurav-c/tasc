@@ -50,6 +50,7 @@ def create_cluster(txn_count, keynode_count, rtr_count, worker_count, lb_count, 
     print('Creating %d Load Balancers...' % (lb_count))
     add_nodes(client, apps_client, config_file, 'lb', lb_count,
               aws_key_id, aws_key, True, prefix, branch_name)
+    util.get_pod_ips(client, 'role=lb', is_running=True)
 
     # Copy files to load balancers for kubectl
     lb_pods = client.list_namespaced_pod(namespace=util.NAMESPACE,
