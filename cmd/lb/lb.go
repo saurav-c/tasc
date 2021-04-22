@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	cmn "github.com/saurav-c/tasc/lib/common"
+	log "github.com/sirupsen/logrus"
 	"math/rand"
 	"os"
 	"time"
@@ -43,7 +44,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	config, err := clientcmd.BuildConfigFromFlags("", "/root/.kube/config")
+	config, err := clientcmd.BuildConfigFromFlags("", "~/.kube/config")
 	if err != nil {
 		panic(err.Error())
 	}
@@ -64,6 +65,9 @@ func main() {
 	poller := zmq.NewPoller()
 	poller.Add(lbSocket, zmq.POLLIN)
 
+	logger := cmn.InitLogger("logs", "lb", log.DebugLevel)
+	defer logger.Close()
+
 	updateStart := time.Now()
 	for true {
 		sockets, _ := poller.Poll(10 * time.Millisecond)
@@ -82,11 +86,12 @@ func main() {
 		if updateEnd.Sub(updateStart).Seconds() > 1.0 {
 			newAddresses, err := getAddresses(client)
 			if err != nil {
-				fmt.Println("Unable to retrieve addresses. Not updating list...\n", err)
+				log.Debug("Unable to retrieve addresses. Not updating list...\n", err)
 				continue
 			}
 
 			addresses = newAddresses
+			go logAddresses(addresses)
 			updateStart = time.Now()
 		}
 	}
@@ -114,4 +119,11 @@ func getNodeAddress(addresses []v1.NodeAddress, tp v1.NodeAddressType) string {
 	}
 
 	return ""
+}
+
+func logAddresses(addrs []string) {
+	log.Info("TASC Node Addresses...")
+	for _, addr := range addrs {
+		log.Info("\t-" + addr)
+	}
 }

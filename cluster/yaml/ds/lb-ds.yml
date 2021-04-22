@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: lb-nodes
-  labels: 
+  labels:
     role: lb
 spec:
   selector:
@@ -17,11 +17,15 @@ spec:
         role: lb
       hostNetwork: true
       containers:
-      - name: lb-container
-        image: tajshaik24/tasc
-        imagePullPolicy: Always
-        env:
-        - name: BRANCH
-          value: master
-        - name: ROLE
-          value: lb
+        - name: lb-container
+          image: sauravchh/tasc
+          imagePullPolicy: Always
+          env:
+            - name: BRANCH
+              value: master
+            - name: ROLE
+              value: lb
+            - name: AWS_ACCESS_KEY_ID
+              value: ACCESS_KEY_ID_DUMMY
+            - name: AWS_SECRET_ACCESS_KEY
+              value: AWS_SECRET_KEY_DUMMY

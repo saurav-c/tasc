@@ -3,8 +3,10 @@ package main
 import (
 	"github.com/golang/protobuf/proto"
 	zmq "github.com/pebbe/zmq4"
+	"github.com/saurav-c/tasc/lib/routing"
+	annapb "github.com/saurav-c/tasc/proto/anna"
 	kpb "github.com/saurav-c/tasc/proto/keynode"
-	rpb "github.com/saurav-c/tasc/proto/router"
+	tpb "github.com/saurav-c/tasc/proto/tasc"
 	log "github.com/sirupsen/logrus"
 	"time"
 )
@@ -77,10 +79,10 @@ func (t *TxnManager) validateHandler(data []byte) {
 }
 
 func (t *TxnManager) endTxnHandler(data []byte) {
-	resp := &kpb.EndResponse{}
+	resp := &tpb.TransactionTag{}
 	err := proto.Unmarshal(data, resp)
 	if err != nil {
-		log.Error("Unable to parse KeyNode end transaction response")
+		log.Error("Unable to parse worker ACK")
 		return
 	}
 	tid := resp.GetTid()
@@ -91,16 +93,23 @@ func (t *TxnManager) endTxnHandler(data []byte) {
 }
 
 func (t *TxnManager) routingHandler(data [] byte) {
-	log.Debug("Received routing response")
-	resp := &rpb.RouterResponse{}
+	resp := &annapb.KeyAddressResponse{}
 	err := proto.Unmarshal(data, resp)
 	if err != nil {
 		log.Error("Unable to parse Router response")
 		return
 	}
-	tid := resp.GetTid()
+
+	addrMap := make(map[string][]string)
+	for _, r := range resp.Addresses {
+		addrMap[r.Key] = r.Ips
+	}
+	rtrResp := &routing.RoutingResponse{Addresses: addrMap}
+
+	tid := resp.GetResponseId()
 	t.TransactionTable.mutex.RLock()
 	channel := t.TransactionTable.table[tid].rtrChan
 	t.TransactionTable.mutex.RUnlock()
-	channel <- resp
+
+	channel <- rtrResp
 }

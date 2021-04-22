@@ -11,12 +11,13 @@ import (
 )
 
 type TASCConfig struct {
-	StorageType string   `yaml:"storageType"`
-	IpAddress   string   `yaml:"ipAddress"`
-	KeyRouterIP string   `yaml:"keyRouterIP"`
-	NodeIPs     []string `yaml:"nodeIPs"`
-	AnnaELB     string   `yaml:"annaELB"`
-	MonitorIP   string   `yaml:"monitorIP"`
+	StorageType string `yaml:"storageType"`
+	AnnaELB     string `yaml:"annaELB"`
+	IpAddress   string `yaml:"privateIP"`
+	PublicIP    string `yaml:"publicIP"`
+	RoutingILB  string `yaml:"routingILB"`
+	MonitorIP   string `yaml:"monitorIP"`
+	WorkerILB   string `yaml:"workerILB"`
 }
 
 func ParseConfig() *TASCConfig {

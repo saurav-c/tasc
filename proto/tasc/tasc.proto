@@ -46,6 +46,9 @@ message TransactionTag {
 
     // The current status of the transaction
     TascTransactionStatus status = 2;
+
+    // Transaction Manager IP Address
+    string TxnManagerIP = 3;
 }
 
 message TascRequest {
@@ -69,4 +72,9 @@ message TascRequest {
 
 message TransactionWriteSet {
     repeated string keys = 1;
+}
+
+message TransactionResult {
+    TransactionTag tag  = 1;
+    TransactionWriteSet writeset = 2;
 }

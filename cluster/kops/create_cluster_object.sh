@@ -18,12 +18,20 @@ KOPS_STATE_STORE=$1
 SSH_KEY=$2
 
 echo "Creating cluster object..."
-kops create cluster --master-size c5.large --node-size c5.large --zones us-east-1a --ssh-public-key ${SSH_KEY}.pub ${TASC_CLUSTER_NAME} --networking kube-router > /dev/null 2>&1
+kops create cluster --master-size c5.large --node-size c5.large --zones us-east-1a --ssh-public-key ${SSH_KEY}.pub ${TASC_CLUSTER_NAME} --networking kubenet
+
+echo "Deleting default instance group..."
+kops delete ig nodes --name ${TASC_CLUSTER_NAME} --yes
+
+echo "Adding general instance group"
+sed "s|CLUSTER_NAME|$TASC_CLUSTER_NAME|g" yaml/igs/general-ig.yml > tmp.yml
+kops create -f tmp.yml
+rm tmp.yml
 
 echo "Creating cluster on AWS..."
-kops update cluster --name ${TASC_CLUSTER_NAME} --yes > /dev/null 2>&1
+kops update cluster --name ${TASC_CLUSTER_NAME} --yes
+
+kops export kubecfg --admin
 
 ./validate_cluster.sh
 
-echo "Deleting default instance group..."
-kops delete ig nodes --name ${TASC_CLUSTER_NAME} --yes > /dev/null 2>&1

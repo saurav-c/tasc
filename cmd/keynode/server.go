@@ -13,6 +13,7 @@ import (
 
 type KeyNode struct {
 	IpAddress             string
+	PublicIP              string
 	StorageManager        storage.StorageManager
 	CommittedVersionIndex *VersionIndex
 	PendingVersionIndex   *VersionIndex
@@ -40,7 +41,7 @@ func NewKeyNode() (*KeyNode, error) {
 	case "local":
 		storageManager = storage.NewLocalStoreManager()
 	case "anna":
-		storageManager = storage.NewAnnaStorageManager(configValue.IpAddress, configValue.AnnaELB)
+		storageManager = storage.NewAnnaStorageManager(configValue.PublicIP, configValue.AnnaELB)
 	default:
 		log.Fatal(fmt.Sprintf("Unrecognized storageType %s. Valid types are: s3, dynamo, redis.", configValue.StorageType))
 		os.Exit(3)

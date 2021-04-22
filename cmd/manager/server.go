@@ -6,10 +6,12 @@ import (
 	zmq "github.com/pebbe/zmq4"
 	"github.com/saurav-c/tasc/config"
 	cmn "github.com/saurav-c/tasc/lib/common"
+	"github.com/saurav-c/tasc/lib/routing"
 	"github.com/saurav-c/tasc/lib/storage"
+	"github.com/saurav-c/tasc/lib/worker"
 	key "github.com/saurav-c/tasc/proto/keynode"
 	mpb "github.com/saurav-c/tasc/proto/monitor"
-	rtr "github.com/saurav-c/tasc/proto/router"
+	tpb "github.com/saurav-c/tasc/proto/tasc"
 	log "github.com/sirupsen/logrus"
 	"os"
 	"sync"
@@ -29,14 +31,16 @@ type TxnManager struct {
 	Id               string
 	ThreadId         int
 	IpAddress        string
+	PublicIP         string
 	TransactionTable *TransactionTable
 	WriteBuffer      *WriteBuffer
 	StorageManager   storage.StorageManager
 	ZmqInfo          *ZMQInfo
 	PusherCache      *cmn.SocketCache
-	RouterIpAddress  string
 	LogFile          *os.File
 	Monitor          *cmn.StatsMonitor
+	RouterManager    routing.RouterManager
+	WorkerConn       *worker.WorkerConn
 }
 
 type TransactionTable struct {
@@ -52,8 +56,8 @@ type TransactionTableEntry struct {
 	status       TransactionStatus
 	readChan     chan *key.KeyNodeResponse
 	valChan      chan *key.ValidateResponse
-	endTxnChan   chan *key.EndResponse
-	rtrChan      chan *rtr.RouterResponse
+	endTxnChan   chan *tpb.TransactionTag
+	rtrChan      chan *routing.RoutingResponse
 }
 
 type WriteBuffer struct {
@@ -86,7 +90,7 @@ func NewTransactionManager(threadId int) (*TxnManager, error) {
 	case "local":
 		storageManager = storage.NewLocalStoreManager()
 	case "anna":
-		storageManager = storage.NewAnnaStorageManager(configValue.IpAddress, configValue.AnnaELB)
+		storageManager = storage.NewAnnaStorageManager(configValue.PublicIP, configValue.AnnaELB)
 	default:
 		log.Fatal(fmt.Sprintf("Unrecognized storageType %s. Valid types are: anna, local, dynamo", configValue.StorageType))
 	}
@@ -95,7 +99,7 @@ func NewTransactionManager(threadId int) (*TxnManager, error) {
 		context:      zctx,
 		readPuller:   cmn.CreateSocket(zmq.PULL, zctx, fmt.Sprintf(cmn.PullTemplate, cmn.TxnReadPullPort), true),
 		valPuller:    cmn.CreateSocket(zmq.PULL, zctx, fmt.Sprintf(cmn.PullTemplate, cmn.TxnValidatePullPort), true),
-		endTxnPuller: cmn.CreateSocket(zmq.PULL, zctx, fmt.Sprintf(cmn.PullTemplate, cmn.TxnEndTxnPullPort), true),
+		endTxnPuller: cmn.CreateSocket(zmq.PULL, zctx, fmt.Sprintf(cmn.PullTemplate, cmn.TxnAckPullPort), true),
 		rtrPuller:    cmn.CreateSocket(zmq.PULL, zctx, fmt.Sprintf(cmn.PullTemplate, cmn.TxnRoutingPullPort), true),
 	}
 
@@ -128,19 +132,22 @@ func NewTransactionManager(threadId int) (*TxnManager, error) {
 		mutex:  &sync.RWMutex{},
 	}
 
-	routerIp := configValue.KeyRouterIP
+	rtrManager := routing.NewAnnaRoutingManager(configValue.IpAddress, configValue.RoutingILB)
+	wcn := worker.NewWorkerConn(configValue.IpAddress, configValue.WorkerILB)
 
 	return &TxnManager{
 		Id:               id.String(),
 		ThreadId:         threadId,
 		IpAddress:        configValue.IpAddress,
+		PublicIP:         configValue.PublicIP,
 		TransactionTable: table,
 		WriteBuffer:      buffer,
 		StorageManager:   storageManager,
 		ZmqInfo:          &zmqInfo,
 		PusherCache:      pusherCache,
-		RouterIpAddress:  routerIp,
+		RouterManager:    rtrManager,
 		LogFile:          logFile,
 		Monitor:          monitor,
+		WorkerConn:       wcn,
 	}, nil
 }

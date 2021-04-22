@@ -4,6 +4,7 @@ import sys
 import tarfile
 from tempfile import TemporaryFile
 import yaml
+import time
 
 import kubernetes as k8s
 from kubernetes.stream import stream
@@ -120,7 +121,7 @@ def get_service_address(client, svc_name):
 # from https://github.com/aogier/k8s-client-python/
 # commmit: 12f1443895e80ee24d689c419b5642de96c58cc8/
 # file: examples/exec.py line 101
-def copy_file_to_pod(client, file_path, pod_name, pod_path, container):
+def copy_file_to_pod(client, file_path, pod_name, pod_path, container, retry=0):
     exec_command = ['tar', 'xmvf', '-', '-C', pod_path]
     resp = stream(client.connect_get_namespaced_pod_exec, pod_name, NAMESPACE,
                   command=exec_command,
@@ -143,7 +144,12 @@ def copy_file_to_pod(client, file_path, pod_name, pod_path, container):
             if resp.peek_stderr():
                 print("Unexpected error while copying files: %s" %
                       (resp.read_stderr()))
-                sys.exit(1)
+                if retry >= 5:
+                    sys.exit(1)
+                sleep_time = (retry + 1) * 5
+                print("Retrying file copy after sleeping for %d seconds..." % (sleep_time))
+                time.sleep(sleep_time)
+                copy_file_to_pod(client, file_path, pod_name, pod_path, container, retry + 1)
             if commands:
                 c = commands.pop(0)
                 resp.write_stdin(c)
