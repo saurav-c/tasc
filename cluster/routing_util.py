@@ -17,6 +17,7 @@ def register(manager, private_ip, public_ip=None):
     sock.setsockopt(zmq.LINGER, 0)
     sock.connect(dst)
     public_ip = private_ip if not public_ip else public_ip
+    msg = ''
     msg += public_ip
     msg += ':'
     msg += private_ip
@@ -30,6 +31,7 @@ def deregister(manager, private_ip, public_ip=None):
     sock.setsockopt(zmq.LINGER, 0)
     sock.connect(dst)
     public_ip = private_ip if not public_ip else public_ip
+    msg = ''
     msg += public_ip
     msg += ':'
     msg += private_ip
