@@ -118,19 +118,6 @@ def create_cluster(txn_count, keynode_count, rtr_count, worker_count, lb_count, 
     ec2_client.authorize_security_group_ingress(GroupId=sg['GroupId'],
                                                 IpPermissions=permission)
 
-    print("Authorizing Ports for Routing...")
-    permission = [{
-        'FromPort': 6400,
-        'IpProtocol': 'tcp',
-        'ToPort': 6400,
-        'IpRanges': [{
-            'CidrIp': '::/0'
-        }]
-    }]
-
-    ec2_client.authorize_security_group_ingress(GroupId=sg['GroupId'],
-                                                IpPermissions=permission)
-
     print('Registering Key Nodes...')
     keynode_pod_ips = util.get_pod_ips(client, 'role=keynode', is_running=True)
     register(client, keynode_pod_ips)
