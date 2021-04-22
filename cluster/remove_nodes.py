@@ -50,6 +50,6 @@ def delete_nodes(client, kind, count):
 
     # Notify routers about deleted key nodes
     if kind == 'keynode':
-        rtr_ips = util.get_pod_ips(client, 'role=routing', is_running=True)
+        manager_svc = util.get_service_address(client, 'manager-service')
         for ip in deleted_pod_ips:
-            routing_util.depart_hash_ring(rtr_ips, ip, ip)
+            routing_util.deregister(manager_svc, ip, ip)

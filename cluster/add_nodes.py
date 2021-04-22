@@ -77,7 +77,7 @@ def add_nodes(client, apps_client, cfile, kind, count, aws_key_id=None,
 
         # Notify routers about new key nodes
         if kind == 'keynode':
-            rtr_ips = util.get_pod_ips(client, 'role=routing', is_running=True)
+            manager_svc = util.get_service_address(client, 'manager-service')
             for ip in created_pod_ips:
-                routing_util.join_hash_ring(rtr_ips, ip, ip)
+                routing_util.register(manager_svc, ip, ip)
 

@@ -5,6 +5,7 @@ import sys
 from add_nodes import add_nodes
 from remove_nodes import delete_nodes
 import util
+from routing_util import register, deregister
 
 # AWS Info
 aws_key_id = util.check_or_get_env_arg('AWS_ACCESS_KEY_ID')
@@ -40,6 +41,11 @@ def main():
             print('Unknown node type: ' + ntype)
             return
         delete(ntype, count)
+    elif cmd == 'hashring':
+        event = args[1]
+        public_ip = args[2]
+        private_ip = args[3]
+        hash_ring_change(event, public_ip, private_ip)
     else:
         print('Unknown cmd: ' + cmd)
 
@@ -64,6 +70,16 @@ def add(kind, count):
 
 def delete(kind, count):
     delete_nodes(client, kind, count)
+
+def hash_ring_change(event, public, private):
+    manager_svc = util.get_service_address(client, 'manager-service')
+    if event == 'join':
+        register(manager_svc, public, private)
+    elif event == 'depart':
+        deregister(manager_svc, public, private)
+    else:
+        print('Unknown event %s' % (event))
+
 
 
 if __name__ == '__main__':

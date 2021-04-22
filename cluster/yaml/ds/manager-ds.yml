@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: manager-nodes
+  labels:
+    role: manager
+spec:
+  selector:
+    matchLabels:
+      role: manager
+  template:
+    metadata:
+      labels:
+        role: manager
+    spec:
+      nodeSelector:
+        role: manager
+      hostNetwork: true
+      containers:
+      - name: manager-container
+        image: sauravchh/tasc
+        imagePullPolicy: Always
+        env:
+        - name: BRANCH
+          value: master
+        - name: ROLE
+          value: manager
+        - name: AWS_ACCESS_KEY_ID
+          value: ACCESS_KEY_ID_DUMMY
+        - name: AWS_SECRET_ACCESS_KEY
+          value: AWS_SECRET_KEY_DUMMY

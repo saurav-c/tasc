@@ -5,7 +5,6 @@ import os
 import boto3
 from add_nodes import add_nodes
 import util
-import requests
 
 ec2_client = boto3.client('ec2', os.getenv('AWS_REGION', 'us-east-1'))
 
@@ -15,6 +14,25 @@ def create_cluster(txn_count, keynode_count, rtr_count, worker_count, lb_count, 
     util.run_process(['./create_cluster_object.sh', kops_bucket, ssh_key], 'kops')
 
     client, apps_client = util.init_k8s()
+
+    print('Creating Manager Node...')
+    add_nodes(client, apps_client, config_file, "manager", 1,
+              aws_key_id, aws_key, True, prefix, branch_name)
+
+    mngr_pod_ips = util.get_pod_ips(client, 'role=manager', is_running=True)
+    while len(mngr_pod_ips) < 1:
+        mngr_pod_ips = util.get_pod_ips(client, 'role=manager', is_running=True)
+
+    # Copy files to managers for kubectl
+    mngr_pods = client.list_namespaced_pod(namespace=util.NAMESPACE,
+                                         label_selector="role=manager").items
+    copy_kube_config(client, mngr_pods)
+
+    print('Creating Manager service...')
+    service_spec = util.load_yaml('yaml/services/manager.yml', prefix)
+    client.create_namespaced_service(namespace=util.NAMESPACE,
+                                     body=service_spec)
+    util.get_service_address(client, 'manager-service')
 
     print('Creating Monitor Node...')
     add_nodes(client, apps_client, config_file, "monitor", 1,
@@ -34,8 +52,6 @@ def create_cluster(txn_count, keynode_count, rtr_count, worker_count, lb_count, 
     routing_pods_ips = util.get_pod_ips(client, 'role=routing', is_running=True)
     while len(routing_pods_ips) < rtr_count:
         routing_pods_ips = util.get_pod_ips(client, 'role=routing', is_running=True)
-
-    authorize_self(cluster_name)
 
     print('Creating %d Key Nodes...' % (keynode_count))
     add_nodes(client, apps_client, config_file, "keynode", keynode_count, aws_key_id,
@@ -66,10 +82,7 @@ def create_cluster(txn_count, keynode_count, rtr_count, worker_count, lb_count, 
     # Copy files to load balancers for kubectl
     lb_pods = client.list_namespaced_pod(namespace=util.NAMESPACE,
                                          label_selector="role=lb").items
-    kubecfg = os.path.join(os.environ['HOME'], '.kube/config')
-    for pod in lb_pods:
-        util.copy_file_to_pod(client, kubecfg, pod.metadata.name,
-                              '/root/.kube', 'lb-container')
+    copy_kube_config(client, lb_pods)
 
     print('Creating TASC Load Balancing service...')
     service_spec = util.load_yaml('yaml/services/tasc.yml', prefix)
@@ -107,27 +120,12 @@ def create_cluster(txn_count, keynode_count, rtr_count, worker_count, lb_count, 
     print("\nThe TASC ELB Endpoint: " + util.get_service_address(client, "tasc-service") + "\n")
     print('Finished!')
 
-def authorize_self(cluster_name):
-    r = requests.get('http://169.254.169.254/latest/meta-data/public-ipv4')
-    ip = r.content.decode()
-
-    sg_name = 'nodes.' + cluster_name
-    sg = ec2_client.describe_security_groups(
-        Filters=[{'Name': 'group-name',
-                  'Values': [sg_name]}])['SecurityGroups'][0]
-    print("Authorizing access from this machine...")
-    permission = [{
-        'FromPort': 0,
-        'IpProtocol': 'tcp',
-        'ToPort': 65535,
-        'IpRanges': [{
-            'CidrIp': ip + '/32'
-        }]
-    }]
-
-    ec2_client.authorize_security_group_ingress(GroupId=sg['GroupId'],
-                                                IpPermissions=permission)
-
+def copy_kube_config(client, pods):
+    kubecfg = os.path.join(os.environ['HOME'], '.kube/config')
+    for pod in pods:
+        cname = pod.spec.containers[0].name
+        util.copy_file_to_pod(client, kubecfg, pod.metadata.name,
+                              '/root/.kube', cname)
 
 
 if __name__ == '__main__':
