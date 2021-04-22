@@ -3,6 +3,9 @@
 import util
 import routing_util as ru
 import zmq
+import logging
+
+logging.basicConfig(filename='manager.log', filemode='w')
 
 def main():
     client, apps_client = util.init_k8s()
@@ -10,9 +13,9 @@ def main():
 
     # Sockets for hash ring membership changes
     rtr_join_sock = context.socket(zmq.PULL)
-    rtr_join_sock.connect('tcp://*:%s' % (str(ru.MNG_JOIN_PORT)))
+    rtr_join_sock.bind('tcp://*:%s' % (str(ru.MNG_JOIN_PORT)))
     rtr_depart_sock = context.socket(zmq.PULL)
-    rtr_depart_sock.connect('tcp://*:%s' % (str(ru.MNG_DEPART_PORT)))
+    rtr_depart_sock.bind('tcp://*:%s' % (str(ru.MNG_DEPART_PORT)))
 
     poller = zmq.Poller()
     poller.register(rtr_join_sock, zmq.POLLIN)
@@ -20,9 +23,11 @@ def main():
     while True:
         socks = dict(poller.poll())
         if rtr_join_sock in socks and socks[rtr_join_sock] == zmq.POLLIN:
+            logging.info('Received join')
             msg = rtr_join_sock.recv()
             router_broadcast(client, 'join', msg)
         if rtr_depart_sock in socks and socks[rtr_depart_sock] == zmq.POLLIN:
+            logging.info('Received depart')
             msg = rtr_depart_sock.recv()
             router_broadcast(client, 'depart', msg)
 
