@@ -124,6 +124,6 @@ func getNodeAddress(addresses []v1.NodeAddress, tp v1.NodeAddressType) string {
 func logAddresses(addrs []string) {
 	log.Info("TASC Node Addresses...")
 	for _, addr := range addrs {
-		log.Info("\t-" + addr)
+		log.Info(addr)
 	}
 }
