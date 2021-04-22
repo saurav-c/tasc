@@ -41,19 +41,26 @@ def add_nodes(client, apps_client, cfile, kind, count, aws_key_id=None,
                 routing_svc = util.get_service_address(client, 'routing-service')
                 util.replace_yaml_val(env, 'ROUTING_ILB', routing_svc)
 
-
         apps_client.create_namespaced_daemon_set(namespace=util.NAMESPACE,
                                                  body=yml)
 
         # Wait until all pods of this kind are running
         res = []
         while len(res) != count:
-            res = util.get_pod_ips(client, 'role='+kind, is_running=True)
+            res = util.get_pod_ips(client, 'role=' + kind, is_running=True)
 
         created_pods = []
         pods = client.list_namespaced_pod(namespace=util.NAMESPACE,
                                           label_selector='role=' +
-                                          kind).items
+                                                         kind).items
+
+        # Send kube config to lb
+        if kind == 'lb':
+            kubecfg = os.path.join(os.environ['HOME'], '.kube/config')
+            for pod in pods:
+                cname = pod.spec.containers[0].name
+                util.copy_file_to_pod(client, kubecfg, pod.metadata.name,
+                                      '/root/.kube', cname)
 
         # Generate list of all recently created pods.
         created_pod_ips = []
@@ -73,5 +80,3 @@ def add_nodes(client, apps_client, cfile, kind, count, aws_key_id=None,
             util.copy_file_to_pod(client, cfile_name[2:], pname,
                                   cfile_dir, cname)
         os.system('rm ' + cfile_name)
-
-

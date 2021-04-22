@@ -16,25 +16,6 @@ def create_cluster(txn_count, keynode_count, rtr_count, worker_count, lb_count, 
 
     client, apps_client = util.init_k8s()
 
-    # print('Creating Manager Node...')
-    # add_nodes(client, apps_client, config_file, "manager", 1,
-    #           aws_key_id, aws_key, True, prefix, branch_name)
-    #
-    # mngr_pod_ips = util.get_pod_ips(client, 'role=manager', is_running=True)
-    # while len(mngr_pod_ips) < 1:
-    #     mngr_pod_ips = util.get_pod_ips(client, 'role=manager', is_running=True)
-    #
-    # # Copy files to managers for kubectl
-    # mngr_pods = client.list_namespaced_pod(namespace=util.NAMESPACE,
-    #                                      label_selector="role=manager").items
-    # copy_kube_config(client, mngr_pods)
-    #
-    # print('Creating Manager service...')
-    # service_spec = util.load_yaml('yaml/services/manager.yml', prefix)
-    # client.create_namespaced_service(namespace=util.NAMESPACE,
-    #                                  body=service_spec)
-    # util.get_service_address(client, 'manager-service')
-
     print('Creating Monitor Node...')
     add_nodes(client, apps_client, config_file, "monitor", 1,
               aws_key_id, aws_key, True, prefix, branch_name)
@@ -48,11 +29,6 @@ def create_cluster(txn_count, keynode_count, rtr_count, worker_count, lb_count, 
     client.create_namespaced_service(namespace=util.NAMESPACE,
                                      body=service_spec)
     util.get_service_address(client, 'routing-service')
-
-    # Wait for all routing nodes to be ready
-    routing_pods_ips = util.get_pod_ips(client, 'role=routing', is_running=True)
-    while len(routing_pods_ips) < rtr_count:
-        routing_pods_ips = util.get_pod_ips(client, 'role=routing', is_running=True)
 
     print('Creating %d Key Nodes...' % (keynode_count))
     add_nodes(client, apps_client, config_file, "keynode", keynode_count, aws_key_id,
@@ -75,15 +51,6 @@ def create_cluster(txn_count, keynode_count, rtr_count, worker_count, lb_count, 
     print('Creating %d Load Balancers...' % (lb_count))
     add_nodes(client, apps_client, config_file, 'lb', lb_count,
               aws_key_id, aws_key, True, prefix, branch_name)
-    
-    lb_pod_ips = util.get_pod_ips(client, 'role=lb', is_running=True)
-    while len(lb_pod_ips) < lb_count:
-        lb_pod_ips = util.get_pod_ips(client, 'role=lb', is_running=True)
-
-    # Copy files to load balancers for kubectl
-    lb_pods = client.list_namespaced_pod(namespace=util.NAMESPACE,
-                                         label_selector="role=lb").items
-    copy_kube_config(client, lb_pods)
 
     print('Creating TASC Load Balancing service...')
     service_spec = util.load_yaml('yaml/services/tasc.yml', prefix)
@@ -125,13 +92,6 @@ def create_cluster(txn_count, keynode_count, rtr_count, worker_count, lb_count, 
 
     print("\nThe TASC ELB Endpoint: " + util.get_service_address(client, "tasc-service") + "\n")
     print('Finished!')
-
-def copy_kube_config(client, pods):
-    kubecfg = os.path.join(os.environ['HOME'], '.kube/config')
-    for pod in pods:
-        cname = pod.spec.containers[0].name
-        util.copy_file_to_pod(client, kubecfg, pod.metadata.name,
-                              '/root/.kube', cname)
 
 
 if __name__ == '__main__':

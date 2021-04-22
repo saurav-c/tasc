@@ -6,7 +6,6 @@ from add_nodes import add_nodes
 from remove_nodes import delete_nodes
 import util
 from routing_util import register, deregister
-from create_cluster import copy_kube_config
 
 # AWS Info
 aws_key_id = util.check_or_get_env_arg('AWS_ACCESS_KEY_ID')
@@ -66,7 +65,7 @@ def sendConfig(nodeIP, configFile):
 
 def add(kind, count):
     prev_pod_ips = None
-    if kind == 'keynode' or kind == 'lb':
+    if kind == 'keynode':
         prev_pod_ips = util.get_pod_ips(client, 'role=' + kind, is_running=True)
 
     add_nodes(client, apps_client, BASE_CONFIG_FILE, kind, count,
@@ -82,11 +81,6 @@ def add(kind, count):
         # Register new keynodes with routers
         if kind == 'keynodes':
             register(client, created_pod_ips)
-
-        # Send kube config to new load balancers
-        if kind == 'lb':
-            lb_pods = [util.get_pod_from_ip(client, ip) for ip in created_pod_ips]
-            copy_kube_config(client, lb_pods)
 
 def delete(kind, count):
     delete_nodes(client, kind, count)
