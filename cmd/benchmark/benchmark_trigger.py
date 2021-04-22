@@ -6,23 +6,23 @@ import zmq
 
 def main():
     parser = argparse.ArgumentParser(description='Makes a call to the TASC benchmark server.')
-    parser.add_argument('-r', '--numRequests', nargs=1, type=int, metavar='R',
-                        help='The total number of requests to run.',
-                        dest='requests', required=True)
-    parser.add_argument('-t', '--numThreads', nargs=1, type=int, metavar='T',
-                        help='The number of threads per server to run.',
-                        dest='threads', required=True)
+    parser.add_argument('-i', '--numInvoke', nargs=1, type=int, metavar='R',
+                        help='The total number of times to run the lambda.',
+                        dest='invoke', required=True)
     parser.add_argument('-a', '--address', nargs=1, type=str, metavar='A',
                         help='ELB Address for the Load Balancer Values.', 
                         dest='address', required=True)
     parser.add_argument('-w', '--writes', nargs=1, type=int, metavar='Y',
                         help='The number of writes to be done.',
                         dest='writes', required=True)
-    parser.add_argument('-d', '--reads', nargs=1, type=int, metavar='Y',
+    parser.add_argument('-r', '--reads', nargs=1, type=int, metavar='Y',
                         help='The number of reads to be done.',
                         dest='reads', required=True)
+    parser.add_argument('-t', '--txn', nargs=1, type=int, metavar='Y',
+                        help='The number of txns to be done.',
+                        dest='txn', required=True)
     parser.add_argument('-y', '--type', nargs=1, type=str, metavar='Y',
-                        help='The type of benchmark to be run on the server.', 
+                        help='The type of lambda to be run.', 
                         dest='type', required=True)
     args = parser.parse_args()
 
@@ -34,7 +34,7 @@ def main():
 
     print('Found %d servers: \n%s' % (len(servers), ' '.join(servers)))
 
-    message = ('%s:%s:%d:%d:%d:%d') % (args.address[0], args.type[0], args.threads[0], args.requests[0], args.reads[0], args.writes[0])
+    message = ('%s:%s:%d:%d:%d:%d') % (args.address[0], args.type[0], args.invoke[0], args.reads[0], args.writes[0], args.txn[0])
 
     conns = []
     context = zmq.Context(1)
@@ -51,6 +51,7 @@ def main():
         response = conn.recv_string()
         print("Benchmark output from one benchmark server: ")
         print(str(response))
+        print()
 
     print('Finished!')
 
