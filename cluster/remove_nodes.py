@@ -6,7 +6,7 @@ import boto3
 import kubernetes as k8s
 
 import util
-import routing_util
+from routing_util import deregister
 
 ec2_client = boto3.client('ec2', os.getenv('AWS_REGION', 'us-east-1'))
 
@@ -50,6 +50,4 @@ def delete_nodes(client, kind, count):
 
     # Notify routers about deleted key nodes
     if kind == 'keynode':
-        manager_svc = util.get_service_address(client, 'manager-service')
-        for ip in deleted_pod_ips:
-            routing_util.deregister(manager_svc, ip, ip)
+       deregister(client, deleted_pod_ips)

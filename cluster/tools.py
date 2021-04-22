@@ -6,6 +6,7 @@ from add_nodes import add_nodes
 from remove_nodes import delete_nodes
 import util
 from routing_util import register, deregister
+from create_cluster import copy_kube_config
 
 # AWS Info
 aws_key_id = util.check_or_get_env_arg('AWS_ACCESS_KEY_ID')
@@ -43,9 +44,8 @@ def main():
         delete(ntype, count)
     elif cmd == 'hashring':
         event = args[1]
-        public_ip = args[2]
         private_ip = args[3]
-        hash_ring_change(event, public_ip, private_ip)
+        hash_ring_change(event, private_ip)
     else:
         print('Unknown cmd: ' + cmd)
 
@@ -65,18 +65,37 @@ def sendConfig(nodeIP, configFile):
     os.system('rm ' + CONFIG_FILE)
 
 def add(kind, count):
+    prev_pod_ips = None
+    if kind == 'keynode' or kind == 'lb':
+        prev_pod_ips = util.get_pod_ips(client, 'role=' + kind, is_running=True)
+
     add_nodes(client, apps_client, BASE_CONFIG_FILE, kind, count,
               aws_key_id, aws_key, True, './', 'master')
+
+    if prev_pod_ips is not None:
+        pod_ips = util.get_pod_ips(client, 'role=' + kind, is_running=True)
+        while len(pod_ips) != len(prev_pod_ips) + count:
+            pod_ips = util.get_pod_ips(client, 'role=' + kind, is_running=True)
+
+        created_pod_ips = list(set(pod_ips) - set(prev_pod_ips))
+
+        # Register new keynodes with routers
+        if kind == 'keynodes':
+            register(client, created_pod_ips)
+
+        # Send kube config to new load balancers
+        if kind == 'lb':
+            lb_pods = [util.get_pod_from_ip(client, ip) for ip in created_pod_ips]
+            copy_kube_config(client, lb_pods)
 
 def delete(kind, count):
     delete_nodes(client, kind, count)
 
-def hash_ring_change(event, public, private):
-    manager_svc = util.get_service_address(client, 'manager-service')
+def hash_ring_change(event, private):
     if event == 'join':
-        register(manager_svc, public, private)
+        register(client, [private])
     elif event == 'depart':
-        deregister(manager_svc, public, private)
+        deregister(client, [private])
     else:
         print('Unknown event %s' % (event))
 

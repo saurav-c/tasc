@@ -3,7 +3,6 @@
 import os
 import boto3
 import util
-import routing_util
 
 ec2_client = boto3.client('ec2', os.getenv('AWS_REGION', 'us-east-1'))
 
@@ -75,9 +74,4 @@ def add_nodes(client, apps_client, cfile, kind, count, aws_key_id=None,
                                   cfile_dir, cname)
         os.system('rm ' + cfile_name)
 
-        # Notify routers about new key nodes
-        if kind == 'keynode':
-            manager_svc = util.get_service_address(client, 'manager-service')
-            for ip in created_pod_ips:
-                routing_util.register(manager_svc, ip, ip)
 

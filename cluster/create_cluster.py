@@ -5,6 +5,7 @@ import os
 import boto3
 from add_nodes import add_nodes
 import util
+from routing_util import register
 
 ec2_client = boto3.client('ec2', os.getenv('AWS_REGION', 'us-east-1'))
 
@@ -15,24 +16,24 @@ def create_cluster(txn_count, keynode_count, rtr_count, worker_count, lb_count, 
 
     client, apps_client = util.init_k8s()
 
-    print('Creating Manager Node...')
-    add_nodes(client, apps_client, config_file, "manager", 1,
-              aws_key_id, aws_key, True, prefix, branch_name)
-
-    mngr_pod_ips = util.get_pod_ips(client, 'role=manager', is_running=True)
-    while len(mngr_pod_ips) < 1:
-        mngr_pod_ips = util.get_pod_ips(client, 'role=manager', is_running=True)
-
-    # Copy files to managers for kubectl
-    mngr_pods = client.list_namespaced_pod(namespace=util.NAMESPACE,
-                                         label_selector="role=manager").items
-    copy_kube_config(client, mngr_pods)
-
-    print('Creating Manager service...')
-    service_spec = util.load_yaml('yaml/services/manager.yml', prefix)
-    client.create_namespaced_service(namespace=util.NAMESPACE,
-                                     body=service_spec)
-    util.get_service_address(client, 'manager-service')
+    # print('Creating Manager Node...')
+    # add_nodes(client, apps_client, config_file, "manager", 1,
+    #           aws_key_id, aws_key, True, prefix, branch_name)
+    #
+    # mngr_pod_ips = util.get_pod_ips(client, 'role=manager', is_running=True)
+    # while len(mngr_pod_ips) < 1:
+    #     mngr_pod_ips = util.get_pod_ips(client, 'role=manager', is_running=True)
+    #
+    # # Copy files to managers for kubectl
+    # mngr_pods = client.list_namespaced_pod(namespace=util.NAMESPACE,
+    #                                      label_selector="role=manager").items
+    # copy_kube_config(client, mngr_pods)
+    #
+    # print('Creating Manager service...')
+    # service_spec = util.load_yaml('yaml/services/manager.yml', prefix)
+    # client.create_namespaced_service(namespace=util.NAMESPACE,
+    #                                  body=service_spec)
+    # util.get_service_address(client, 'manager-service')
 
     print('Creating Monitor Node...')
     add_nodes(client, apps_client, config_file, "monitor", 1,
@@ -116,6 +117,24 @@ def create_cluster(txn_count, keynode_count, rtr_count, worker_count, lb_count, 
 
     ec2_client.authorize_security_group_ingress(GroupId=sg['GroupId'],
                                                 IpPermissions=permission)
+
+    print("Authorizing Ports for Routing...")
+    permission = [{
+        'FromPort': 6400,
+        'IpProtocol': 'tcp',
+        'ToPort': 6400,
+        'IpRanges': [{
+            'CidrIp': '::/0'
+        }]
+    }]
+
+    ec2_client.authorize_security_group_ingress(GroupId=sg['GroupId'],
+                                                IpPermissions=permission)
+
+    print('Registering Key Nodes...')
+    keynode_pod_ips = util.get_pod_ips(client, 'role=keynode', is_running=True)
+    register(client, keynode_pod_ips)
+
 
     print("\nThe TASC ELB Endpoint: " + util.get_service_address(client, "tasc-service") + "\n")
     print('Finished!')
