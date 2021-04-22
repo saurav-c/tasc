@@ -81,7 +81,7 @@ elif [[ "$ROLE" = "benchmark" ]]; then
   cd $TASC_HOME/cmd/benchmark
   go build
   python3 benchmark_server.py
-elif [[ "$ROLE" = "manager" ]]]; then
+elif [[ "$ROLE" = "manager" ]]; then
   cd $TASC_HOME/cluster
   python3 manager.py
 fi
