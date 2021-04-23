@@ -135,7 +135,7 @@ func endTxnHandler(keyNode *KeyNode, req *kpb.EndRequest) {
 	}
 
 	data, _ := proto.Marshal(resp)
-	addr := fmt.Sprintf(cmn.PushTemplate, req.IpAddress, cmn.TxnEndTxnPullPort)
+	addr := fmt.Sprintf(cmn.PushTemplate, req.IpAddress, cmn.WorkerEndTxnPullPort)
 
 	start = time.Now()
 	keyNode.PusherCache.Lock(keyNode.ZmqInfo.context, addr)
