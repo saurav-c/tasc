@@ -353,7 +353,7 @@ func (t *TxnManager) collectEndTxnResponses(endRespChan chan *tpb.TransactionTag
 }
 
 func (t *TxnManager) writeToStorage(tid string, endTs int64, entry *WriteBufferEntry, writeChan chan bool) {
-	go t.Monitor.TrackFuncExecTime(tid, "Write to Storage time", time.Now())
+	defer t.Monitor.TrackFuncExecTime(tid, "Write to Storage time", time.Now())
 
 	dbKeys := make([]string, len(entry.buffer)+1)
 	dbVals := make([][]byte, len(entry.buffer)+1)
@@ -372,7 +372,9 @@ func (t *TxnManager) writeToStorage(tid string, endTs int64, entry *WriteBufferE
 	dbKeys[i] = tid
 	dbVals[i] = data
 
+	log.Debugf("Sent storage write for txn %s", tid)
 	t.StorageManager.MultiPut(dbKeys, dbVals)
+	log.Debugf("Storage returned for txn %s", tid)
 	writeChan <- true
 }
 

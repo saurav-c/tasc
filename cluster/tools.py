@@ -7,6 +7,7 @@ from remove_nodes import delete_nodes
 import util
 from routing_util import register, deregister
 import subprocess
+import time
 
 # AWS Info
 aws_key_id = util.check_or_get_env_arg('AWS_ACCESS_KEY_ID')
@@ -70,7 +71,16 @@ def restart(pod_ip, kind):
         pod_ips = util.get_pod_ips(client, selector='role='+kind, is_running=True)
 
     # Send config file to the pod
-    sendConfig(pod_ip, None)
+    retry = 0
+    while retry < 5:
+        try:
+            sendConfig(pod_ip, None)
+        except Exception as e:
+            retry += 1
+            print('Caught exception: ' + e)
+            print('Retrying in %d sec' % retry * 5)
+            time.sleep(retry * 5)
+
 
     print('Restarted %s node at %s' % (kind, pod_ip))
 
