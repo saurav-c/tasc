@@ -20,55 +20,110 @@ def main():
         splits = command.split(':')
         elb_address = splits[0]
         lambda_name = splits[1]
-        num_invokes = int(splits[2])
+        num_txn = int(splits[2])
         num_reads = int(splits[3])
         num_writes = int(splits[4])
-        num_txn = int(splits[5])
+        ip_addr = splits[5]
 
-        
         lambda_payload = """{
             "num_reads": {},
             "num_writes": {},
-            "num_txn": {},
-            "elb": {}
-        }""" % num_reads, num_writes, num_txn, elb_address
+            "elb": {},
+            "benchmark_ip": {}
+        }""" % num_reads, num_writes, num_txn, elb_address, ip_addr
 
         lambda_payload = bytes(lambda_payload)
-
+        error_lambda = 0
 
         start_time = time.time()
-        
-        for _ in range (num_invokes):
+        for _ in range (num_txn):
             response = client.invoke(
                 FunctionName=lambda_name,
                 InvocationType='Event',
                 Payload=lambda_payload
             )
+            if response["StatusCode"] != 202:
+                error_lambda += 1
         
+        num_invokes = num_invokes - error_lambda
+
         latencies = []
+        start_txn = []
+        write_txn = []
+        read_txn = []
+        commit_txn = []
 
         for _ in range(num_invokes):
             benchmark_data = lambda_socket.recv_string()
             benchmark_data = benchmark_data.split(";")
             latency = benchmark_data[0]
+            start_txn_time = benchmark_data[1]
+            write_txn_time = benchmark_data[2]
+            read_txn_time = benchmark_data[3]
+            commit_txn_time = benchmark_data[4]
             latencies.append(latency)
+            start_txn.append(start_txn_time)
+            write_txn.append(write_txn_time)
+            read_txn.append(read_txn_time)
+            commit_txn.append(commit_txn_time)
         
         end_time = time.time()
 
-        throughput = (end_time - start_time)/num_invokes
+        throughput = (end_time - start_time) / num_invokes
 
         latencies = np.array(latencies)
-        median = np.percentile(latencies, 50)
-        fifth_percent = np.percentile(latencies, 5)
-        ninefifth_percent = np.percentile(latencies, 95)
-        one_percent = np.percentile(latencies, 1)
-        nineone_percent = np.percentile(latencies, 99)
+        median_latency = np.percentile(latencies, 50)
+        fifth_latency = np.percentile(latencies, 5)
+        ninefifth_latency = np.percentile(latencies, 95)
+        one_latency = np.percentile(latencies, 1)
+        nineone_latency = np.percentile(latencies, 99)
+        
+        start_txn = np.array(start_txn)
+        median_start = np.percentile(start_txn, 50)
+        fifth_start = np.percentile(start_txn, 5)
+        ninefifth_start = np.percentile(start_txn, 95)
+        one_start = np.percentile(start_txn, 1)
+        nineone_start = np.percentile(start_txn, 99)
 
-        output = "The throughput of the system is: " + str(throughput) + "\n" + \
+        write_txn = np.array(write_txn)
+        median_write = np.percentile(write_txn, 50)
+        fifth_write = np.percentile(write_txn, 5)
+        ninefifth_write = np.percentile(write_txn, 95)
+        one_write = np.percentile(write_txn, 1)
+        nineone_write = np.percentile(write_txn, 99)
+
+        read_txn = np.array(read_txn)
+        median_read = np.percentile(read_txn, 50)
+        fifth_read = np.percentile(read_txn, 5)
+        ninefifth_read = np.percentile(read_txn, 95)
+        one_read = np.percentile(read_txn, 1)
+        nineone_read = np.percentile(read_txn, 99)
+
+        commit_txn = np.array(commit_txn)
+        median_commit = np.percentile(commit_txn, 50)
+        fifth_commit = np.percentile(commit_txn, 5)
+        ninefifth_commit = np.percentile(commit_txn, 95)
+        one_commit = np.percentile(commit_txn, 1)
+        nineone_commit = np.percentile(commit_txn, 99)
+
+        output = "A total of {} lambda functions ran.\n" % {num_invokes}
+        output += "The throughput of the system is: " + str(throughput) + "\n" + \
                         "The latency histogram is: " + \
                              "Median latency: {}\n5th percentile/95th percentile: {}, {}\n1st percentile/99th percentile: {}, {}\n" % \
-                                median, fifth_percent, ninefifth_percent, one_percent, nineone_percent
-    
+                                median_latency, fifth_latency, ninefifth_latency, one_latency, nineone_latency
+        output += "The start txn histogram is: " + \
+                        "Median latency: {}\n5th percentile/95th percentile: {}, {}\n1st percentile/99th percentile: {}, {}\n" % \
+                            median_start, fifth_start, ninefifth_start, one_start, nineone_start
+        output += "The write txn histogram is: " + \
+                        "Median latency: {}\n5th percentile/95th percentile: {}, {}\n1st percentile/99th percentile: {}, {}\n" % \
+                            median_write, fifth_write, ninefifth_write, one_write, nineone_write
+        output += "The read txn histogram is: " + \
+                        "Median latency: {}\n5th percentile/95th percentile: {}, {}\n1st percentile/99th percentile: {}, {}\n" % \
+                            median_read, fifth_read, ninefifth_read, one_read, nineone_read
+        output += "The commit txn histogram is: " + \
+                        "Median latency: {}\n5th percentile/95th percentile: {}, {}\n1st percentile/99th percentile: {}, {}\n" % \
+                            median_commit, fifth_commit, ninefifth_commit, one_commit, nineone_commit
+
         benchmark_socket.send_string(output)
 
 if __name__ == '__main__':

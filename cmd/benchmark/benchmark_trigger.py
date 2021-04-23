@@ -6,9 +6,6 @@ import zmq
 
 def main():
     parser = argparse.ArgumentParser(description='Makes a call to the TASC benchmark server.')
-    parser.add_argument('-i', '--numInvoke', nargs=1, type=int, metavar='R',
-                        help='The total number of times to run the lambda.',
-                        dest='invoke', required=True)
     parser.add_argument('-a', '--address', nargs=1, type=str, metavar='A',
                         help='ELB Address for the Load Balancer Values.', 
                         dest='address', required=True)
@@ -34,8 +31,6 @@ def main():
 
     print('Found %d servers: \n%s' % (len(servers), ' '.join(servers)))
 
-    message = ('%s:%s:%d:%d:%d:%d') % (args.address[0], args.type[0], args.invoke[0], args.reads[0], args.writes[0], args.txn[0])
-
     conns = []
     context = zmq.Context(1)
     print('Starting benchmark at %s' % (str(datetime.datetime.now())))
@@ -43,6 +38,7 @@ def main():
         conn = context.socket(zmq.REQ)
         address = ('tcp://%s:6500') % server
         conn.connect(address)
+        message = ('%s:%s:%d:%d:%d:%d:%s') % (args.address[0], args.type[0], args.txn[0], args.reads[0], args.writes[0], server)
         conn.send_string(message)
         conns.append(conn)
 
