@@ -83,7 +83,7 @@ def restart(pod_ip, kind):
                 print('Out of retries...')
                 print(e)
                 return
-            print('Retrying in %d sec' % retry * 5)
+            print('Retrying in %d sec' % (retry * 5))
             time.sleep(retry * 5)
 
 
