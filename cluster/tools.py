@@ -72,12 +72,16 @@ def restart(pod_ip, kind):
 
     # Send config file to the pod
     retry = 0
-    while retry < 5:
+    while True:
         try:
             sendConfig(pod_ip, None)
         except Exception as e:
             retry += 1
-            print('Caught exception: ' + e)
+            print('Caught exception')
+            if retry >= 5:
+                print('Out of retries...')
+                print(e)
+                return
             print('Retrying in %d sec' % retry * 5)
             time.sleep(retry * 5)
 
