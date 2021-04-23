@@ -36,7 +36,6 @@ def main():
         lambda_payload = bytes(lambda_payload)
         error_lambda = 0
 
-        start_time = time.time()
         for _ in range (num_txn):
             response = client.invoke(
                 FunctionName=lambda_name,
@@ -48,29 +47,33 @@ def main():
         
         num_invokes = num_invokes - error_lambda
 
+        throughputs = []
         latencies = []
         start_txn = []
         write_txn = []
         read_txn = []
         commit_txn = []
+        ip_resolt = []
 
         for _ in range(num_invokes):
             benchmark_data = lambda_socket.recv_string()
             benchmark_data = benchmark_data.split(";")
-            latency = benchmark_data[0]
-            start_txn_time = benchmark_data[1]
-            write_txn_time = benchmark_data[2]
-            read_txn_time = benchmark_data[3]
-            commit_txn_time = benchmark_data[4]
-            latencies.append(latency)
-            start_txn.append(start_txn_time)
-            write_txn.append(write_txn_time)
-            read_txn.append(read_txn_time)
-            commit_txn.append(commit_txn_time)
-        
-        end_time = time.time()
+            throughput = float(benchmark_data[0])
+            latency = [float(x) for x in benchmark_data[1].split(",")]
+            ip_resolt_time = [float(x) for x in benchmark_data[2].split(",")]
+            start_txn_time = [float(x) for x in benchmark_data[3].split(",")]
+            write_txn_time = [float(x) for x in benchmark_data[4].split(",")]
+            read_txn_time = [float(x) for x in benchmark_data[5].split(",")]
+            commit_txn_time = [float(x) for x in benchmark_data[6].split(",")]
+            throughputs.append(throughput)
+            latencies.append(*latency)
+            ip_resolt.append(*ip_resolt_time)
+            start_txn.append(*start_txn_time)
+            write_txn.append(*write_txn_time)
+            read_txn.append(*read_txn_time)
+            commit_txn.append(*commit_txn_time)
 
-        throughput = (end_time - start_time) / num_invokes
+        throughput = sum(throughputs)
 
         latencies = np.array(latencies)
         median_latency = np.percentile(latencies, 50)
@@ -107,11 +110,21 @@ def main():
         one_commit = np.percentile(commit_txn, 1)
         nineone_commit = np.percentile(commit_txn, 99)
 
+        ip_resolt = np.array(ip_resolt)
+        median_ip_resolt = np.percentile(ip_resolt, 50)
+        fifth_ip_resolt = np.percentile(ip_resolt, 5)
+        ninefifth_ip_resolt = np.percentile(ip_resolt, 95)
+        one_ip_resolt = np.percentile(ip_resolt, 1)
+        nineone_ip_resolt = np.percentile(ip_resolt, 99)
+
         output = "A total of {} lambda functions ran.\n" % {num_invokes}
         output += "The throughput of the system is: " + str(throughput) + "\n" + \
                         "The latency histogram is: " + \
                              "Median latency: {}\n5th percentile/95th percentile: {}, {}\n1st percentile/99th percentile: {}, {}\n" % \
                                 median_latency, fifth_latency, ninefifth_latency, one_latency, nineone_latency
+        output += "The IP resolution start txn histogram is: " + \
+                        "Median latency: {}\n5th percentile/95th percentile: {}, {}\n1st percentile/99th percentile: {}, {}\n" % \
+                            median_ip_resolt, fifth_ip_resolt, ninefifth_ip_resolt, one_ip_resolt, nineone_ip_resolt
         output += "The start txn histogram is: " + \
                         "Median latency: {}\n5th percentile/95th percentile: {}, {}\n1st percentile/99th percentile: {}, {}\n" % \
                             median_start, fifth_start, ninefifth_start, one_start, nineone_start
