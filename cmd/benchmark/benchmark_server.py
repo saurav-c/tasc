@@ -28,6 +28,7 @@ def main():
         lambda_payload = """{
             "num_reads": {},
             "num_writes": {},
+            "num_txns": {},
             "elb": {},
             "benchmark_ip": {}
         }""" % num_reads, num_writes, num_txn, elb_address, ip_addr
@@ -42,7 +43,7 @@ def main():
                 InvocationType='Event',
                 Payload=lambda_payload
             )
-            if response["StatusCode"] != 202:
+            if response["StatusCode"] > 299:
                 error_lambda += 1
         
         num_invokes = num_invokes - error_lambda

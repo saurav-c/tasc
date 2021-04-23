@@ -6,21 +6,21 @@ import zmq
 
 def main():
     parser = argparse.ArgumentParser(description='Makes a call to the TASC benchmark server.')
+    parser.add_argument('-l', '--lambda', nargs=1, type=str, metavar='Y',
+                        help='The name of AWS Lambda Function to be run.', 
+                        dest='awslambda', required=True)
     parser.add_argument('-a', '--address', nargs=1, type=str, metavar='A',
                         help='ELB Address for the Load Balancer Values.', 
                         dest='address', required=True)
-    parser.add_argument('-w', '--writes', nargs=1, type=int, metavar='Y',
-                        help='The number of writes to be done.',
-                        dest='writes', required=True)
-    parser.add_argument('-r', '--reads', nargs=1, type=int, metavar='Y',
-                        help='The number of reads to be done.',
-                        dest='reads', required=True)
     parser.add_argument('-t', '--txn', nargs=1, type=int, metavar='Y',
                         help='The number of txns to be done.',
                         dest='txn', required=True)
-    parser.add_argument('-y', '--type', nargs=1, type=str, metavar='Y',
-                        help='The type of lambda to be run.', 
-                        dest='type', required=True)
+    parser.add_argument('-r', '--reads', nargs=1, type=int, metavar='Y',
+                        help='The number of reads to be done.',
+                        dest='reads', required=True)
+    parser.add_argument('-w', '--writes', nargs=1, type=int, metavar='Y',
+                        help='The number of writes to be done.',
+                        dest='writes', required=True)
     args = parser.parse_args()
 
     servers = []
@@ -38,7 +38,7 @@ def main():
         conn = context.socket(zmq.REQ)
         address = ('tcp://%s:6500') % server
         conn.connect(address)
-        message = ('%s:%s:%d:%d:%d:%d:%s') % (args.address[0], args.type[0], args.txn[0], args.reads[0], args.writes[0], server)
+        message = ('%s:%s:%d:%d:%d:%d:%s') % (args.address[0], args.awslambda[0], args.txn[0], args.reads[0], args.writes[0], server)
         conn.send_string(message)
         conns.append(conn)
 
