@@ -54,7 +54,7 @@ cd $TASC_HOME
 if [[ "$ROLE" = "tasc" ]]; then
   echo "monitorIP: $MONITOR" >> config/tasc-config.yml
   echo "routingILB: $ROUTING_ILB" >> config/tasc-config.yml
-  echo "workerILB: WORKER_ILB" >> config/tasc-config.yml
+  echo "workerILB: $WORKER_ILB" >> config/tasc-config.yml
   cd $TASC_HOME/cmd/manager
   go build
   ./manager

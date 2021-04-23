@@ -16,7 +16,7 @@ const (
 
 type AnnaRoutingClient struct {
 	responseAddress string
-	routerPushers   []*zmq.Socket
+	routerPushers   []zmq.Socket
 }
 
 func NewAnnaRoutingClient(elbAddress string, ipAddress string) *AnnaRoutingClient {
@@ -27,18 +27,18 @@ func NewAnnaRoutingClient(elbAddress string, ipAddress string) *AnnaRoutingClien
 		os.Exit(1)
 	}
 
-	pushers := make([]*zmq.Socket, 4)
+	var pushers []zmq.Socket
 	for i := 0; i < 4; i++ {
 		lookupAddress := fmt.Sprintf(cmn.PushTemplate, elbAddress, AnnaRouterPort+i)
 		socket := cmn.CreateSocket(zmq.PUSH, context, lookupAddress, false)
-		pushers = append(pushers, socket)
+		pushers = append(pushers, *socket)
 	}
 
 	respAddr := fmt.Sprintf(cmn.PushTemplate, ipAddress, cmn.TxnRoutingPullPort)
 
 	return &AnnaRoutingClient{
-		responseAddress:     respAddr,
-		routerPushers: pushers,
+		responseAddress: respAddr,
+		routerPushers:   pushers,
 	}
 }
 
@@ -51,7 +51,6 @@ func (annaRtr *AnnaRoutingClient) lookup(tid string, keys []string) {
 
 	// Get random socket
 	socket := annaRtr.routerPushers[rand.Intn(4)]
-
 	bts, _ := proto.Marshal(request)
 	socket.SendBytes(bts, zmq.DONTWAIT)
 }
