@@ -9,7 +9,7 @@ import (
 	annapb "github.com/saurav-c/tasc/proto/anna"
 	kpb "github.com/saurav-c/tasc/proto/keynode"
 	tpb "github.com/saurav-c/tasc/proto/tasc"
-	"log"
+	log "github.com/sirupsen/logrus"
 	"os"
 	"time"
 )
@@ -52,11 +52,15 @@ func (w *TxnWorker) handler(data []byte) {
 	txnIP := txn.Tag.TxnManagerIP
 	txnAddr := fmt.Sprintf(cmn.PushTemplate, txnIP, cmn.TxnAckPullPort)
 
+	log.Debugf("Received transaction status from %s for txn %s", txnIP, txn.Tag.Tid)
+
 	data, _ = proto.Marshal(txn.Tag)
 	w.PusherCache.Lock(w.ZMQInfo.context, txnAddr)
 	pusher := w.PusherCache.GetSocket(txnAddr)
 	pusher.SendBytes(data, zmq.DONTWAIT)
 	w.PusherCache.Unlock(txnAddr)
+
+	log.Debugf("Sent ACK to %s", txnAddr)
 
 	tid := txn.Tag.Tid
 	// Lookup relevant Key Nodes
@@ -88,6 +92,7 @@ func (w *TxnWorker) handler(data []byte) {
 
 	// Send end transaction messages
 	for keyNode, keys := range nodeToKey {
+		log.Debugf("Sending end txn status to keynode %s for keys %v", keyNode, keys)
 		go w.endTransaction(tid, keyNode, keys, action)
 	}
 
@@ -107,6 +112,8 @@ func (w *TxnWorker) endTransaction(tid string, nodeAddr string, keys []string, a
 	endPusher := w.PusherCache.GetSocket(addr)
 	endPusher.SendBytes(data, zmq.DONTWAIT)
 	w.PusherCache.Unlock(addr)
+
+	log.Debugf("Sent status to %s", addr)
 }
 
 func (w *TxnWorker) rtrHandler(data []byte) {
@@ -138,7 +145,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	log.Println("Started worker at " + worker.IpAddress)
+	log.Infof("Started worker at " + worker.IpAddress)
 
 	// Start listening for transaction updates
 	worker.listen()
