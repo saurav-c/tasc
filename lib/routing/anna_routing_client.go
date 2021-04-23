@@ -6,7 +6,7 @@ import (
 	zmq "github.com/pebbe/zmq4"
 	cmn "github.com/saurav-c/tasc/lib/common"
 	annapb "github.com/saurav-c/tasc/proto/anna"
-	"math/rand"
+	log "github.com/sirupsen/logrus"
 	"os"
 )
 
@@ -17,6 +17,7 @@ const (
 type AnnaRoutingClient struct {
 	responseAddress string
 	routerPushers   []zmq.Socket
+	pusher          *zmq.Socket
 }
 
 func NewAnnaRoutingClient(elbAddress string, ipAddress string) *AnnaRoutingClient {
@@ -33,12 +34,14 @@ func NewAnnaRoutingClient(elbAddress string, ipAddress string) *AnnaRoutingClien
 		socket := cmn.CreateSocket(zmq.PUSH, context, lookupAddress, false)
 		pushers = append(pushers, *socket)
 	}
+	socket := cmn.CreateSocket(zmq.PUSH, context, fmt.Sprintf(cmn.PushTemplate, elbAddress, AnnaRouterPort), false)
 
 	respAddr := fmt.Sprintf(cmn.PushTemplate, ipAddress, cmn.TxnRoutingPullPort)
 
 	return &AnnaRoutingClient{
 		responseAddress: respAddr,
 		routerPushers:   pushers,
+		pusher:          socket,
 	}
 }
 
@@ -50,7 +53,9 @@ func (annaRtr *AnnaRoutingClient) lookup(tid string, keys []string) {
 	}
 
 	// Get random socket
-	socket := annaRtr.routerPushers[rand.Intn(4)]
+	//socket := annaRtr.routerPushers[rand.Intn(4)]
+	socket := annaRtr.pusher
 	bts, _ := proto.Marshal(request)
 	socket.SendBytes(bts, zmq.DONTWAIT)
+	log.Debug("Sent lookup request")
 }
