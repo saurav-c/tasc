@@ -75,6 +75,7 @@ def restart(pod_ip, kind):
     while True:
         try:
             sendConfig(pod_ip, None)
+            break
         except Exception as e:
             retry += 1
             print('Caught exception')
