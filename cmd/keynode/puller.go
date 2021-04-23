@@ -6,6 +6,7 @@ import (
 	zmq "github.com/pebbe/zmq4"
 	cmn "github.com/saurav-c/tasc/lib/common"
 	kpb "github.com/saurav-c/tasc/proto/keynode"
+	log "github.com/sirupsen/logrus"
 	"time"
 )
 
@@ -112,9 +113,13 @@ func validateHandler(keyNode *KeyNode, req *kpb.ValidateRequest) {
 }
 
 func endTxnHandler(keyNode *KeyNode, req *kpb.EndRequest) {
+	log.Debugf("Received end txn for %s", req.Tid)
+
 	start := time.Now()
 	err := keyNode.endTransaction(req.Tid, req.Action, req.WriteSet)
 	end := time.Now()
+
+	log.Debugf("Finished ending txn %s", req.Tid)
 
 	go keyNode.Monitor.TrackStat(req.GetTid(), "End Transaction Time", end.Sub(start))
 
@@ -138,6 +143,8 @@ func endTxnHandler(keyNode *KeyNode, req *kpb.EndRequest) {
 	pusher.SendBytes(data, zmq.DONTWAIT)
 	keyNode.PusherCache.Unlock(addr)
 	end = time.Now()
+
+	log.Debugf("Sent ACK to %s", addr)
 
 	go keyNode.Monitor.TrackStat(req.Tid, "End txn response pusher time", end.Sub(start))
 }

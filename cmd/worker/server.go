@@ -7,7 +7,7 @@ import (
 	"github.com/saurav-c/tasc/config"
 	cmn "github.com/saurav-c/tasc/lib/common"
 	"github.com/saurav-c/tasc/lib/routing"
-	"log"
+	log "github.com/sirupsen/logrus"
 	"os"
 	"sync"
 )
@@ -39,8 +39,11 @@ func NewTransactionWorker() (*TxnWorker, error) {
 	zmqInfo := &ZMQInfo{
 		context:   zctx,
 		txnPuller: cmn.CreateSocket(zmq.PULL, zctx, fmt.Sprintf(cmn.PullTemplate, cmn.WorkerPullPort), true),
-		rtrPuller: cmn.CreateSocket(zmq.PULL, zctx, fmt.Sprintf(cmn.PullTemplate, cmn.WorkerRtrPullPort), true),
+		rtrPuller: cmn.CreateSocket(zmq.PULL, zctx, fmt.Sprintf(cmn.PullTemplate, cmn.TxnRoutingPullPort), true),
 	}
+
+	// Init logging
+	cmn.InitLogger("logs", fmt.Sprintf("worker-%s", configValue.IpAddress), log.DebugLevel)
 
 	// Create ZMQ Socket cache
 	pusherCache := cmn.NewSocketCache()
