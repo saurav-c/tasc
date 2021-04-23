@@ -16,19 +16,19 @@ echo "Started Transaction Manager"
 ./cmd/keynode/keynode &
 KID=$!
 echo "Started Key Node"
-./cmd/routing/routing &
-RID=$!
-echo "Started Key Router"
+./cmd/worker/worker &
+WID=$!
+echo "Started Worker"
 ./cmd/monitor/monitor &
 MID=$!
 echo "Started Monitoring Node"
 
 echo $TXID > pids
 echo $KID >> pids
-echo $RID >> pids
+echo $WID >> pids
 echo $MID >> pids
 
 if [ "$2" = "y" ] || [ "$2" = "yes" ]; then
   sleep 2 # wait for gRPC servers to start
-  ./cli/cli -local
+  ./cmd/cli/cli -local
 fi

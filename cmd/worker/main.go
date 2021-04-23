@@ -71,17 +71,18 @@ func (w *TxnWorker) handler(data []byte) {
 
 	w.RouterManager.Lookup(tid, txn.Writeset.Keys)
 
-	resp := <-c
-	keyToNode := resp.Addresses
+	//resp := <-c
+	//keyToNode := resp.Addresses
 	nodeToKey := make(map[string][]string)
-	for key, addrs := range keyToNode {
-		ip := addrs[0]
-		ip = ip[:len(ip)-1]
-		if _, ok := nodeToKey[ip]; !ok {
-			nodeToKey[ip] = []string{}
-		}
-		nodeToKey[ip] = append(nodeToKey[ip], key)
-	}
+	nodeToKey["tcp://127.0.0.1"] = []string{""}
+	//for key, addrs := range keyToNode {
+	//	ip := addrs[0]
+	//	ip = ip[:len(ip)-1]
+	//	if _, ok := nodeToKey[ip]; !ok {
+	//		nodeToKey[ip] = []string{}
+	//	}
+	//	nodeToKey[ip] = append(nodeToKey[ip], key)
+	//}
 
 	var action kpb.TransactionAction
 	if txn.Tag.Status == tpb.TascTransactionStatus_COMMITTED {
@@ -91,9 +92,9 @@ func (w *TxnWorker) handler(data []byte) {
 	}
 
 	// Send end transaction messages
-	for keyNode, keys := range nodeToKey {
-		log.Debugf("Sending end txn status to keynode %s for keys %v", keyNode, keys)
-		go w.endTransaction(tid, keyNode, keys, action)
+	for keyNode, _ := range nodeToKey {
+		log.Debugf("Sending end txn status to keynode %s", keyNode)
+		go w.endTransaction(tid, keyNode, txn.Writeset.Keys, action)
 	}
 
 	// Resend if ACK not received

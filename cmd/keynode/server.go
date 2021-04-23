@@ -36,8 +36,6 @@ func NewKeyNode() (*KeyNode, error) {
 	configValue := config.ParseConfig()
 	var storageManager storage.StorageManager
 	switch configValue.StorageType {
-	case "dynamo":
-		storageManager = storage.NewDynamoStorageManager("Aftsi", "Aftsi")
 	case "local":
 		storageManager = storage.NewLocalStoreManager()
 	case "anna":

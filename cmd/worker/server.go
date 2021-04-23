@@ -39,7 +39,7 @@ func NewTransactionWorker() (*TxnWorker, error) {
 	zmqInfo := &ZMQInfo{
 		context:   zctx,
 		txnPuller: cmn.CreateSocket(zmq.PULL, zctx, fmt.Sprintf(cmn.PullTemplate, cmn.WorkerPullPort), true),
-		rtrPuller: cmn.CreateSocket(zmq.PULL, zctx, fmt.Sprintf(cmn.PullTemplate, cmn.TxnRoutingPullPort), true),
+		rtrPuller: cmn.CreateSocket(zmq.PULL, zctx, fmt.Sprintf(cmn.PullTemplate, cmn.WorkerRtrPullPort), true),
 	}
 
 	// Init logging

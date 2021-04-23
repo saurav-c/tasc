@@ -12,7 +12,7 @@ type WorkerConn struct {
 
 func NewWorkerConn(ipAddress string, ilbAddress string) *WorkerConn {
 	clients := []*WorkerClient{}
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 1; i++ {
 		wc := NewWorkerClient(ilbAddress, ipAddress)
 		clients = append(clients, wc)
 	}

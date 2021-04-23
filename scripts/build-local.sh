@@ -9,15 +9,15 @@ cd ../keynode
 go build
 echo "Built Key Node"
 
-cd ../routing
+cd ../worker
 go build
-echo "Built Key Router"
+echo "Built Worker"
 
 cd ../monitor
 go build
 echo "Built Monitoring Node"
 
-cd ../../cli
+cd ../cli
 go build
 
 cd $CWD

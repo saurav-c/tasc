@@ -207,22 +207,25 @@ func (t *TxnManager) CommitTransaction(ctx context.Context, tag *tpb.Transaction
 	}
 
 	start := time.Now()
-	t.routerLookup(tid, writeSet)
-	routerResp := <-txnEntry.rtrChan
+	//t.routerLookup(tid, writeSet)
+	//routerResp := <-txnEntry.rtrChan
 	end := time.Now()
 	go t.Monitor.TrackStat(tid, "Router Lookup time", end.Sub(start))
 
 	keyAddressMap := make(map[string][]string)
 	phase1WaitMap := make(map[string]string)
-	for key, ipAddresses := range routerResp.Addresses {
-		ipAddress := ipAddresses[0]
-		ipAddress = ipAddress[:len(ipAddress)-1]
-		if _, ok := keyAddressMap[ipAddress]; !ok {
-			keyAddressMap[ipAddress] = []string{}
-			phase1WaitMap[ipAddress] = ""
-		}
-		keyAddressMap[ipAddress] = append(keyAddressMap[ipAddress], key)
-	}
+	keyAddressMap["tcp://127.0.0.1"] = writeSet
+	phase1WaitMap["tcp://127.0.0.1"] = ""
+
+	//for key, ipAddresses := range routerResp.Addresses {
+	//	ipAddress := ipAddresses[0]
+	//	ipAddress = ipAddress[:len(ipAddress)-1]
+	//	if _, ok := keyAddressMap[ipAddress]; !ok {
+	//		keyAddressMap[ipAddress] = []string{}
+	//		phase1WaitMap[ipAddress] = ""
+	//	}
+	//	keyAddressMap[ipAddress] = append(keyAddressMap[ipAddress], key)
+	//}
 
 	start = time.Now()
 	// Phase 1 of 2PC
