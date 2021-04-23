@@ -63,7 +63,7 @@ def restart(pod_ip, kind):
     pname = pod.metadata.name
     cname = pod.spec.containers[0].name
     kill_cmd = 'kubectl exec -it %s -c %s -- /sbin/killall5' % (pname, cname)
-    subprocess.run(kill_cmd)
+    subprocess.run(kill_cmd, shell=True)
 
     # Wait for pod to start again
     pod_ips = util.get_pod_ips(client, selector='role='+kind, is_running=True)
