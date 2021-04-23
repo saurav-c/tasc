@@ -202,7 +202,7 @@ func (t *TxnManager) CommitTransaction(ctx context.Context, tag *tpb.Transaction
 	writeVersionSet := make([]string, 0, len(bufferEntry.buffer))
 	for k := range bufferEntry.buffer {
 		writeSet = append(writeSet, k)
-		writeVersionSet = append(writeSet, fmt.Sprintf(cmn.StorageKeyTemplate, k, cmn.Int64ToString(txnEntry.endTs), tid))
+		writeVersionSet = append(writeVersionSet, fmt.Sprintf(cmn.StorageKeyTemplate, k, cmn.Int64ToString(txnEntry.endTs), tid))
 	}
 
 	start := time.Now()
@@ -213,13 +213,12 @@ func (t *TxnManager) CommitTransaction(ctx context.Context, tag *tpb.Transaction
 
 	keyAddressMap := make(map[string][]string)
 	phase1WaitMap := make(map[string]string)
-	phase2WaitMap := make(map[string]string)
 	for key, ipAddresses := range routerResp.Addresses {
 		ipAddress := ipAddresses[0]
+		ipAddress = ipAddress[:len(ipAddress)-1]
 		if _, ok := keyAddressMap[ipAddress]; !ok {
 			keyAddressMap[ipAddress] = []string{}
 			phase1WaitMap[ipAddress] = ""
-			phase2WaitMap[ipAddress] = ""
 		}
 		keyAddressMap[ipAddress] = append(keyAddressMap[ipAddress], key)
 	}
@@ -295,7 +294,7 @@ func (t *TxnManager) AbortTransaction(ctx context.Context, tag *tpb.TransactionT
 }
 
 func (t *TxnManager) validateTransaction(keyNodeAddress string, keys []string, tid string, beginTs int64, endTs int64) {
-	addr := fmt.Sprintf(cmn.PushTemplate, keyNodeAddress, cmn.KeyValidatePullPort)
+	addr := fmt.Sprintf("%s:%d", keyNodeAddress, cmn.KeyValidatePullPort)
 	validateRequest := &kpb.ValidateRequest{
 		Tid:       tid,
 		BeginTS:   beginTs,
@@ -354,7 +353,7 @@ func (t *TxnManager) collectEndTxnResponses(endRespChan chan *tpb.TransactionTag
 }
 
 func (t *TxnManager) writeToStorage(tid string, endTs int64, entry *WriteBufferEntry, writeChan chan bool) {
-	go t.Monitor.TrackFuncExecTime(tid, "Write to Storage time", time.Now())
+	defer t.Monitor.TrackFuncExecTime(tid, "Write to Storage time", time.Now())
 
 	dbKeys := make([]string, len(entry.buffer)+1)
 	dbVals := make([][]byte, len(entry.buffer)+1)
@@ -373,7 +372,9 @@ func (t *TxnManager) writeToStorage(tid string, endTs int64, entry *WriteBufferE
 	dbKeys[i] = tid
 	dbVals[i] = data
 
+	log.Debugf("Sent storage write for txn %s", tid)
 	t.StorageManager.MultiPut(dbKeys, dbVals)
+	log.Debugf("Storage returned for txn %s", tid)
 	writeChan <- true
 }
 

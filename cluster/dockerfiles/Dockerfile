@@ -53,7 +53,7 @@ RUN go get -u github.com/sirupsen/logrus
 RUN go get -u github.com/golang/protobuf/protoc-gen-go
 
 # Install required Python dependencies.
-RUN pip3 install zmq
+RUN pip3 install zmq kubernetes
 
 # Clone the TASC code.
 RUN mkdir -p $GOPATH/src/github.com/saurav-c

@@ -72,6 +72,7 @@ func (w *TxnWorker) handler(data []byte) {
 	nodeToKey := make(map[string][]string)
 	for key, addrs := range keyToNode {
 		ip := addrs[0]
+		ip = ip[:len(ip)-1]
 		if _, ok := nodeToKey[ip]; !ok {
 			nodeToKey[ip] = []string{}
 		}
@@ -94,7 +95,7 @@ func (w *TxnWorker) handler(data []byte) {
 }
 
 func (w *TxnWorker) endTransaction(tid string, nodeAddr string, keys []string, action kpb.TransactionAction) {
-	addr := fmt.Sprintf(cmn.PushTemplate, nodeAddr, cmn.KeyEndTxnPullPort)
+	addr := fmt.Sprintf("%s:%d", nodeAddr, cmn.KeyEndTxnPullPort)
 	endReq := &kpb.EndRequest{
 		Tid:       tid,
 		Action:    action,

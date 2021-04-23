@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: manager-service
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 5000
+    targetPort: 5000
+    name: manager-0
+  - port: 5001
+    targetPort: 5001
+    name: manager-1
+  selector:
+    role: manager

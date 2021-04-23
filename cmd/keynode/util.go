@@ -122,6 +122,7 @@ func (idx *VersionIndex) commitVersions(txnWriteSet *tpb.TransactionWriteSet, st
 			go monitor.TrackStat(tid, "Storage write index time", end.Sub(start))
 		}()
 	}
+	wg.Wait()
 }
 
 func searchVersion(entry *kpb.KeyVersionList, version string) int {

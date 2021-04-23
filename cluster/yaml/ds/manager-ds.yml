@@ -1,36 +1,30 @@
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: tasc-nodes
+  name: manager-nodes
   labels:
-    role: tasc
+    role: manager
 spec:
   selector:
     matchLabels:
-      role: tasc
+      role: manager
   template:
     metadata:
       labels:
-        role: tasc
+        role: manager
     spec:
       nodeSelector:
-        role: tasc
+        role: manager
       hostNetwork: true
       containers:
-      - name: tasc-container
+      - name: manager-container
         image: sauravchh/tasc
         imagePullPolicy: Always
         env:
         - name: BRANCH
           value: master
         - name: ROLE
-          value: tasc
-        - name: ROUTING_ILB
-          value: DUMMY_IP
-        - name: MONITOR
-          value: DUMMY_IP
-        - name: WORKER_ILB
-          value: DUMMY_IP
+          value: manager
         - name: AWS_ACCESS_KEY_ID
           value: ACCESS_KEY_ID_DUMMY
         - name: AWS_SECRET_ACCESS_KEY

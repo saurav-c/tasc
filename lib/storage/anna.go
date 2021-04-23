@@ -43,8 +43,6 @@ func NewAnnaStorageManager(ipAddress string, elbAddress string) *AnnaStorageMana
 }
 
 func (anna *AnnaStorageManager) Get(key string) ([]byte, error) {
-	result := &pb.KeyValuePair{}
-
 	client := anna.getClient()
 	defer anna.releaseClient(client)
 	bts, err := client.Get(key)
@@ -54,9 +52,7 @@ func (anna *AnnaStorageManager) Get(key string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	err = proto.Unmarshal(bts, result)
-	return result.Value, err
+	return bts, err
 }
 
 func (anna *AnnaStorageManager) Put(key string, val []byte) error {

@@ -5,7 +5,7 @@ import os
 import boto3
 from add_nodes import add_nodes
 import util
-import requests
+from routing_util import register
 
 ec2_client = boto3.client('ec2', os.getenv('AWS_REGION', 'us-east-1'))
 
@@ -30,13 +30,6 @@ def create_cluster(txn_count, keynode_count, rtr_count, worker_count, lb_count, 
                                      body=service_spec)
     util.get_service_address(client, 'routing-service')
 
-    # Wait for all routing nodes to be ready
-    routing_pods_ips = util.get_pod_ips(client, 'role=routing', is_running=True)
-    while len(routing_pods_ips) < rtr_count:
-        routing_pods_ips = util.get_pod_ips(client, 'role=routing', is_running=True)
-
-    authorize_self(cluster_name)
-
     print('Creating %d Key Nodes...' % (keynode_count))
     add_nodes(client, apps_client, config_file, "keynode", keynode_count, aws_key_id,
               aws_key, True, prefix, branch_name)
@@ -58,18 +51,6 @@ def create_cluster(txn_count, keynode_count, rtr_count, worker_count, lb_count, 
     print('Creating %d Load Balancers...' % (lb_count))
     add_nodes(client, apps_client, config_file, 'lb', lb_count,
               aws_key_id, aws_key, True, prefix, branch_name)
-    
-    lb_pod_ips = util.get_pod_ips(client, 'role=lb', is_running=True)
-    while len(lb_pod_ips) < lb_count:
-        lb_pod_ips = util.get_pod_ips(client, 'role=lb', is_running=True)
-
-    # Copy files to load balancers for kubectl
-    lb_pods = client.list_namespaced_pod(namespace=util.NAMESPACE,
-                                         label_selector="role=lb").items
-    kubecfg = os.path.join(os.environ['HOME'], '.kube/config')
-    for pod in lb_pods:
-        util.copy_file_to_pod(client, kubecfg, pod.metadata.name,
-                              '/root/.kube', 'lb-container')
 
     print('Creating TASC Load Balancing service...')
     service_spec = util.load_yaml('yaml/services/tasc.yml', prefix)
@@ -104,30 +85,13 @@ def create_cluster(txn_count, keynode_count, rtr_count, worker_count, lb_count, 
     ec2_client.authorize_security_group_ingress(GroupId=sg['GroupId'],
                                                 IpPermissions=permission)
 
+    print('Registering Key Nodes...')
+    keynode_pod_ips = util.get_pod_ips(client, 'role=keynode', is_running=True)
+    register(client, keynode_pod_ips)
+
+
     print("\nThe TASC ELB Endpoint: " + util.get_service_address(client, "tasc-service") + "\n")
     print('Finished!')
-
-def authorize_self(cluster_name):
-    r = requests.get('http://169.254.169.254/latest/meta-data/public-ipv4')
-    ip = r.content.decode()
-
-    sg_name = 'nodes.' + cluster_name
-    sg = ec2_client.describe_security_groups(
-        Filters=[{'Name': 'group-name',
-                  'Values': [sg_name]}])['SecurityGroups'][0]
-    print("Authorizing access from this machine...")
-    permission = [{
-        'FromPort': 0,
-        'IpProtocol': 'tcp',
-        'ToPort': 65535,
-        'IpRanges': [{
-            'CidrIp': ip + '/32'
-        }]
-    }]
-
-    ec2_client.authorize_security_group_ingress(GroupId=sg['GroupId'],
-                                                IpPermissions=permission)
-
 
 
 if __name__ == '__main__':

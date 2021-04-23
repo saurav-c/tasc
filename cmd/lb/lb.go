@@ -44,7 +44,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	config, err := clientcmd.BuildConfigFromFlags("", "~/.kube/config")
+	config, err := clientcmd.BuildConfigFromFlags("", "/root/.kube/config")
 	if err != nil {
 		panic(err.Error())
 	}
@@ -124,6 +124,6 @@ func getNodeAddress(addresses []v1.NodeAddress, tp v1.NodeAddressType) string {
 func logAddresses(addrs []string) {
 	log.Info("TASC Node Addresses...")
 	for _, addr := range addrs {
-		log.Info("\t-" + addr)
+		log.Info(addr)
 	}
 }

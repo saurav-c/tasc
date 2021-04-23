@@ -99,6 +99,7 @@ func (k *KeyNode) validate(tid string, beginTs int64, commitTs int64, keys []str
 			return kpb.TransactionAction_ABORT
 		}
 		if count == 2 {
+			go log.Debugf("No conflicts found for transaction %s", tid)
 			break
 		}
 	}
