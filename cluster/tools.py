@@ -50,9 +50,9 @@ def main():
         node = args[1]
         kind = args[2]
         if node == 'all':
-            restart_all(node, kind)
+            restart_all(kind)
         else:
-            restart(kind)
+            restart(node, kind)
     else:
         print('Unknown cmd: ' + cmd)
 
