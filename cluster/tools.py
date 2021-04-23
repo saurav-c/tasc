@@ -6,6 +6,7 @@ from add_nodes import add_nodes
 from remove_nodes import delete_nodes
 import util
 from routing_util import register, deregister
+import subprocess
 
 # AWS Info
 aws_key_id = util.check_or_get_env_arg('AWS_ACCESS_KEY_ID')
@@ -45,8 +46,39 @@ def main():
         event = args[1]
         private_ip = args[3]
         hash_ring_change(event, private_ip)
+    elif cmd == 'restart':
+        node = args[1]
+        kind = args[2]
+        if node == 'all':
+            restart_all(node, kind)
+        else:
+            restart(kind)
     else:
         print('Unknown cmd: ' + cmd)
+
+# Restart pod with IP
+def restart(pod_ip, kind):
+    pod = util.get_pod_from_ip(pod_ip)
+    pname = pod.metadata.name
+    cname = pod.spec.containers[0].name
+    kill_cmd = 'kubectl exec -it %s -c %s -- /bin/sh -c "kill 1"' % (pname, cname)
+    subprocess.run(kill_cmd)
+
+    # Wait for pod to start again
+    pod_ips = util.get_pod_ips(client, selector='role='+kind, is_running=True)
+    while pod_ip not in pod_ips:
+        pod_ips = util.get_pod_ips(client, selector='role='+kind, is_running=True)
+
+    # Send config file to the pod
+    sendConfig(pod_ip, None)
+
+    print('Restarted %s node at %s' % (kind, pod_ip))
+
+def restart_all(kind):
+    pod_ips = util.get_pod_ips(client, selector='role='+kind, is_running=True)
+    for pod_ip in pod_ips:
+        restart(pod_ip, kind)
+
 
 # Sends config file to node at NODEIP
 def sendConfig(nodeIP, configFile):
