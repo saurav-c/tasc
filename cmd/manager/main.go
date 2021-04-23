@@ -116,7 +116,8 @@ func (t *TxnManager) Read(ctx context.Context, requests *tpb.TascRequest) (*tpb.
 			continue
 		}
 		keyNodeIp := keyNodeIPs[0]
-		addr := fmt.Sprintf(cmn.PushTemplate, keyNodeIp, cmn.KeyReadPullPort)
+		keyNodeIp = keyNodeIp[:len(keyNodeIp)-1]
+		addr := fmt.Sprintf("%s:%d", keyNodeIp, cmn.KeyReadPullPort)
 
 		start := time.Now()
 
