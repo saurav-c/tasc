@@ -18,7 +18,7 @@ BASE_CONFIG_FILE = '../config/tasc-base.yml'
 CONFIG_FILE = './tasc-config.yml'
 POD_CONFIG_DIR = '/go/src/github.com/saurav-c/tasc/config'
 
-NODE_TYPES = ['tasc', 'keynode', 'routing', 'lb', 'worker']
+NODE_TYPES = ['tasc', 'keynode', 'routing', 'lb', 'worker', 'benchmark']
 client, apps_client = util.init_k8s()
 
 def main():
