@@ -31,14 +31,14 @@ def main():
         sendConfig(ip, conf)
     elif cmd == 'add':
         ntype = args[1]
-        count = args[2]
+        count = int(args[2])
         if ntype not in NODE_TYPES:
             print('Unknown node type: ' + ntype)
             return
         add(ntype, count)
     elif cmd == 'delete':
         ntype = args[1]
-        count = args[2]
+        count = int(args[2])
         if ntype not in NODE_TYPES:
             print('Unknown node type: ' + ntype)
             return

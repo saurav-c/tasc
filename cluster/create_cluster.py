@@ -57,14 +57,14 @@ def create_cluster(txn_count, keynode_count, rtr_count, worker_count, lb_count, 
     client.create_namespaced_service(namespace=util.NAMESPACE,
                                      body=service_spec)
 
-    # print('Creating %d Benchmark nodes...' % (benchmark_count))
-    # add_nodes(client, apps_client, config_file, 'benchmark', benchmark_count,
-    #           aws_key_id, aws_key, True, prefix, branch_name)
-    #
-    # benchmark_ips = util.get_node_ips(client, 'role=benchmark', 'ExternalIP')
-    # with open('../cmd/benchmark/benchmarks.txt', 'w+') as f:
-    #     for ip in benchmark_ips:
-    #         f.write(ip + '\n')
+    print('Creating %d Benchmark nodes...' % (benchmark_count))
+    add_nodes(client, apps_client, config_file, 'benchmark', benchmark_count,
+              aws_key_id, aws_key, True, prefix, branch_name)
+
+    benchmark_ips = util.get_node_ips(client, 'role=benchmark', 'ExternalIP')
+    with open('../cmd/benchmark/benchmarks.txt', 'w+') as f:
+        for ip in benchmark_ips:
+            f.write(ip + '\n')
 
     print('Finished creating all pods...')
 
