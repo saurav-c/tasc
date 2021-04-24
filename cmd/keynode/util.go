@@ -147,7 +147,7 @@ func (idx *VersionIndex) create(key string, storageManager storage.StorageManage
 
 	var keyLock *sync.RWMutex
 	var versionList *kpb.KeyVersionList
-	if keyLock, ok := idx.locks[key]; !ok {
+	if kLock, ok := idx.locks[key]; !ok {
 		keyLock = &sync.RWMutex{}
 		versionList = &kpb.KeyVersionList{}
 		keyLock.Lock()
@@ -161,6 +161,7 @@ func (idx *VersionIndex) create(key string, storageManager storage.StorageManage
 		}
 		keyLock.Unlock()
 	} else {
+		keyLock = kLock
 		keyLock.RLock()
 		versionList = idx.index[key]
 		keyLock.RUnlock()

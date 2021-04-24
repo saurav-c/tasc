@@ -83,12 +83,6 @@ func (k *KeyNode) readKey(tid string, key string, readSet []string, beginTs int6
 		// Sleep and retry
 		log.Debugf("Sleeping and retrying to find versions for %s", key)
 		time.Sleep(5 * time.Millisecond)
-
-		k.CommittedVersionIndex.mutex.RLock()
-		keyLock.RLock()
-		keyVersions = k.CommittedVersionIndex.index[key]
-		keyLock.RUnlock()
-		k.CommittedVersionIndex.mutex.RUnlock()
 	}
 	return "", nil, nil, errors.New("no valid version found")
 }
