@@ -70,6 +70,11 @@ def restart(pod_ip, kind):
     while pod_ip not in pod_ips:
         pod_ips = util.get_pod_ips(client, selector='role='+kind, is_running=True)
 
+    # Send kube config to lb
+    if kind == 'lb':
+        pod = util.get_pod_from_ip(client, pod_ip)
+        send_kube_config(pod)
+
     # Send config file to the pod
     retry = 0
     while True:
@@ -86,8 +91,26 @@ def restart(pod_ip, kind):
             print('Retrying in %d sec' % (retry * 5))
             time.sleep(retry * 5)
 
-
     print('Restarted %s node at %s' % (kind, pod_ip))
+
+def send_kube_config(pod):
+    kubecfg = os.path.join(os.environ['HOME'], '.kube/config')
+    cname = pod.spec.containers[0].name
+    retry = 0
+    while True:
+        try:
+            util.copy_file_to_pod(client, kubecfg, pod.metadata.name,
+                                  '/root/.kube', cname)
+            break
+        except Exception as e:
+            retry += 1
+            print('Caught exception')
+            if retry >= 5:
+                print('Out of retries...')
+                print(e)
+                return
+            print('Retrying in %d sec' % (retry * 5))
+            time.sleep(retry * 5)
 
 def restart_all(kind):
     pod_ips = util.get_pod_ips(client, selector='role='+kind, is_running=True)
