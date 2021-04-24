@@ -27,7 +27,7 @@ func (t *TxnManager) StartTransaction(ctx context.Context, _ *empty.Empty) (*tpb
 	}
 	tid := fmt.Sprintf(cmn.TidTemplate, t.Id, t.ThreadId, uid)
 
-	defer t.Monitor.TrackFuncExecTime(tid, "Start Txn Time", time.Now())
+	defer t.Monitor.TrackFuncExecTime(tid, "[API] Start Transaction", time.Now())
 
 	beginTs := time.Now().UnixNano()
 	txnEntry := TransactionTableEntry{
@@ -60,7 +60,7 @@ func (t *TxnManager) StartTransaction(ctx context.Context, _ *empty.Empty) (*tpb
 func (t *TxnManager) Read(ctx context.Context, requests *tpb.TascRequest) (*tpb.TascRequest, error) {
 	tid := requests.Tid
 
-	defer t.Monitor.TrackFuncExecTime(tid, "Read time", time.Now())
+	defer t.Monitor.TrackFuncExecTime(tid, "[API] Read", time.Now())
 
 	t.TransactionTable.mutex.RLock()
 	txnEntry := t.TransactionTable.table[tid]
@@ -77,12 +77,21 @@ func (t *TxnManager) Read(ctx context.Context, requests *tpb.TascRequest) (*tpb.
 
 		// Reading transaction's own write
 		if val, ok := bufferEntry.buffer[key]; ok {
+			log.WithFields(log.Fields{
+				"TID": tid,
+				"Key": key,
+			}).Debug("Reading own write")
 			resp.Pairs = append(resp.Pairs, &tpb.TascRequest_KeyPair{Key: key, Value: val})
 			continue
 		}
 
 		// Reading transaction's previously read version
 		if keyVersion, ok := txnEntry.readSet[key]; ok {
+			log.WithFields(log.Fields{
+				"TID": tid,
+				"Key": key,
+				"Version": keyVersion,
+			}).Debug("Reading previously read version")
 			val, err := t.StorageManager.Get(keyVersion)
 			if err != nil {
 				resp.Pairs = append(resp.Pairs, &tpb.TascRequest_KeyPair{Key: key, Value: val})
@@ -109,7 +118,11 @@ func (t *TxnManager) Read(ctx context.Context, requests *tpb.TascRequest) (*tpb.
 		}
 		data, _ := proto.Marshal(readRequest)
 
+		start := time.Now()
 		routingResp := <-txnEntry.rtrChan
+		end := time.Now()
+		go t.Monitor.TrackStat(tid, "[ROUTING] Read Lookup Response", end.Sub(start))
+
 		keyNodeIPs, ok := routingResp.Addresses[key]
 		if !ok {
 			log.Errorf("Unable to perform routing lookup for key %s", key)
@@ -119,20 +132,25 @@ func (t *TxnManager) Read(ctx context.Context, requests *tpb.TascRequest) (*tpb.
 		keyNodeIp = keyNodeIp[:len(keyNodeIp)-1]
 		addr := fmt.Sprintf("%s:%d", keyNodeIp, cmn.KeyReadPullPort)
 
-		start := time.Now()
-
+		start = time.Now()
 		t.PusherCache.Lock(t.ZmqInfo.context, addr)
 		pusher := t.PusherCache.GetSocket(addr)
 		pusher.SendBytes(data, zmq.DONTWAIT)
 		t.PusherCache.Unlock(addr)
+		end = time.Now()
+		go t.Monitor.TrackStat(tid, "[PUSHER] Read Pusher", end.Sub(start))
 
-		end := time.Now()
-		go t.Monitor.TrackStat(tid, "Read Pusher Wait Time", end.Sub(start))
-
+		start = time.Now()
 		readResponse := <-txnEntry.readChan
+		end = time.Now()
+		go t.Monitor.TrackStat(tid, "[KEYNODE] Read Response", end.Sub(start))
 
 		if !readResponse.Ok {
-			log.Errorf("Unable to read key %s", key)
+			log.WithFields(log.Fields{
+				"TID": tid,
+				"Key": key,
+				"KeyNode": keyNodeIp,
+			}).Error("Keynode error reading key")
 			continue
 		}
 
@@ -145,7 +163,6 @@ func (t *TxnManager) Read(ctx context.Context, requests *tpb.TascRequest) (*tpb.
 			}
 		}
 		txnEntry.readSet[key] = readResponse.KeyVersion
-
 		resp.Pairs = append(resp.Pairs, &tpb.TascRequest_KeyPair{Key: key, Value: readResponse.Value})
 	}
 	return resp, nil
@@ -155,13 +172,13 @@ func (t *TxnManager) routerLookup(tid string, keys []string) {
 	start := time.Now()
 	t.RouterManager.Lookup(tid, keys)
 	end := time.Now()
-	go t.Monitor.TrackStat(tid, "Router pusher time", end.Sub(start))
+	go t.Monitor.TrackStat(tid, "[PUSHER] Router Push", end.Sub(start))
 }
 
 func (t *TxnManager) Write(ctx context.Context, requests *tpb.TascRequest) (*tpb.TascRequest, error) {
 	tid := requests.Tid
 
-	defer t.Monitor.TrackFuncExecTime(tid, "Write time", time.Now())
+	defer t.Monitor.TrackFuncExecTime(tid, "[API] Write", time.Now())
 
 	t.WriteBuffer.mutex.RLock()
 	bufferEntry := t.WriteBuffer.buffer[tid]
@@ -179,7 +196,7 @@ func (t *TxnManager) Write(ctx context.Context, requests *tpb.TascRequest) (*tpb
 func (t *TxnManager) CommitTransaction(ctx context.Context, tag *tpb.TransactionTag) (*tpb.TransactionTag, error) {
 	tid := tag.Tid
 
-	defer t.Monitor.TrackFuncExecTime(tid, "Commit time", time.Now())
+	defer t.Monitor.TrackFuncExecTime(tid, "[API] Commit", time.Now())
 
 	t.TransactionTable.mutex.RLock()
 	txnEntry := t.TransactionTable.table[tid]
@@ -210,7 +227,7 @@ func (t *TxnManager) CommitTransaction(ctx context.Context, tag *tpb.Transaction
 	t.routerLookup(tid, writeSet)
 	routerResp := <-txnEntry.rtrChan
 	end := time.Now()
-	go t.Monitor.TrackStat(tid, "Router Lookup time", end.Sub(start))
+	go t.Monitor.TrackStat(tid, "[ROUTING] Commit Router Lookup", end.Sub(start))
 
 	keyAddressMap := make(map[string][]string)
 	phase1WaitMap := make(map[string]string)
@@ -238,7 +255,7 @@ func (t *TxnManager) CommitTransaction(ctx context.Context, tag *tpb.Transaction
 	action := t.collectValidateResponses(tid, txnEntry.valChan, phase1WaitMap)
 	end = time.Now()
 
-	go t.Monitor.TrackStat(tid, "Phase 1 2PC Time", end.Sub(start))
+	go t.Monitor.TrackStat(tid, "[COMMIT] Phase 1", end.Sub(start))
 
 	start = time.Now()
 	if action == kpb.TransactionAction_COMMIT {
@@ -253,17 +270,23 @@ func (t *TxnManager) CommitTransaction(ctx context.Context, tag *tpb.Transaction
 	ok := t.collectEndTxnResponses(txnEntry.endTxnChan)
 	end = time.Now()
 
-	go t.Monitor.TrackStat(tid, "Phase 2 2PC Time", end.Sub(start))
+	go t.Monitor.TrackStat(tid, "[COMMIT] Phase 2", end.Sub(start))
 
 	// Rollback transaction
 	if !ok && action == kpb.TransactionAction_COMMIT {
+		log.WithFields(log.Fields{
+			"TID": tid,
+		}).Error("Rolling back transaction")
 		action = kpb.TransactionAction_ABORT
 		go t.endTransaction(tid, tpb.TascTransactionStatus_ABORTED, nil)
 	}
 
 	if action == kpb.TransactionAction_COMMIT {
 		// Wait for storage write to finish
+		start := time.Now()
 		<-storageChan
+		end := time.Now()
+		go t.Monitor.TrackStat(tid, "[COMMIT] Storage Write", end.Sub(start))
 		txnEntry.status = Complete
 		return &tpb.TransactionTag{
 			Tid:    tid,
@@ -281,7 +304,7 @@ func (t *TxnManager) CommitTransaction(ctx context.Context, tag *tpb.Transaction
 func (t *TxnManager) AbortTransaction(ctx context.Context, tag *tpb.TransactionTag) (*tpb.TransactionTag, error) {
 	tid := tag.Tid
 
-	defer t.Monitor.TrackFuncExecTime(tid, "Abort time", time.Now())
+	defer t.Monitor.TrackFuncExecTime(tid, "[API] Abort", time.Now())
 
 	t.TransactionTable.mutex.RLock()
 	txnEntry := t.TransactionTable.table[tid]
@@ -312,7 +335,7 @@ func (t *TxnManager) validateTransaction(keyNodeAddress string, keys []string, t
 	t.PusherCache.Unlock(addr)
 	end := time.Now()
 
-	go t.Monitor.TrackStat(tid, "Validate pusher time", end.Sub(start))
+	go t.Monitor.TrackStat(tid, "[PUSHER] Validate Push", end.Sub(start))
 }
 
 func (t *TxnManager) collectValidateResponses(tid string, valRespChan chan *kpb.ValidateResponse,
@@ -345,6 +368,7 @@ func (t *TxnManager) collectValidateResponses(tid string, valRespChan chan *kpb.
 }
 
 func (t *TxnManager) endTransaction(tid string, status tpb.TascTransactionStatus, writeSet []string) {
+	defer t.Monitor.TrackFuncExecTime(tid, "[COMMIT] End Pusher", time.Now())
 	t.WorkerConn.SendWork(tid, status, writeSet)
 }
 
@@ -354,7 +378,7 @@ func (t *TxnManager) collectEndTxnResponses(endRespChan chan *tpb.TransactionTag
 }
 
 func (t *TxnManager) writeToStorage(tid string, endTs int64, entry *WriteBufferEntry, writeChan chan bool) {
-	defer t.Monitor.TrackFuncExecTime(tid, "Write to Storage time", time.Now())
+	defer t.Monitor.TrackFuncExecTime(tid, "[COMMIT] Overall Storage Write", time.Now())
 
 	dbKeys := make([]string, len(entry.buffer)+1)
 	dbVals := make([][]byte, len(entry.buffer)+1)
@@ -373,9 +397,7 @@ func (t *TxnManager) writeToStorage(tid string, endTs int64, entry *WriteBufferE
 	dbKeys[i] = tid
 	dbVals[i] = data
 
-	log.Debugf("Sent storage write for txn %s", tid)
 	t.StorageManager.MultiPut(dbKeys, dbVals)
-	log.Debugf("Storage returned for txn %s", tid)
 	writeChan <- true
 }
 
