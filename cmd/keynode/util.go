@@ -170,8 +170,8 @@ func (idx *VersionIndex) create(key string, storageManager storage.StorageManage
 	return keyLock, versionList
 }
 
-func (idx *VersionIndex) updateIndex(keyVersions []string, toInsert bool,
-	storageManager storage.StorageManager, monitor *cmn.StatsMonitor) {
+func (idx *VersionIndex) updateIndex(tid string, keyVersions []string, toInsert bool,
+	storageManager storage.StorageManager, monitor *cmn.StatsMonitor, monitorMsg string) {
 	var wg sync.WaitGroup
 	wg.Add(len(keyVersions))
 
@@ -180,7 +180,6 @@ func (idx *VersionIndex) updateIndex(keyVersions []string, toInsert bool,
 			defer wg.Done()
 			split := strings.Split(keyVersion, cmn.KeyDelimeter)
 			key, version := split[0], split[1]
-			tid := strings.Split(version, cmn.VersionDelimeter)[1]
 
 			idx.mutex.RLock()
 			keyLock, ok := idx.locks[key]
@@ -207,7 +206,7 @@ func (idx *VersionIndex) updateIndex(keyVersions []string, toInsert bool,
 			end := time.Now()
 
 			keyLock.Unlock()
-			go monitor.TrackStat(tid, "Storage write index time", end.Sub(start))
+			go monitor.TrackStat(tid, monitorMsg, end.Sub(start))
 		}()
 	}
 	wg.Wait()

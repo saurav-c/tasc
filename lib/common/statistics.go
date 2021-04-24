@@ -40,7 +40,11 @@ func (monitor *StatsMonitor) TrackFuncExecTime(tid string, msg string, start tim
 
 func (monitor *StatsMonitor) TrackStat(tid string, msg string, diff time.Duration) {
 	latency := diff.Seconds() * 1000
-	log.Debugf("%s for Txn %s: %f ms", msg, tid, latency)
+	log.WithFields(log.Fields{
+		"TID": tid,
+		"MSG": msg,
+		"Latency": diff,
+	}).Debug()
 	monitor.lock.Lock()
 	defer monitor.lock.Unlock()
 	if _, ok := monitor.stats[msg]; !ok {

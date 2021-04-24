@@ -25,7 +25,11 @@ func (k *KeyNode) readKey(tid string, key string, readSet []string, beginTs int6
 	} else {
 		// Version Index does not exist
 		k.CommittedVersionIndex.mutex.RUnlock()
+
+		start := time.Now()
 		_, keyVersions = k.CommittedVersionIndex.create(key, k.StorageManager)
+		end := time.Now()
+		go k.Monitor.TrackStat(tid, "[READ] Create Commited Version State", end.Sub(start))
 	}
 
 	lowerBoundVersion := ""
@@ -36,6 +40,7 @@ func (k *KeyNode) readKey(tid string, key string, readSet []string, beginTs int6
 
 	var timeoutStart time.Time
 	first := true
+	start := time.Now()
 	for {
 		for i := len(keyVersions.Versions) - 1; i >= 0; i-- {
 			version := keyVersions.Versions[i]
@@ -60,8 +65,16 @@ func (k *KeyNode) readKey(tid string, key string, readSet []string, beginTs int6
 				continue
 			}
 
+			end := time.Now()
+			go k.Monitor.TrackStat(tid, "[READ] Compute Read Version", end.Sub(start))
+
 			storageKeyVersion := key + cmn.KeyDelimeter + version
+
+			start = time.Now()
 			val, err := k.StorageManager.Get(storageKeyVersion)
+			end = time.Now()
+			go k.Monitor.TrackStat(tid, "[READ] Storage Read Data", end.Sub(start))
+
 			if err != nil {
 				log.Errorf("Error reading %s from storage: %s", storageKeyVersion, err.Error())
 				os.Exit(1)
@@ -75,7 +88,7 @@ func (k *KeyNode) readKey(tid string, key string, readSet []string, beginTs int6
 		}
 
 		// No valid versions found
-		if time.Now().Sub(timeoutStart) >= time.Duration(20 * time.Millisecond) {
+		if time.Now().Sub(timeoutStart) >= 20 * time.Millisecond {
 			log.Errorf("Timed out, no valid versions found for %s", key)
 			break
 		}
@@ -110,6 +123,7 @@ func (k *KeyNode) isCompatibleVersion(versionTid string, readSet []string) ([]st
 func (k *KeyNode) validate(tid string, beginTs int64, commitTs int64, keys []string) (action kpb.TransactionAction) {
 	conflictChan := make(chan bool, 2)
 
+	start := time.Now()
 	go k.checkPendingConflicts(beginTs, commitTs, keys, conflictChan)
 	go k.checkCommittedConflicts(beginTs, commitTs, keys, conflictChan)
 
@@ -125,6 +139,8 @@ func (k *KeyNode) validate(tid string, beginTs int64, commitTs int64, keys []str
 			break
 		}
 	}
+	end := time.Now()
+	go k.Monitor.TrackStat(tid, "[COMMIT] Validation conflict check", end.Sub(start))
 
 	version := cmn.Int64ToString(commitTs) + cmn.VersionDelimeter + tid
 
@@ -137,7 +153,13 @@ func (k *KeyNode) validate(tid string, beginTs int64, commitTs int64, keys []str
 		Keys: keyVersions,
 	}
 	k.PendingTxnSet.put(tid, pendingTxnSet)
-	k.PendingVersionIndex.updateIndex(keyVersions, true, k.StorageManager, k.Monitor)
+
+	start = time.Now()
+	k.PendingVersionIndex.updateIndex(tid, keyVersions, true, k.StorageManager, k.Monitor,
+		"[COMMIT] Storage Write Pending Index")
+	end = time.Now()
+	go k.Monitor.TrackStat(tid, "[COMMIT] Update Pending Index", end.Sub(start))
+
 	return kpb.TransactionAction_COMMIT
 }
 
@@ -201,11 +223,9 @@ func (k *KeyNode) checkCommittedConflicts(beginTs int64, commitTs int64, keys []
 }
 
 func (k *KeyNode) endTransaction(tid string, action kpb.TransactionAction, writeSet []string) error {
-	pendingWrites, ok := k.PendingTxnSet.get(tid)
+	pendingWrites, _ := k.PendingTxnSet.get(tid)
 
-	if ok {
-		defer k.localGarbageCollect(tid, pendingWrites)
-	}
+	defer k.localGarbageCollect(tid, pendingWrites)
 
 	if action == kpb.TransactionAction_ABORT {
 		return nil
@@ -215,18 +235,19 @@ func (k *KeyNode) endTransaction(tid string, action kpb.TransactionAction, write
 	txnWriteSet := &tpb.TransactionWriteSet{Keys:writeSet}
 	k.CommittedTxnSet.put(tid, txnWriteSet)
 
-	if ok {
-		start := time.Now()
-		k.CommittedVersionIndex.updateIndex(pendingWrites.Keys, true, k.StorageManager, k.Monitor)
-		end := time.Now()
-		go k.Monitor.TrackStat(tid, "Overall commit version index time", end.Sub(start))
-	}
+	start := time.Now()
+	k.CommittedVersionIndex.updateIndex(tid, pendingWrites.Keys, true, k.StorageManager, k.Monitor,
+		"[END] Storage Write Committed Index")
+	end := time.Now()
+	go k.Monitor.TrackStat(tid, "[END] Update Committed Index", end.Sub(start))
+
 	return nil
 }
 
 func (k *KeyNode) localGarbageCollect(tid string, pendingWrites *tpb.TransactionWriteSet) {
 	go k.PendingTxnSet.remove(tid)
-	go k.PendingVersionIndex.updateIndex(pendingWrites.Keys, false, k.StorageManager, k.Monitor)
+	go k.PendingVersionIndex.updateIndex(tid, pendingWrites.Keys, false, k.StorageManager, k.Monitor,
+		"[END] Storage Write Pending Index")
 }
 
 func (k *KeyNode) shutdown() {
