@@ -13,6 +13,7 @@ func InitLogger(dir string, logName string, level log.Level) (*os.File) {
 	if err != nil {
 		log.Fatalf("Unable to init logging to file %s", dir + "/" + logName)
 	}
+	log.SetFormatter(&log.JSONFormatter{})
 	log.SetLevel(level)
 	log.SetOutput(file)
 	return file
