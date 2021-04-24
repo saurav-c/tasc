@@ -6,6 +6,7 @@ import (
 	zmq "github.com/pebbe/zmq4"
 	cmn "github.com/saurav-c/tasc/lib/common"
 	kpb "github.com/saurav-c/tasc/proto/keynode"
+	log "github.com/sirupsen/logrus"
 	"time"
 )
 
@@ -27,6 +28,7 @@ func (keyNode *KeyNode) listener() {
 					req := &kpb.KeyNodeRequest{}
 					data, _ := zmqInfo.readPuller.RecvBytes(zmq.DONTWAIT)
 					proto.Unmarshal(data, req)
+					log.Info("Received read request")
 					go readHandler(keyNode, req)
 				}
 			case zmqInfo.validatePuller:
@@ -34,6 +36,7 @@ func (keyNode *KeyNode) listener() {
 					req := &kpb.ValidateRequest{}
 					data, _ := zmqInfo.validatePuller.RecvBytes(zmq.DONTWAIT)
 					proto.Unmarshal(data, req)
+					log.Info("Received validate request")
 					go validateHandler(keyNode, req)
 				}
 			case zmqInfo.endTxnPuller:

@@ -43,7 +43,7 @@ func (monitor *StatsMonitor) TrackStat(tid string, msg string, diff time.Duratio
 	log.WithFields(log.Fields{
 		"TID": tid,
 		"MSG": msg,
-		"Latency": diff,
+		"Latency": fmt.Sprintf("%d ms", diff.Milliseconds()),
 	}).Debug()
 	monitor.lock.Lock()
 	defer monitor.lock.Unlock()
