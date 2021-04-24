@@ -102,7 +102,9 @@ PRE: KeyLock should be LOCKED
 POST: Returns TRUE if index found in storage and updates index
 */
 func (idx *VersionIndex) readFromStorage(key string, storageManager storage.StorageManager) (*kpb.KeyVersionList, bool) {
+	log.Infof("Trying to read index %s from storage", key)
 	data, err := storageManager.Get(fmt.Sprintf(idx.indexFormat, key))
+	log.Infof("Read index %s from storage", key)
 	if err != nil {
 		if strings.Contains(err.Error(), "KEY_DNE") {
 			return nil, false
@@ -143,6 +145,7 @@ Pre: No locks required
 Post: Returns key lock and key version list
 */
 func (idx *VersionIndex) create(key string, storageManager storage.StorageManager) (*sync.RWMutex, *kpb.KeyVersionList) {
+	log.Infof("Creating key version state for %s", key)
 	idx.mutex.Lock()
 
 	var keyLock *sync.RWMutex
@@ -156,9 +159,11 @@ func (idx *VersionIndex) create(key string, storageManager storage.StorageManage
 		idx.mutex.Unlock()
 
 		// Check storage if index exists
+		log.Infof("Fetching from storage")
 		if storageVersionList, ok := idx.readFromStorage(key, storageManager); ok {
 			versionList = storageVersionList
 		}
+		log.Infof("Returned fetch from storage")
 		keyLock.Unlock()
 	} else {
 		keyLock = kLock

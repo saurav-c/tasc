@@ -164,11 +164,14 @@ func (k *KeyNode) validate(tid string, beginTs int64, commitTs int64, keys []str
 }
 
 func (k *KeyNode) checkPendingConflicts(beginTs int64, commitTs int64, keys []string, reportChan chan bool) {
+	log.Infof("Inside check pending conflicts")
 	for _, key := range keys {
+		log.Infof("Checking conflict for %s", key)
 		k.PendingVersionIndex.mutex.RLock()
 		pLock, ok := k.PendingVersionIndex.locks[key]
 
 		if !ok {
+			log.Info("Pending KVI does not exist")
 			k.PendingVersionIndex.mutex.RUnlock()
 			pLock, _ = k.PendingVersionIndex.create(key, k.StorageManager)
 			k.PendingVersionIndex.mutex.RLock()
@@ -178,6 +181,7 @@ func (k *KeyNode) checkPendingConflicts(beginTs int64, commitTs int64, keys []st
 		pendingVersions := k.PendingVersionIndex.index[key]
 		k.PendingVersionIndex.mutex.RUnlock()
 
+		log.Info("Got the pending versions")
 		for _, versions := range pendingVersions.Versions {
 			split := strings.Split(versions, cmn.VersionDelimeter)
 			versionCommitTsStr := split[0]
