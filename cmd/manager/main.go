@@ -335,6 +335,8 @@ func (t *TxnManager) validateTransaction(keyNodeAddress string, keys []string, t
 	t.PusherCache.Unlock(addr)
 	end := time.Now()
 
+	log.Debugf("Sent validation request to keynode address %s", addr)
+
 	go t.Monitor.TrackStat(tid, "[PUSHER] Validate Push", end.Sub(start))
 }
 

@@ -6,7 +6,6 @@ import (
 	zmq "github.com/pebbe/zmq4"
 	cmn "github.com/saurav-c/tasc/lib/common"
 	kpb "github.com/saurav-c/tasc/proto/keynode"
-	log "github.com/sirupsen/logrus"
 	"time"
 )
 
@@ -19,7 +18,6 @@ func (keyNode *KeyNode) listener() {
 	poller.Add(zmqInfo.endTxnPuller, zmq.POLLIN)
 
 	for true {
-		log.Infof("Started listening for pull messages...")
 		sockets, _ := poller.Poll(10 * time.Millisecond)
 
 		for _, socket := range sockets {
