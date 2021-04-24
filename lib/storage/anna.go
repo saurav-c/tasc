@@ -3,7 +3,6 @@ package storage
 import (
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 
 	"github.com/golang/protobuf/proto"
@@ -46,9 +45,6 @@ func (anna *AnnaStorageManager) Get(key string) ([]byte, error) {
 	client := anna.getClient()
 	defer anna.releaseClient(client)
 	bts, err := client.Get(key)
-	for err != nil && strings.Contains(err.Error(), "KEY_DNE") {
-		bts, err = client.Get(key)
-	}
 	if err != nil {
 		return nil, err
 	}

@@ -72,10 +72,10 @@ func NewKeyNode() (*KeyNode, error) {
 		log.Error("Unable to create statistics Monitor")
 	}
 
-	committedIndex := NewVersionIndex()
-	pendingIndex := NewVersionIndex()
-	committedTxnSet := NewTransactionSet()
-	pendingTxnSet := NewTransactionSet()
+	committedIndex := NewVersionIndex(COMMITTED_INDEX)
+	pendingIndex := NewVersionIndex(PENDING_INDEX)
+	committedTxnSet := NewTransactionSet(storageManager)
+	pendingTxnSet := NewTransactionSet(storageManager)
 
 	return &KeyNode{
 		IpAddress:             configValue.IpAddress,

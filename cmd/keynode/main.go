@@ -6,61 +6,83 @@ import (
 	kpb "github.com/saurav-c/tasc/proto/keynode"
 	tpb "github.com/saurav-c/tasc/proto/tasc"
 	log "github.com/sirupsen/logrus"
+	"os"
 	"strings"
-	"sync"
 	"time"
 )
 
 func (k *KeyNode) readKey(tid string, key string, readSet []string, beginTs int64,
 	lowerBound string) (string, []byte, []string, error) {
-	// TODO: Check if key does not exist
+	var keyVersions *kpb.KeyVersionList
 
 	k.CommittedVersionIndex.mutex.RLock()
-	keyLock := k.CommittedVersionIndex.locks[key]
-	keyLock.RLock()
-	keyVersions := k.CommittedVersionIndex.index[key]
-	keyLock.RUnlock()
-	k.CommittedVersionIndex.mutex.RUnlock()
-
-	// TODO: Wait for new versions if lowerBound not satisfied
-	if lowerBound != "" {
-		if len(keyVersions.Versions) == 0 {
-			log.Errorf("Lower bound error for key %s", key)
-			return "", nil, nil, errors.New("no versions newer than lower bound")
-		}
-		split := strings.Split(lowerBound, cmn.KeyDelimeter)
-		lowerBoundVersion := split[1]
-		mostRecentVersion := keyVersions.Versions[len(keyVersions.Versions) - 1]
-		if cmn.CompareKeyVersion(lowerBoundVersion, mostRecentVersion) >= 0 {
-			log.Errorf("Lower bound error for key %s", key)
-			return "", nil, nil, errors.New("no versions newer than lower bound")
-		}
+	keyLock, ok := k.CommittedVersionIndex.locks[key]
+	if ok {
+		keyLock.RLock()
+		keyVersions = k.CommittedVersionIndex.index[key]
+		keyLock.RUnlock()
+		k.CommittedVersionIndex.mutex.RUnlock()
+	} else {
+		// Version Index does not exist
+		k.CommittedVersionIndex.mutex.RUnlock()
+		_, keyVersions = k.CommittedVersionIndex.create(key, k.StorageManager)
 	}
 
-	for i := len(keyVersions.Versions) - 1; i >= 0; i-- {
-		version := keyVersions.Versions[i]
+	lowerBoundVersion := ""
+	if lowerBound != "" {
+		split := strings.Split(lowerBound, cmn.KeyDelimeter)
+		lowerBoundVersion = split[1]
+	}
 
-		splits := strings.Split(version, cmn.VersionDelimeter)
-		vCommitTsStr, vTxnId := splits[0], splits[1]
-		vCommitTs := cmn.Int64FromString(vCommitTsStr)
+	var timeoutStart time.Time
+	first := true
+	for {
+		for i := len(keyVersions.Versions) - 1; i >= 0; i-- {
+			version := keyVersions.Versions[i]
 
-		// Check to make sure this version existed when Txn began
-		if vCommitTs >= beginTs {
-			continue
+			// Check lower bound
+			if cmn.CompareKeyVersion(lowerBoundVersion, version) > 0 {
+				break
+			}
+
+			splits := strings.Split(version, cmn.VersionDelimeter)
+			vCommitTsStr, vTxnId := splits[0], splits[1]
+			vCommitTs := cmn.Int64FromString(vCommitTsStr)
+
+			// Check to make sure this version existed when Txn began
+			if vCommitTs >= beginTs {
+				continue
+			}
+
+			// Check compatibility of this txn's readSet with this versions's cowrittenset
+			coWrittenSet, ok := k.isCompatibleVersion(vTxnId, readSet)
+			if !ok {
+				continue
+			}
+
+			storageKeyVersion := key + cmn.KeyDelimeter + version
+			val, err := k.StorageManager.Get(storageKeyVersion)
+			if err != nil {
+				log.Errorf("Error reading %s from storage: %s", storageKeyVersion, err.Error())
+				os.Exit(1)
+			}
+			return storageKeyVersion, val, coWrittenSet, nil
 		}
 
-		// Check compatibility of this txn's readSet with this versions's cowrittenset
-		coWrittenSet, ok := k.isCompatibleVersion(vTxnId, readSet)
-		if !ok {
-			continue
+		if first {
+			first = false
+			timeoutStart = time.Now()
 		}
 
-		storageKeyVersion := key + cmn.KeyDelimeter + version
-		val, err := k.StorageManager.Get(storageKeyVersion)
-		if err != nil {
-			return "", nil, nil, errors.New("error fetching value from storage")
+		// No valid versions found
+		if time.Now().Sub(timeoutStart) >= time.Duration(20 * time.Millisecond) {
+			log.Errorf("Timed out, no valid versions found for %s", key)
+			break
 		}
-		return storageKeyVersion, val, coWrittenSet, nil
+
+		// Sleep and retry
+		log.Debugf("Sleeping and retrying to find versions for %s", key)
+		time.Sleep(5 * time.Millisecond)
 	}
 	return "", nil, nil, errors.New("no valid version found")
 }
@@ -106,9 +128,6 @@ func (k *KeyNode) validate(tid string, beginTs int64, commitTs int64, keys []str
 
 	version := cmn.Int64ToString(commitTs) + cmn.VersionDelimeter + tid
 
-	// Add version to pending Key Version Index for each key
-	k.addPendingKeyVersion(version, keys)
-
 	var keyVersions []string
 	for _, key := range keys {
 		keyVersion := key + cmn.KeyDelimeter + version
@@ -118,6 +137,7 @@ func (k *KeyNode) validate(tid string, beginTs int64, commitTs int64, keys []str
 		Keys: keyVersions,
 	}
 	k.PendingTxnSet.put(tid, pendingTxnSet)
+	k.PendingVersionIndex.updateIndex(keyVersions, true, k.StorageManager, k.Monitor)
 	return kpb.TransactionAction_COMMIT
 }
 
@@ -125,9 +145,11 @@ func (k *KeyNode) checkPendingConflicts(beginTs int64, commitTs int64, keys []st
 	for _, key := range keys {
 		k.PendingVersionIndex.mutex.RLock()
 		pLock, ok := k.PendingVersionIndex.locks[key]
+
 		if !ok {
 			k.PendingVersionIndex.mutex.RUnlock()
-			continue
+			pLock, _ = k.PendingVersionIndex.create(key, k.StorageManager)
+			k.PendingVersionIndex.mutex.RLock()
 		}
 
 		pLock.RLock()
@@ -141,6 +163,7 @@ func (k *KeyNode) checkPendingConflicts(beginTs int64, commitTs int64, keys []st
 			if beginTs < versionCommitTs && versionCommitTs < commitTs {
 				pLock.RUnlock()
 				reportChan <- true
+				return
 			}
 		}
 		pLock.RUnlock()
@@ -154,7 +177,8 @@ func (k *KeyNode) checkCommittedConflicts(beginTs int64, commitTs int64, keys []
 		cLock, ok := k.CommittedVersionIndex.locks[key]
 		if !ok {
 			k.CommittedVersionIndex.mutex.RUnlock()
-			continue
+			cLock, _ = k.CommittedVersionIndex.create(key, k.StorageManager)
+			k.CommittedVersionIndex.mutex.RLock()
 		}
 
 		cLock.RLock()
@@ -168,45 +192,12 @@ func (k *KeyNode) checkCommittedConflicts(beginTs int64, commitTs int64, keys []
 			if beginTs < versionCommitTs && versionCommitTs < commitTs {
 				cLock.RUnlock()
 				reportChan <- true
+				return
 			}
 		}
 		cLock.RUnlock()
 	}
 	reportChan <- false
-}
-
-func (k *KeyNode) addPendingKeyVersion(version string, keys []string) {
-	for _, key := range keys {
-		k.PendingVersionIndex.mutex.RLock()
-		pLock, ok := k.PendingVersionIndex.locks[key]
-		var pendingEntry *kpb.KeyVersionList
-
-		if !ok {
-			// Drop read lock and acquire write lock
-			k.PendingVersionIndex.mutex.RUnlock()
-			k.PendingVersionIndex.mutex.Lock()
-
-			// Need to check that condition is still valid
-			if pLock, ok = k.PendingVersionIndex.locks[key]; !ok {
-				pLock = &sync.RWMutex{}
-				pLock.Lock()
-				k.PendingVersionIndex.locks[key] = pLock
-				pendingEntry = &kpb.KeyVersionList{}
-				k.PendingVersionIndex.index[key] = pendingEntry
-			} else {
-				pLock.Lock()
-				pendingEntry = k.PendingVersionIndex.index[key]
-			}
-			k.PendingVersionIndex.mutex.Unlock()
-		} else {
-			pLock.Lock()
-			pendingEntry = k.PendingVersionIndex.index[key]
-			k.PendingVersionIndex.mutex.RUnlock()
-		}
-
-		insertVersion(pendingEntry, version)
-		pLock.Unlock()
-	}
 }
 
 func (k *KeyNode) endTransaction(tid string, action kpb.TransactionAction, writeSet []string) error {
@@ -226,7 +217,7 @@ func (k *KeyNode) endTransaction(tid string, action kpb.TransactionAction, write
 
 	if ok {
 		start := time.Now()
-		k.CommittedVersionIndex.commitVersions(pendingWrites, k.StorageManager, k.Monitor)
+		k.CommittedVersionIndex.updateIndex(pendingWrites.Keys, true, k.StorageManager, k.Monitor)
 		end := time.Now()
 		go k.Monitor.TrackStat(tid, "Overall commit version index time", end.Sub(start))
 	}
@@ -235,7 +226,7 @@ func (k *KeyNode) endTransaction(tid string, action kpb.TransactionAction, write
 
 func (k *KeyNode) localGarbageCollect(tid string, pendingWrites *tpb.TransactionWriteSet) {
 	go k.PendingTxnSet.remove(tid)
-	go k.PendingVersionIndex.deleteVersions(pendingWrites)
+	go k.PendingVersionIndex.updateIndex(pendingWrites.Keys, false, k.StorageManager, k.Monitor)
 }
 
 func (k *KeyNode) shutdown() {

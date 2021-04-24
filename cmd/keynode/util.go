@@ -7,21 +7,32 @@ import (
 	"github.com/saurav-c/tasc/lib/storage"
 	kpb "github.com/saurav-c/tasc/proto/keynode"
 	tpb "github.com/saurav-c/tasc/proto/tasc"
+	log "github.com/sirupsen/logrus"
+	"os"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 )
 
+type IndexType uint
+
+const (
+	COMMITTED_INDEX IndexType = iota
+	PENDING_INDEX
+)
+
 type TransactionSet struct {
 	txnSetMap map[string]*tpb.TransactionWriteSet
-	mutex *sync.RWMutex
+	mutex     *sync.RWMutex
+	manager   storage.StorageManager
 }
 
-func NewTransactionSet() TransactionSet {
+func NewTransactionSet(manager storage.StorageManager) TransactionSet {
 	return TransactionSet{
 		txnSetMap: map[string]*tpb.TransactionWriteSet{},
 		mutex:     &sync.RWMutex{},
+		manager:   manager,
 	}
 }
 
@@ -29,9 +40,22 @@ func (ts *TransactionSet) get(tid string) (*tpb.TransactionWriteSet, bool) {
 	ts.mutex.RLock()
 	txnSet, ok := ts.txnSetMap[tid]
 	ts.mutex.RUnlock()
+
 	if !ok {
-		return nil, false
+		// Fetch from storage
+		log.Debugf("Fetching transaction set %s from storage", tid)
+		data, err := ts.manager.Get(tid)
+		if err != nil {
+			log.Errorf("Error fetching transaction set %s from storage: %s", tid, err.Error())
+			os.Exit(1)
+		}
+		txnSet = &tpb.TransactionWriteSet{}
+		proto.Unmarshal(data, txnSet)
+		ts.mutex.Lock()
+		ts.txnSetMap[tid] = txnSet
+		ts.mutex.Unlock()
 	}
+
 	return txnSet, true
 }
 
@@ -48,39 +72,110 @@ func (ts *TransactionSet) remove(tid string) {
 }
 
 type VersionIndex struct {
-	index map[string]*kpb.KeyVersionList
-	locks map[string]*sync.RWMutex
-	mutex *sync.RWMutex
+	index       map[string]*kpb.KeyVersionList
+	locks       map[string]*sync.RWMutex
+	mutex       *sync.RWMutex
+	indexFormat string
 }
 
-func NewVersionIndex() VersionIndex {
+func NewVersionIndex(kind IndexType) VersionIndex {
+	format := ""
+	if kind == COMMITTED_INDEX {
+		format = "commit-index:%s"
+	} else if kind == PENDING_INDEX {
+		format = "pending-index:%s"
+	} else {
+		log.Debugf("Unknown index type %d", kind)
+		os.Exit(1)
+	}
 	return VersionIndex{
-		index: map[string]*kpb.KeyVersionList{},
-		locks: map[string]*sync.RWMutex{},
-		mutex: &sync.RWMutex{},
+		index:       map[string]*kpb.KeyVersionList{},
+		locks:       map[string]*sync.RWMutex{},
+		mutex:       &sync.RWMutex{},
+		indexFormat: format,
 	}
 }
 
-func (idx *VersionIndex) deleteVersions(txnWriteSet *tpb.TransactionWriteSet) {
-	for _, keyVersion := range txnWriteSet.Keys {
-		split := strings.Split(keyVersion, cmn.KeyDelimeter)
-		key, version := split[0], split[1]
-		idx.mutex.RLock()
-		keyLock := idx.locks[key]
+/**
+Fetch index from storage if it exists
+PRE: KeyLock should be LOCKED
+POST: Returns TRUE if index found in storage and updates index
+*/
+func (idx *VersionIndex) readFromStorage(key string, storageManager storage.StorageManager) (*kpb.KeyVersionList, bool) {
+	data, err := storageManager.Get(fmt.Sprintf(idx.indexFormat, key))
+	if err != nil {
+		if strings.Contains(err.Error(), "KEY_DNE") {
+			return nil, false
+		} else {
+			log.Errorf("Error reading index %s from storage: %s", key, err.Error())
+			os.Exit(1)
+		}
+	}
+	keyVersionList := &kpb.KeyVersionList{}
+	proto.Unmarshal(data, keyVersionList)
+	idx.mutex.Lock()
+	idx.index[key] = keyVersionList
+	idx.mutex.Unlock()
+	return keyVersionList, true
+}
+
+/**
+Write index to storage
+PRE: KeyLock should be LOCKED
+POST: Index should be written to storage
+*/
+func (idx *VersionIndex) writeToStorage(key string, storageManager storage.StorageManager) {
+	idx.mutex.RLock()
+	versionList := idx.index[key]
+	idx.mutex.RUnlock()
+
+	data, _ := proto.Marshal(versionList)
+	err := storageManager.Put(fmt.Sprintf(idx.indexFormat, key), data)
+	if err != nil {
+		log.Errorf("Error writing index % to storage: %s", key, err.Error())
+		os.Exit(1)
+	}
+}
+
+/**
+Creates key lock and key version list if entries do not exist for KEY.
+Pre: No locks required
+Post: Returns key lock and key version list
+*/
+func (idx *VersionIndex) create(key string, storageManager storage.StorageManager) (*sync.RWMutex, *kpb.KeyVersionList) {
+	idx.mutex.Lock()
+
+	var keyLock *sync.RWMutex
+	var versionList *kpb.KeyVersionList
+	if kLock, ok := idx.locks[key]; !ok {
+		keyLock = &sync.RWMutex{}
+		versionList = &kpb.KeyVersionList{}
 		keyLock.Lock()
-		versionList := idx.index[key]
-		idx.mutex.RUnlock()
-		deleteVersion(versionList, version)
+		idx.locks[key] = keyLock
+		idx.index[key] = versionList
+		idx.mutex.Unlock()
+
+		// Check storage if index exists
+		if storageVersionList, ok := idx.readFromStorage(key, storageManager); ok {
+			versionList = storageVersionList
+		}
 		keyLock.Unlock()
+	} else {
+		keyLock = kLock
+		keyLock.RLock()
+		versionList = idx.index[key]
+		keyLock.RUnlock()
+		idx.mutex.Unlock()
 	}
+	return keyLock, versionList
 }
 
-func (idx *VersionIndex) commitVersions(txnWriteSet *tpb.TransactionWriteSet, storageManager storage.StorageManager,
-	monitor *cmn.StatsMonitor) {
+func (idx *VersionIndex) updateIndex(keyVersions []string, toInsert bool,
+	storageManager storage.StorageManager, monitor *cmn.StatsMonitor) {
 	var wg sync.WaitGroup
-	wg.Add(len(txnWriteSet.Keys))
+	wg.Add(len(keyVersions))
 
-	for _, keyVersion := range txnWriteSet.Keys {
+	for _, keyVersion := range keyVersions {
 		go func() {
 			defer wg.Done()
 			split := strings.Split(keyVersion, cmn.KeyDelimeter)
@@ -93,32 +188,25 @@ func (idx *VersionIndex) commitVersions(txnWriteSet *tpb.TransactionWriteSet, st
 
 			if !ok {
 				idx.mutex.RUnlock()
-				idx.mutex.Lock()
-				if keyLock, ok = idx.locks[key]; !ok {
-					keyLock = &sync.RWMutex{}
-					keyLock.Lock()
-					idx.locks[key] = keyLock
-					versionList = &kpb.KeyVersionList{}
-					idx.index[key] = versionList
-				} else {
-					keyLock.Lock()
-					versionList = idx.index[key]
-				}
-				idx.mutex.Unlock()
-			} else {
-				keyLock.Lock()
-				versionList = idx.index[key]
-				idx.mutex.RUnlock()
+				keyLock, _ = idx.create(key, storageManager)
+				idx.mutex.RLock()
 			}
+			keyLock.Lock()
+			versionList = idx.index[key]
+			idx.mutex.RUnlock()
 
-			insertVersion(versionList, version)
-			data, _ := proto.Marshal(versionList)
-			keyLock.Unlock()
+			if toInsert {
+				insertVersion(versionList, version)
+			} else {
+				deleteVersion(versionList, version)
+			}
 
 			// Write index to storage
 			start := time.Now()
-			storageManager.Put(fmt.Sprintf(cmn.StorageIndexTemplate, key), data)
+			idx.writeToStorage(key, storageManager)
 			end := time.Now()
+
+			keyLock.Unlock()
 			go monitor.TrackStat(tid, "Storage write index time", end.Sub(start))
 		}()
 	}
