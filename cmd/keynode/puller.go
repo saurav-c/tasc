@@ -6,7 +6,6 @@ import (
 	zmq "github.com/pebbe/zmq4"
 	cmn "github.com/saurav-c/tasc/lib/common"
 	kpb "github.com/saurav-c/tasc/proto/keynode"
-	log "github.com/sirupsen/logrus"
 	"time"
 )
 
@@ -55,7 +54,7 @@ func readHandler(keyNode *KeyNode, req *kpb.KeyNodeRequest) {
 		req.ReadSet, req.BeginTs, req.LowerBound)
 	end := time.Now()
 
-	go keyNode.Monitor.TrackStat(req.GetTid(), "Read Key Time", end.Sub(start))
+	go keyNode.Monitor.TrackStat(req.GetTid(), "[READ] Key Node Read", end.Sub(start))
 
 	var resp *kpb.KeyNodeResponse
 	if err != nil {
@@ -83,7 +82,7 @@ func readHandler(keyNode *KeyNode, req *kpb.KeyNodeRequest) {
 	keyNode.PusherCache.Unlock(addr)
 	end = time.Now()
 
-	go keyNode.Monitor.TrackStat(req.Tid, "Read response pusher time", end.Sub(start))
+	go keyNode.Monitor.TrackStat(req.Tid, "[READ] Key Node Read Pusher", end.Sub(start))
 }
 
 func validateHandler(keyNode *KeyNode, req *kpb.ValidateRequest) {
@@ -91,7 +90,7 @@ func validateHandler(keyNode *KeyNode, req *kpb.ValidateRequest) {
 	action := keyNode.validate(req.Tid, req.BeginTS, req.CommitTS, req.Keys)
 	end := time.Now()
 
-	go keyNode.Monitor.TrackStat(req.Tid, "Validation Time", end.Sub(start))
+	go keyNode.Monitor.TrackStat(req.Tid, "[COMMIT] Key Node Validation", end.Sub(start))
 
 	resp := &kpb.ValidateResponse{
 		Tid:       req.Tid,
@@ -109,19 +108,15 @@ func validateHandler(keyNode *KeyNode, req *kpb.ValidateRequest) {
 	keyNode.PusherCache.Unlock(addr)
 	end = time.Now()
 
-	go keyNode.Monitor.TrackStat(req.Tid, "Validation response pusher time", end.Sub(start))
+	go keyNode.Monitor.TrackStat(req.Tid, "[COMMIT] Key Node Validation Pusher", end.Sub(start))
 }
 
 func endTxnHandler(keyNode *KeyNode, req *kpb.EndRequest) {
-	log.Debugf("Received end txn for %s", req.Tid)
-
 	start := time.Now()
 	err := keyNode.endTransaction(req.Tid, req.Action, req.WriteSet)
 	end := time.Now()
 
-	log.Debugf("Finished ending txn %s", req.Tid)
-
-	go keyNode.Monitor.TrackStat(req.GetTid(), "End Transaction Time", end.Sub(start))
+	go keyNode.Monitor.TrackStat(req.GetTid(), "[END] Key Node End", end.Sub(start))
 
 	ok := true
 	if err != nil {
@@ -144,7 +139,5 @@ func endTxnHandler(keyNode *KeyNode, req *kpb.EndRequest) {
 	keyNode.PusherCache.Unlock(addr)
 	end = time.Now()
 
-	log.Debugf("Sent ACK to %s", addr)
-
-	go keyNode.Monitor.TrackStat(req.Tid, "End txn response pusher time", end.Sub(start))
+	go keyNode.Monitor.TrackStat(req.Tid, "[END] Key Node End Pusher", end.Sub(start))
 }

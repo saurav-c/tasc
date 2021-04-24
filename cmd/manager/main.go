@@ -121,7 +121,7 @@ func (t *TxnManager) Read(ctx context.Context, requests *tpb.TascRequest) (*tpb.
 		start := time.Now()
 		routingResp := <-txnEntry.rtrChan
 		end := time.Now()
-		go t.Monitor.TrackStat(tid, "[ROUTING] Read Lookup Response", end.Sub(start))
+		go t.Monitor.TrackStat(tid, "[READ] Read Lookup Response", end.Sub(start))
 
 		keyNodeIPs, ok := routingResp.Addresses[key]
 		if !ok {
@@ -138,12 +138,12 @@ func (t *TxnManager) Read(ctx context.Context, requests *tpb.TascRequest) (*tpb.
 		pusher.SendBytes(data, zmq.DONTWAIT)
 		t.PusherCache.Unlock(addr)
 		end = time.Now()
-		go t.Monitor.TrackStat(tid, "[PUSHER] Read Pusher", end.Sub(start))
+		go t.Monitor.TrackStat(tid, "[READ] Read Pusher", end.Sub(start))
 
 		start = time.Now()
 		readResponse := <-txnEntry.readChan
 		end = time.Now()
-		go t.Monitor.TrackStat(tid, "[KEYNODE] Read Response", end.Sub(start))
+		go t.Monitor.TrackStat(tid, "[READ] Read Response", end.Sub(start))
 
 		if !readResponse.Ok {
 			log.WithFields(log.Fields{
@@ -227,7 +227,7 @@ func (t *TxnManager) CommitTransaction(ctx context.Context, tag *tpb.Transaction
 	t.routerLookup(tid, writeSet)
 	routerResp := <-txnEntry.rtrChan
 	end := time.Now()
-	go t.Monitor.TrackStat(tid, "[ROUTING] Commit Router Lookup", end.Sub(start))
+	go t.Monitor.TrackStat(tid, "[COMMIT] Commit Router Lookup", end.Sub(start))
 
 	keyAddressMap := make(map[string][]string)
 	phase1WaitMap := make(map[string]string)
