@@ -88,8 +88,8 @@ def restart(pod_ip, kind):
                 print('Out of retries...')
                 print(e)
                 return
-            print('Retrying in %d sec' % (retry * 5))
-            time.sleep(retry * 5)
+            print('Retrying in %d sec' % (retry * 10))
+            time.sleep(retry * 10)
 
     print('Restarted %s node at %s' % (kind, pod_ip))
 
@@ -109,8 +109,8 @@ def send_kube_config(pod):
                 print('Out of retries...')
                 print(e)
                 return
-            print('Retrying in %d sec' % (retry * 5))
-            time.sleep(retry * 5)
+            print('Retrying in %d sec' % (retry * 10))
+            time.sleep(retry * 10)
 
 def restart_all(kind):
     pod_ips = util.get_pod_ips(client, selector='role='+kind, is_running=True)
