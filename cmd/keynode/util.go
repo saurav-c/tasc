@@ -180,10 +180,13 @@ func (idx *VersionIndex) updateIndex(tid string, keyVersions []string, toInsert 
 	var wg sync.WaitGroup
 	wg.Add(len(keyVersions))
 
+	log.Debug("Inside update index")
+
 	for _, keyVersion := range keyVersions {
-		go func() {
+		go func(kv string) {
+			log.Debug("Inside update index for key %s", kv)
 			defer wg.Done()
-			split := strings.Split(keyVersion, cmn.KeyDelimeter)
+			split := strings.Split(kv, cmn.KeyDelimeter)
 			key, version := split[0], split[1]
 
 			idx.mutex.RLock()
@@ -207,12 +210,14 @@ func (idx *VersionIndex) updateIndex(tid string, keyVersions []string, toInsert 
 
 			// Write index to storage
 			start := time.Now()
+			log.Debugf("Writing index %s to storage", key)
 			idx.writeToStorage(key, storageManager)
 			end := time.Now()
+			log.Debugf("Done writing index %s to storage", key)
 
 			keyLock.Unlock()
 			go monitor.TrackStat(tid, monitorMsg, end.Sub(start))
-		}()
+		}(keyVersion)
 	}
 	wg.Wait()
 }
