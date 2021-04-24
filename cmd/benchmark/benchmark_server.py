@@ -1,42 +1,51 @@
 #!/usr/bin/env python3
 import zmq
 import boto3
-import time
 import numpy as np
+import os
+import yaml
+import json
 
 client = boto3.client('lambda')
 
+
 def main():
-    context = zmq.Context(1)
+    context = zmq.Context()
     benchmark_socket = context.socket(zmq.REP)
     benchmark_socket.bind('tcp://*:6500')
 
-    context = zmq.Context(1)
-    lambda_socket = context.socket(zmq.REP)
+    lambda_socket = context.socket(zmq.PULL)
     lambda_socket.bind('tcp://*:6600')
 
+    # Get this server's IP
+    server_ip = None
+    filename = os.environ['TASC_HOME'] + '/config/tasc-config.yml'
+    with open(filename, 'r') as f:
+        d = yaml.safe_load(f.read())
+        server_ip = d['publicIP']
+
     while True:
-        command = benchmark_socket.recv_string()
-        splits = command.split(':')
-        elb_address = splits[0]
-        lambda_name = splits[1]
-        num_txn = int(splits[2])
-        num_reads = int(splits[3])
-        num_writes = int(splits[4])
-        ip_addr = splits[5]
+        data = benchmark_socket.recv_string()
+        config = json.loads(data)
 
-        lambda_payload = """{
-            "num_reads": {},
-            "num_writes": {},
-            "num_txns": {},
-            "elb": {},
-            "benchmark_ip": {}
-        }""" % num_reads, num_writes, num_txn, elb_address, ip_addr
+        lambda_name = config['lambda']
+        num_clients = config['num_clients']
+        elb_address = config['elb']
+        num_txns = config['num_txns']
+        num_reads = config['num_reads']
+        num_writes = config['num_writes']
 
-        lambda_payload = bytes(lambda_payload)
-        error_lambda = 0
+        payload = {
+            'num_txns': num_txns,
+            'num_reads': num_reads,
+            'num_writes': num_writes,
+            'elb': elb_address,
+            'benchmark_ip': server_ip
+        }
+        lambda_payload = json.dumps(payload)
 
-        for _ in range (num_txn):
+        num_invokes, error_lambda = 0, 0
+        for _ in range(num_clients):
             response = client.invoke(
                 FunctionName=lambda_name,
                 InvocationType='Event',
@@ -44,101 +53,105 @@ def main():
             )
             if response["StatusCode"] > 299:
                 error_lambda += 1
-        
-        num_invokes = num_invokes - error_lambda
+            else:
+                num_invokes += 1
 
         throughputs = []
         latencies = []
+        lb_txn = []
         start_txn = []
         write_txn = []
         read_txn = []
         commit_txn = []
-        ip_resolt = []
 
         for _ in range(num_invokes):
             benchmark_data = lambda_socket.recv_string()
             benchmark_data = benchmark_data.split(";")
+
             throughput = float(benchmark_data[0])
             latency = [float(x) for x in benchmark_data[1].split(",")]
-            ip_resolt_time = [float(x) for x in benchmark_data[2].split(",")]
+            lb_txn_time = [float(x) for x in benchmark_data[2].split(",")]
             start_txn_time = [float(x) for x in benchmark_data[3].split(",")]
             write_txn_time = [float(x) for x in benchmark_data[4].split(",")]
             read_txn_time = [float(x) for x in benchmark_data[5].split(",")]
             commit_txn_time = [float(x) for x in benchmark_data[6].split(",")]
+
             throughputs.append(throughput)
-            latencies.append(*latency)
-            ip_resolt.append(*ip_resolt_time)
-            start_txn.append(*start_txn_time)
-            write_txn.append(*write_txn_time)
-            read_txn.append(*read_txn_time)
-            commit_txn.append(*commit_txn_time)
+            latencies.extend(latency)
+            lb_txn.extend(lb_txn_time)
+            start_txn.extend(start_txn_time)
+            write_txn.extend(write_txn_time)
+            read_txn.extend(read_txn_time)
+            commit_txn.extend(commit_txn_time)
 
         throughput = sum(throughputs)
 
         latencies = np.array(latencies)
         median_latency = np.percentile(latencies, 50)
         fifth_latency = np.percentile(latencies, 5)
-        ninefifth_latency = np.percentile(latencies, 95)
+        ninety_fifth_latency = np.percentile(latencies, 95)
         one_latency = np.percentile(latencies, 1)
-        nineone_latency = np.percentile(latencies, 99)
-        
+        ninety_ninth_latency = np.percentile(latencies, 99)
+
         start_txn = np.array(start_txn)
         median_start = np.percentile(start_txn, 50)
         fifth_start = np.percentile(start_txn, 5)
-        ninefifth_start = np.percentile(start_txn, 95)
+        ninety_fifth_start = np.percentile(start_txn, 95)
         one_start = np.percentile(start_txn, 1)
-        nineone_start = np.percentile(start_txn, 99)
+        ninety_ninth_start = np.percentile(start_txn, 99)
 
         write_txn = np.array(write_txn)
         median_write = np.percentile(write_txn, 50)
         fifth_write = np.percentile(write_txn, 5)
-        ninefifth_write = np.percentile(write_txn, 95)
+        ninety_fifth_write = np.percentile(write_txn, 95)
         one_write = np.percentile(write_txn, 1)
-        nineone_write = np.percentile(write_txn, 99)
+        ninety_ninth_write = np.percentile(write_txn, 99)
 
         read_txn = np.array(read_txn)
         median_read = np.percentile(read_txn, 50)
         fifth_read = np.percentile(read_txn, 5)
-        ninefifth_read = np.percentile(read_txn, 95)
+        ninety_fifth_read = np.percentile(read_txn, 95)
         one_read = np.percentile(read_txn, 1)
-        nineone_read = np.percentile(read_txn, 99)
+        ninety_ninth_read = np.percentile(read_txn, 99)
 
         commit_txn = np.array(commit_txn)
         median_commit = np.percentile(commit_txn, 50)
         fifth_commit = np.percentile(commit_txn, 5)
-        ninefifth_commit = np.percentile(commit_txn, 95)
+        ninety_fifth_commit = np.percentile(commit_txn, 95)
         one_commit = np.percentile(commit_txn, 1)
-        nineone_commit = np.percentile(commit_txn, 99)
+        ninety_ninth_commit = np.percentile(commit_txn, 99)
 
-        ip_resolt = np.array(ip_resolt)
-        median_ip_resolt = np.percentile(ip_resolt, 50)
-        fifth_ip_resolt = np.percentile(ip_resolt, 5)
-        ninefifth_ip_resolt = np.percentile(ip_resolt, 95)
-        one_ip_resolt = np.percentile(ip_resolt, 1)
-        nineone_ip_resolt = np.percentile(ip_resolt, 99)
+        lb_txn = np.array(lb_txn)
+        median_lb = np.percentile(lb_txn, 50)
+        fifth_lb = np.percentile(lb_txn, 5)
+        ninety_fifth_lb = np.percentile(lb_txn, 95)
+        one_lb = np.percentile(lb_txn, 1)
+        ninety_ninth_lb = np.percentile(lb_txn, 99)
 
-        output = "A total of {} lambda functions ran.\n" % {num_invokes}
+        output = "A total of {} lambda functions ran.\n".format(num_invokes)
         output += "The throughput of the system is: " + str(throughput) + "\n" + \
-                        "The latency histogram is: " + \
-                             "Median latency: {}\n5th percentile/95th percentile: {}, {}\n1st percentile/99th percentile: {}, {}\n" % \
-                                median_latency, fifth_latency, ninefifth_latency, one_latency, nineone_latency
-        output += "The IP resolution start txn histogram is: " + \
-                        "Median latency: {}\n5th percentile/95th percentile: {}, {}\n1st percentile/99th percentile: {}, {}\n" % \
-                            median_ip_resolt, fifth_ip_resolt, ninefifth_ip_resolt, one_ip_resolt, nineone_ip_resolt
+                  "The latency histogram is: " + \
+                  "Median latency: {}\n5th percentile/95th percentile: {}, {}\n1st percentile/99th percentile: {}, {}\n" \
+                  .format(median_latency, fifth_latency, ninety_fifth_latency, one_latency, ninety_ninth_latency)
+        output += "The load balancing txn histogram is: " + \
+                  "Median latency: {}\n5th percentile/95th percentile: {}, {}\n1st percentile/99th percentile: {}, {}\n" \
+                  .format(median_lb, fifth_lb, ninety_fifth_lb, one_lb, ninety_ninth_lb)
         output += "The start txn histogram is: " + \
-                        "Median latency: {}\n5th percentile/95th percentile: {}, {}\n1st percentile/99th percentile: {}, {}\n" % \
-                            median_start, fifth_start, ninefifth_start, one_start, nineone_start
+                  "Median latency: {}\n5th percentile/95th percentile: {}, {}\n1st percentile/99th percentile: {}, {}\n" \
+                  .format(median_start, fifth_start, ninety_fifth_start, one_start, ninety_ninth_start)
         output += "The write txn histogram is: " + \
-                        "Median latency: {}\n5th percentile/95th percentile: {}, {}\n1st percentile/99th percentile: {}, {}\n" % \
-                            median_write, fifth_write, ninefifth_write, one_write, nineone_write
+                  "Median latency: {}\n5th percentile/95th percentile: {}, {}\n1st percentile/99th percentile: {}, {}\n" \
+                  .format(median_write, fifth_write, ninety_fifth_write, one_write, ninety_ninth_write)
         output += "The read txn histogram is: " + \
-                        "Median latency: {}\n5th percentile/95th percentile: {}, {}\n1st percentile/99th percentile: {}, {}\n" % \
-                            median_read, fifth_read, ninefifth_read, one_read, nineone_read
+                  "Median latency: {}\n5th percentile/95th percentile: {}, {}\n1st percentile/99th percentile: {}, {}\n" \
+                  .format(median_read, fifth_read, ninety_fifth_read, one_read, ninety_ninth_read)
         output += "The commit txn histogram is: " + \
-                        "Median latency: {}\n5th percentile/95th percentile: {}, {}\n1st percentile/99th percentile: {}, {}\n" % \
-                            median_commit, fifth_commit, ninefifth_commit, one_commit, nineone_commit
+                  "Median latency: {}\n5th percentile/95th percentile: {}, {}\n1st percentile/99th percentile: {}, {}\n" \
+                  .format(median_commit, fifth_commit, ninety_fifth_commit, one_commit, ninety_ninth_commit)
 
+        # Send stats back to trigger
         benchmark_socket.send_string(output)
+
 
 if __name__ == '__main__':
     main()

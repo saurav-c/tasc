@@ -3,9 +3,13 @@
 import argparse
 import datetime
 import zmq
+import json
 
 def main():
     parser = argparse.ArgumentParser(description='Makes a call to the TASC benchmark server.')
+    parser.add_argument('-c', '--clients', nargs=1, type=int, metavar='Y',
+                        help='The number of clients to invoke.',
+                        dest='clients', required=True)
     parser.add_argument('-l', '--lambda', nargs=1, type=str, metavar='Y',
                         help='The name of AWS Lambda Function to be run.', 
                         dest='awslambda', required=True)
@@ -38,7 +42,17 @@ def main():
         conn = context.socket(zmq.REQ)
         address = ('tcp://%s:6500') % server
         conn.connect(address)
-        message = ('%s:%s:%d:%d:%d:%d:%s') % (args.address[0], args.awslambda[0], args.txn[0], args.reads[0], args.writes[0], server)
+
+        payload = {
+            'lambda': args.awslambda[0],
+            'num_clients': args.clients[0],
+            'num_txns': args.txn[0],
+            'num_reads': args.reads[0],
+            'num_writes': args.writes[0],
+            'elb': args.address[0]
+        }
+        message = json.dumps(payload)
+
         conn.send_string(message)
         conns.append(conn)
 
