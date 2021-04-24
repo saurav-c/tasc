@@ -108,6 +108,7 @@ func (w *TxnWorker) endTransaction(tid string, nodeAddr string, keys []string, a
 		WriteSet:  keys,
 		IpAddress: w.IpAddress,
 	}
+	log.Debugf("Sending writeset %v to keynode", keys)
 	data, _ := proto.Marshal(endReq)
 	w.PusherCache.Lock(w.ZMQInfo.context, addr)
 	endPusher := w.PusherCache.GetSocket(addr)

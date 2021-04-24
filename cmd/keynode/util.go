@@ -105,6 +105,7 @@ func (idx *VersionIndex) readFromStorage(key string, storageManager storage.Stor
 	data, err := storageManager.Get(fmt.Sprintf(idx.indexFormat, key))
 	if err != nil {
 		if strings.Contains(err.Error(), "KEY_DNE") {
+			log.Debugf("Index for %s not found", key)
 			return nil, false
 		} else {
 			log.Errorf("Error reading index %s from storage: %s", key, err.Error())
@@ -143,11 +144,12 @@ Pre: No locks required
 Post: Returns key lock and key version list
 */
 func (idx *VersionIndex) create(key string, storageManager storage.StorageManager) (*sync.RWMutex, *kpb.KeyVersionList) {
+	log.Debugf("Trying to create entry for key %s", key)
 	idx.mutex.Lock()
 
 	var keyLock *sync.RWMutex
 	var versionList *kpb.KeyVersionList
-	if keyLock, ok := idx.locks[key]; !ok {
+	if kLock, ok := idx.locks[key]; !ok {
 		keyLock = &sync.RWMutex{}
 		versionList = &kpb.KeyVersionList{}
 		keyLock.Lock()
@@ -156,11 +158,13 @@ func (idx *VersionIndex) create(key string, storageManager storage.StorageManage
 		idx.mutex.Unlock()
 
 		// Check storage if index exists
+		log.Debugf("Checking if index is in storage %s", key)
 		if storageVersionList, ok := idx.readFromStorage(key, storageManager); ok {
 			versionList = storageVersionList
 		}
 		keyLock.Unlock()
 	} else {
+		keyLock = kLock
 		keyLock.RLock()
 		versionList = idx.index[key]
 		keyLock.RUnlock()
@@ -210,6 +214,15 @@ func (idx *VersionIndex) updateIndex(keyVersions []string, toInsert bool,
 		}()
 	}
 	wg.Wait()
+	idx.logIndex()
+}
+
+func (idx *VersionIndex) logIndex() {
+	idx.mutex.RLock()
+	for key, list := range idx.index {
+		log.Debugf("Key %s and list %v", key, list.Versions)
+	}
+	idx.mutex.RUnlock()
 }
 
 func searchVersion(entry *kpb.KeyVersionList, version string) int {

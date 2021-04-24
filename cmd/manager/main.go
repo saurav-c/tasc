@@ -90,7 +90,7 @@ func (t *TxnManager) Read(ctx context.Context, requests *tpb.TascRequest) (*tpb.
 			continue
 		}
 
-		go t.routerLookup(tid, []string{key})
+		//go t.routerLookup(tid, []string{key})
 
 		// Determine key version lower bound
 		lowerBound := txnEntry.coWrittenSet[key]
@@ -109,14 +109,14 @@ func (t *TxnManager) Read(ctx context.Context, requests *tpb.TascRequest) (*tpb.
 		}
 		data, _ := proto.Marshal(readRequest)
 
-		routingResp := <-txnEntry.rtrChan
-		keyNodeIPs, ok := routingResp.Addresses[key]
-		if !ok {
-			log.Errorf("Unable to perform routing lookup for key %s", key)
-			continue
-		}
-		keyNodeIp := keyNodeIPs[0]
-		keyNodeIp = keyNodeIp[:len(keyNodeIp)-1]
+		//routingResp := <-txnEntry.rtrChan
+		//keyNodeIPs, ok := routingResp.Addresses[key]
+		//if !ok {
+		//	log.Errorf("Unable to perform routing lookup for key %s", key)
+		//	continue
+		//}
+		keyNodeIp := "tcp://127.0.0.1"
+		//keyNodeIp = keyNodeIp[:len(keyNodeIp)-1]
 		addr := fmt.Sprintf("%s:%d", keyNodeIp, cmn.KeyReadPullPort)
 
 		start := time.Now()
@@ -129,7 +129,12 @@ func (t *TxnManager) Read(ctx context.Context, requests *tpb.TascRequest) (*tpb.
 		end := time.Now()
 		go t.Monitor.TrackStat(tid, "Read Pusher Wait Time", end.Sub(start))
 
+		start = time.Now()
 		readResponse := <-txnEntry.readChan
+		log.Infof("RECEIVED READ RESPONSE AT %d", time.Now().UnixNano() / 1000000)
+
+		end = time.Now()
+		go t.Monitor.TrackStat(tid, "Waiting for read internal", end.Sub(start))
 
 		if !readResponse.Ok {
 			log.Errorf("Unable to read key %s", key)
@@ -145,6 +150,8 @@ func (t *TxnManager) Read(ctx context.Context, requests *tpb.TascRequest) (*tpb.
 			}
 		}
 		txnEntry.readSet[key] = readResponse.KeyVersion
+
+		readResponse.Value, _ = t.StorageManager.Get(readResponse.KeyVersion)
 
 		resp.Pairs = append(resp.Pairs, &tpb.TascRequest_KeyPair{Key: key, Value: readResponse.Value})
 	}
@@ -205,6 +212,8 @@ func (t *TxnManager) CommitTransaction(ctx context.Context, tag *tpb.Transaction
 		writeSet = append(writeSet, k)
 		writeVersionSet = append(writeVersionSet, fmt.Sprintf(cmn.StorageKeyTemplate, k, cmn.Int64ToString(txnEntry.endTs), tid))
 	}
+
+	log.Debugf("The write version set is %v", writeVersionSet)
 
 	start := time.Now()
 	//t.routerLookup(tid, writeSet)
@@ -348,6 +357,7 @@ func (t *TxnManager) collectValidateResponses(tid string, valRespChan chan *kpb.
 }
 
 func (t *TxnManager) endTransaction(tid string, status tpb.TascTransactionStatus, writeSet []string) {
+	log.Debugf("Sending writeset %v", writeSet)
 	t.WorkerConn.SendWork(tid, status, writeSet)
 }
 

@@ -15,6 +15,8 @@ func (k *KeyNode) readKey(tid string, key string, readSet []string, beginTs int6
 	lowerBound string) (string, []byte, []string, error) {
 	var keyVersions *kpb.KeyVersionList
 
+	k.CommittedVersionIndex.logIndex()
+
 	k.CommittedVersionIndex.mutex.RLock()
 	keyLock, ok := k.CommittedVersionIndex.locks[key]
 	if ok {
@@ -83,12 +85,6 @@ func (k *KeyNode) readKey(tid string, key string, readSet []string, beginTs int6
 		// Sleep and retry
 		log.Debugf("Sleeping and retrying to find versions for %s", key)
 		time.Sleep(5 * time.Millisecond)
-
-		k.CommittedVersionIndex.mutex.RLock()
-		keyLock.RLock()
-		keyVersions = k.CommittedVersionIndex.index[key]
-		keyLock.RUnlock()
-		k.CommittedVersionIndex.mutex.RUnlock()
 	}
 	return "", nil, nil, errors.New("no valid version found")
 }
@@ -142,12 +138,16 @@ func (k *KeyNode) validate(tid string, beginTs int64, commitTs int64, keys []str
 	pendingTxnSet := &tpb.TransactionWriteSet{
 		Keys: keyVersions,
 	}
+	start := time.Now()
 	k.PendingTxnSet.put(tid, pendingTxnSet)
 	k.PendingVersionIndex.updateIndex(keyVersions, true, k.StorageManager, k.Monitor)
+	end := time.Now()
+	go k.Monitor.TrackStat("", "Pending data update", end.Sub(start))
 	return kpb.TransactionAction_COMMIT
 }
 
 func (k *KeyNode) checkPendingConflicts(beginTs int64, commitTs int64, keys []string, reportChan chan bool) {
+	defer k.Monitor.TrackFuncExecTime("", "Check Pending Time", time.Now())
 	for _, key := range keys {
 		k.PendingVersionIndex.mutex.RLock()
 		pLock, ok := k.PendingVersionIndex.locks[key]
@@ -178,6 +178,7 @@ func (k *KeyNode) checkPendingConflicts(beginTs int64, commitTs int64, keys []st
 }
 
 func (k *KeyNode) checkCommittedConflicts(beginTs int64, commitTs int64, keys []string, reportChan chan bool) {
+	defer k.Monitor.TrackFuncExecTime("", "Check Committed Time", time.Now())
 	for _, key := range keys {
 		k.CommittedVersionIndex.mutex.RLock()
 		cLock, ok := k.CommittedVersionIndex.locks[key]

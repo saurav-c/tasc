@@ -83,10 +83,13 @@ func readHandler(keyNode *KeyNode, req *kpb.KeyNodeRequest) {
 	keyNode.PusherCache.Unlock(addr)
 	end = time.Now()
 
+	log.Infof("SENT READ RESPONSE AT %d", time.Now().UnixNano() / 1000000)
+
 	go keyNode.Monitor.TrackStat(req.Tid, "Read response pusher time", end.Sub(start))
 }
 
 func validateHandler(keyNode *KeyNode, req *kpb.ValidateRequest) {
+	log.Infof("RECEIVED VALIDATE REQUEST AT %d", time.Now().UnixNano() / 1000000)
 	start := time.Now()
 	action := keyNode.validate(req.Tid, req.BeginTS, req.CommitTS, req.Keys)
 	end := time.Now()
@@ -108,6 +111,9 @@ func validateHandler(keyNode *KeyNode, req *kpb.ValidateRequest) {
 	pusher.SendBytes(data, zmq.DONTWAIT)
 	keyNode.PusherCache.Unlock(addr)
 	end = time.Now()
+
+	log.Infof("SENT VALIDATE RESPONSE AT %d", time.Now().UnixNano() / 1000000)
+
 
 	go keyNode.Monitor.TrackStat(req.Tid, "Validation response pusher time", end.Sub(start))
 }

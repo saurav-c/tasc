@@ -51,6 +51,7 @@ func (t *TxnManager) listener() {
 
 // Key Node Response Handler
 func (t *TxnManager) readHandler(data []byte) {
+	log.Infof("HANDLER GOT RESPONSE AT %d", time.Now().UnixNano() / 1000000)
 	resp := &kpb.KeyNodeResponse{}
 	err := proto.Unmarshal(data, resp)
 	if err != nil {
@@ -65,6 +66,8 @@ func (t *TxnManager) readHandler(data []byte) {
 }
 
 func (t *TxnManager) validateHandler(data []byte) {
+	log.Infof("RECEIVED VALIDATE RESPONSE AT %d", time.Now().UnixNano() / 1000000)
+
 	resp := &kpb.ValidateResponse{}
 	err := proto.Unmarshal(data, resp)
 	if err != nil {

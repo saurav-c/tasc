@@ -37,8 +37,8 @@ const (
 
 	// Delimeters for Key encoding
 	KeyDelimeter         = ":"
-	VersionDelimeter     = "-"
-	StorageKeyTemplate   = "%s" + KeyDelimeter + "%s" + VersionDelimeter + "%s" // Key:CommitTs-Tid
+	VersionDelimeter     = "#"
+	StorageKeyTemplate   = "%s" + KeyDelimeter + "%s" + VersionDelimeter + "%s" // Key:CommitTs#Tid
 	StorageIndexTemplate = "%s:index"
 
 	// Log File Templates
