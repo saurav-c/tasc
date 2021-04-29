@@ -53,7 +53,7 @@ func (keyNode *KeyNode) listener() {
 
 func readHandler(keyNode *KeyNode, req *kpb.KeyNodeRequest) {
 	start := time.Now()
-	keyVersion, val, coWrites, err := keyNode.readKey(req.Tid, req.Key,
+	keyVersion, _, coWrites, err := keyNode.readKey(req.Tid, req.Key,
 		req.ReadSet, req.BeginTs, req.LowerBound)
 	end := time.Now()
 
@@ -69,7 +69,6 @@ func readHandler(keyNode *KeyNode, req *kpb.KeyNodeRequest) {
 		resp = &kpb.KeyNodeResponse{
 			Tid:          req.Tid,
 			KeyVersion:   keyVersion,
-			Value:        val,
 			CoWrittenSet: coWrites,
 			Ok:           true,
 		}

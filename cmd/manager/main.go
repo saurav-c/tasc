@@ -163,7 +163,11 @@ func (t *TxnManager) Read(ctx context.Context, requests *tpb.TascRequest) (*tpb.
 			}
 		}
 		txnEntry.readSet[key] = readResponse.KeyVersion
-		resp.Pairs = append(resp.Pairs, &tpb.TascRequest_KeyPair{Key: key, Value: readResponse.Value})
+		start = time.Now()
+		val, _ := t.StorageManager.Get(readResponse.KeyVersion)
+		end = time.Now()
+		go t.Monitor.TrackStat(tid, "[READ] Storage Read", end.Sub(start))
+		resp.Pairs = append(resp.Pairs, &tpb.TascRequest_KeyPair{Key: key, Value: val})
 	}
 	return resp, nil
 }
