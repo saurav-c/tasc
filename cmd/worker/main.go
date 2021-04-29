@@ -47,6 +47,10 @@ func (w *TxnWorker) handler(data []byte) {
 		log.Println("Unable to parse transaction result")
 		return
 	}
+	tid := txn.Tag.Tid
+
+	// Mimic storage write
+	w.StorageManager.Put(tid + "active-worker", []byte("ACK"))
 
 	// Send ACK to Txn Manager
 	txnIP := txn.Tag.TxnManagerIP
@@ -62,7 +66,6 @@ func (w *TxnWorker) handler(data []byte) {
 
 	log.Debugf("Sent ACK to %s", txnAddr)
 
-	tid := txn.Tag.Tid
 	// Lookup relevant Key Nodes
 	c := make(chan *routing.RoutingResponse)
 	w.RtrChanMutex.Lock()
