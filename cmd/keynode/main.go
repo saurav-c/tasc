@@ -6,7 +6,6 @@ import (
 	kpb "github.com/saurav-c/tasc/proto/keynode"
 	tpb "github.com/saurav-c/tasc/proto/tasc"
 	log "github.com/sirupsen/logrus"
-	"os"
 	"strings"
 	"time"
 )
@@ -69,17 +68,7 @@ func (k *KeyNode) readKey(tid string, key string, readSet []string, beginTs int6
 			go k.Monitor.TrackStat(tid, "[READ] Compute Read Version", end.Sub(start))
 
 			storageKeyVersion := key + cmn.KeyDelimeter + version
-
-			start = time.Now()
-			val, err := k.StorageManager.Get(storageKeyVersion)
-			end = time.Now()
-			go k.Monitor.TrackStat(tid, "[READ] Storage Read Data", end.Sub(start))
-
-			if err != nil {
-				log.Errorf("Error reading %s from storage: %s", storageKeyVersion, err.Error())
-				os.Exit(1)
-			}
-			return storageKeyVersion, val, coWrittenSet, nil
+			return storageKeyVersion, nil, coWrittenSet, nil
 		}
 
 		if first {
