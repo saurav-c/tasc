@@ -54,6 +54,8 @@ def main():
             restart_all(kind)
         else:
             restart(node, kind)
+    elif cmd == 'get-stats':
+        fetch_stats()
     else:
         print('Unknown cmd: ' + cmd)
 
@@ -162,6 +164,30 @@ def hash_ring_change(event, private):
         deregister(client, [private])
     else:
         print('Unknown event %s' % (event))
+
+def fetch_stats():
+    mpod = client.list_namespaced_pod(namespace=util.NAMESPACE,
+                                      label_selector='role=monitor').items[0]
+    mmpname = mpod.metadata.name
+
+    tasc_ips = util.get_pod_ips(client, selector='role=tasc', is_running=True)
+    key_ips = util.get_pod_ips(client, selector='role=keynode', is_running=True)
+
+    if not os.path.exists("stats"):
+        os.makedirs("stats")
+
+    tasc_ips = ["txn-manager_" + ip for ip in tasc_ips]
+    key_ips = ["key-node_" + ip for ip in key_ips]
+
+    nodes = []
+    nodes.extend(tasc_ips)
+    nodes.extend(key_ips)
+
+    for node in nodes:
+        cmd = 'kubectl cp default/%s:/go/src/github.com/saurav-c/tasc/cmd/monitor/stats/%s stats/%s' % (mmpname, node)
+        subprocess.run(cmd, shell=True)
+
+
 
 
 
