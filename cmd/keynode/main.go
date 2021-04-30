@@ -13,13 +13,13 @@ import (
 
 func (k *KeyNode) readKey(tid string, key string, readSet []string, beginTs int64,
 	lowerBound string) (string, []byte, []string, error) {
-	var keyVersions *kpb.KeyVersionList
+	var keyVersions []string
 
 	k.CommittedVersionIndex.mutex.RLock()
 	keyLock, ok := k.CommittedVersionIndex.locks[key]
 	if ok {
 		keyLock.RLock()
-		keyVersions = k.CommittedVersionIndex.index[key]
+		keyVersions = k.CommittedVersionIndex.index[key].Versions
 		keyLock.RUnlock()
 		k.CommittedVersionIndex.mutex.RUnlock()
 	} else {
@@ -27,7 +27,8 @@ func (k *KeyNode) readKey(tid string, key string, readSet []string, beginTs int6
 		k.CommittedVersionIndex.mutex.RUnlock()
 
 		start := time.Now()
-		_, keyVersions = k.CommittedVersionIndex.create(key, k.StorageManager)
+		_, keyVersionList := k.CommittedVersionIndex.create(key, k.StorageManager)
+		keyVersions = keyVersionList.Versions
 		end := time.Now()
 		go k.Monitor.TrackStat(tid, "[READ] Create Committed Version State", end.Sub(start))
 	}
@@ -42,8 +43,8 @@ func (k *KeyNode) readKey(tid string, key string, readSet []string, beginTs int6
 	first := true
 	start := time.Now()
 	for {
-		for i := len(keyVersions.Versions) - 1; i >= 0; i-- {
-			version := keyVersions.Versions[i]
+		for i := len(keyVersions) - 1; i >= 0; i-- {
+			version := keyVersions[i]
 
 			// Check lower bound
 			if cmn.CompareKeyVersion(lowerBoundVersion, version) > 0 {
@@ -112,27 +113,44 @@ func (k *KeyNode) isCompatibleVersion(versionTid string, readSet []string) ([]st
 
 func (k *KeyNode) validate(tid string, beginTs int64, commitTs int64, keys []string) (action kpb.TransactionAction) {
 	conflictChan := make(chan bool, 2)
+	updateChan := make(chan string, len(keys))
+
+	version := cmn.Int64ToString(commitTs) + cmn.VersionDelimeter + tid
 
 	start := time.Now()
-	go k.checkConflict(beginTs, commitTs, keys, conflictChan, k.PendingVersionIndex, "PENDING")
-	go k.checkConflict(beginTs, commitTs, keys, conflictChan, k.CommittedVersionIndex, "COMMITTED")
+	go k.checkPendingConflicts(tid, version, keys, beginTs, commitTs, conflictChan, updateChan)
+	go k.checkCommittedConflicts(keys, beginTs, commitTs, conflictChan)
 
 	count := 0
 	for conflict := range conflictChan {
 		count++
 		if conflict {
 			log.Debugf("Found conflict, aborting transaction %s", tid)
+
+			// Delete Pending versions that were added
+			wg := sync.WaitGroup{}
+			wg.Add(len(updateChan))
+			for elem := range updateChan {
+				go func(key string) {
+					defer wg.Done()
+					k.PendingVersionIndex.mutex.RLock()
+					kLock := k.PendingVersionIndex.locks[key]
+					kLock.Lock()
+					pendingVersions := k.PendingVersionIndex.index[key]
+					k.PendingVersionIndex.mutex.RUnlock()
+					deleteVersion(pendingVersions, version)
+					kLock.Unlock()
+				}(elem)
+			}
+			wg.Wait()
 			return kpb.TransactionAction_ABORT
 		}
 		if count == 2 {
-			go log.Debugf("No conflicts found for transaction %s", tid)
 			break
 		}
 	}
 	end := time.Now()
 	go k.Monitor.TrackStat(tid, "[COMMIT] Validation conflict check", end.Sub(start))
-
-	version := cmn.Int64ToString(commitTs) + cmn.VersionDelimeter + tid
 
 	var keyVersions []string
 	for _, key := range keys {
@@ -143,100 +161,149 @@ func (k *KeyNode) validate(tid string, beginTs int64, commitTs int64, keys []str
 		Keys: keyVersions,
 	}
 	k.PendingTxnSet.put(tid, pendingTxnSet)
-	k.PendingVersionIndex.updateIndex(tid, keyVersions, true, k.StorageManager, k.Monitor,
-		"[COMMIT] Storage Write Pending Index")
 
-	return kpb.TransactionAction_COMMIT
-}
-
-func (k *KeyNode) checkConflict(beginTs int64, commitTs int64, keys []string, reportChan chan bool,
-	idx *VersionIndex, tp string) {
-
-	log.WithFields(log.Fields{
-		"Index Type": tp,
-	}).Debug("Started conflict check...")
-
-	var wg sync.WaitGroup
+	// Persist Pending versions to storage
+	wg := sync.WaitGroup{}
 	wg.Add(len(keys))
 
-	for _, checkKey := range keys {
+	start = time.Now()
+	for _, elem := range keys {
 		go func(key string) {
 			defer wg.Done()
 
-			log.WithFields(log.Fields{
-				"Index Type": tp,
-				"Key": key,
-			}).Debug("Checking Key")
+			k.PendingVersionIndex.mutex.RLock()
+			kLock := k.PendingVersionIndex.locks[key]
+			kLock.Lock()
+			pendingVersions := k.PendingVersionIndex.index[key]
+			k.PendingVersionIndex.mutex.RUnlock()
+			k.PendingVersionIndex.writeToStorage(key, k.StorageManager, pendingVersions)
+			kLock.Unlock()
+		}(elem)
+	}
+	end = time.Now()
+
+	go k.Monitor.TrackStat(tid, "[COMMIT] Storage Write Pending Index", end.Sub(start))
+	return kpb.TransactionAction_COMMIT
+}
+
+func (k *KeyNode) checkPendingConflicts(tid string, keyVersion string, keys[] string, beginTS int64, commitTS int64,
+	conflictChan chan bool, updatedChan chan string) {
+	defer close(updatedChan)
+	terminate := false // Used to indicate early termination for aborts
+	var wg sync.WaitGroup
+	wg.Add(len(keys))
+
+	idx := k.PendingVersionIndex
+	for _, checkKey := range keys {
+		go func(key string) {
+			defer wg.Done()
+			if terminate {
+				return
+			}
 
 			idx.mutex.RLock()
 			kLock, ok := idx.locks[key]
 
+			// Initialize index entry
 			if !ok {
-				log.WithFields(log.Fields{
-					"Index Type": tp,
-					"Key": key,
-				}).Debug("KVI does not exist")
+				idx.mutex.RUnlock()
+				kLock, _ = idx.create(key, k.StorageManager)
+				idx.mutex.RLock()
+			}
 
+			kLock.Lock()
+			defer kLock.Unlock()
+			pendingVersionList := idx.index[key]
+			pendingVersions := pendingVersionList.Versions
+			idx.mutex.RUnlock()
+
+			for i := len(pendingVersions) - 1; i >= 0; i-- {
+				if terminate {
+					return
+				}
+				version := pendingVersions[i]
+				split := strings.Split(version, cmn.VersionDelimeter)
+				versionCommitTS := cmn.Int64FromString(split[0])
+
+				if versionCommitTS <= beginTS {
+					break
+				}
+				if beginTS < versionCommitTS && versionCommitTS < commitTS {
+					conflictChan <- true
+					terminate = true
+					return
+				}
+
+				// Insert to Pending KVI
+				insertVersion(pendingVersionList, keyVersion)
+				updatedChan <- key
+			}
+
+		}(checkKey)
+	}
+
+	wg.Wait()
+	if !terminate {
+		conflictChan <- false
+	}
+}
+
+func (k *KeyNode) checkCommittedConflicts(keys[] string, beginTS int64, commitTS int64,
+	conflictChan chan bool) {
+
+	terminate := false // Used to indicate early termination for aborts
+	var wg sync.WaitGroup
+	wg.Add(len(keys))
+
+	idx := k.CommittedVersionIndex
+	for _, checkKey := range keys {
+		go func(key string) {
+			defer wg.Done()
+			if terminate {
+				return
+			}
+
+			idx.mutex.RLock()
+			kLock, ok := idx.locks[key]
+
+			// Initialize index entry
+			if !ok {
 				idx.mutex.RUnlock()
 				kLock, _ = idx.create(key, k.StorageManager)
 				idx.mutex.RLock()
 			}
 
 			kLock.RLock()
-			defer kLock.RUnlock()
-
-			pendingVersions := idx.index[key]
-
+			committedVersions := idx.index[key].Versions
+			kLock.RUnlock()
 			idx.mutex.RUnlock()
 
-			log.WithFields(log.Fields{
-				"Index Type": tp,
-				"Key": key,
-			}).Debug("Accessed KVI")
+			for i := len(committedVersions) - 1; i >= 0; i-- {
+				if terminate {
+					return
+				}
+				version := committedVersions[i]
+				split := strings.Split(version, cmn.VersionDelimeter)
+				versionCommitTS := cmn.Int64FromString(split[0])
 
-			for _, versions := range pendingVersions.Versions {
-				split := strings.Split(versions, cmn.VersionDelimeter)
-				versionCommitTsStr := split[0]
-				versionCommitTs := cmn.Int64FromString(versionCommitTsStr)
-				if beginTs < versionCommitTs && versionCommitTs < commitTs {
-					reportChan <- true
+				if versionCommitTS <= beginTS {
+					break
+				}
+				if beginTS < versionCommitTS && versionCommitTS < commitTS {
+					conflictChan <- true
+					terminate = true
 					return
 				}
 			}
+
 		}(checkKey)
 	}
-	wg.Wait()
-	reportChan <- false
-}
 
-//func (k *KeyNode) checkCommittedConflicts(beginTs int64, commitTs int64, keys []string, reportChan chan bool) {
-//	for _, key := range keys {
-//		k.CommittedVersionIndex.mutex.RLock()
-//		cLock, ok := k.CommittedVersionIndex.locks[key]
-//		if !ok {
-//			k.CommittedVersionIndex.mutex.RUnlock()
-//			cLock, _ = k.CommittedVersionIndex.create(key, k.StorageManager)
-//			k.CommittedVersionIndex.mutex.RLock()
-//		}
-//
-//		cLock.RLock()
-//		committedVersions := k.CommittedVersionIndex.index[key]
-//		k.CommittedVersionIndex.mutex.RUnlock()
-//
-//		for _, versions := range committedVersions.Versions {
-//			split := strings.Split(versions, cmn.VersionDelimeter)
-//			versionCommitTsStr := split[0]
-//			versionCommitTs := cmn.Int64FromString(versionCommitTsStr)
-//			if beginTs < versionCommitTs && versionCommitTs < commitTs {
-//				cLock.RUnlock()
-//				reportChan <- true
-//				return
-//			}
-//		}
-//		cLock.RUnlock()
-//	}
-//	reportChan <- false
-//}
+	wg.Wait()
+	if !terminate {
+		conflictChan <- false
+	}
+}
 
 func (k *KeyNode) endTransaction(tid string, action kpb.TransactionAction, writeSet []string) error {
 	pendingWrites, _ := k.PendingTxnSet.get(tid)
@@ -279,7 +346,7 @@ func main() {
 
 	log.Info("Started Key Node")
 
-	go keyNode.Monitor.SendStats(1 * time.Second)
+	go keyNode.Monitor.SendStats(5 * time.Second)
 
 	defer keyNode.shutdown()
 
