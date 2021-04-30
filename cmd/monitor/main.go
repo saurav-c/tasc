@@ -89,6 +89,8 @@ func logStatistics(data []byte) {
 		fileName += "txn-manager_" + nodeAddr
 	} else if nodeType == mt.NodeType_KEYNODE {
 		fileName += "key-node_" + nodeAddr
+	} else if nodeType == mt.NodeType_WORKER {
+		fileName += "worker_" + nodeAddr
 	} else {
 		log.Errorf("Unknown node type %s from node %s", nodeType, nodeAddr)
 		return

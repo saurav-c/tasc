@@ -8,6 +8,7 @@ import (
 	cmn "github.com/saurav-c/tasc/lib/common"
 	"github.com/saurav-c/tasc/lib/routing"
 	"github.com/saurav-c/tasc/lib/storage"
+	mpb "github.com/saurav-c/tasc/proto/monitor"
 	log "github.com/sirupsen/logrus"
 	"os"
 	"sync"
@@ -23,6 +24,7 @@ type TxnWorker struct {
 	PusherCache    *cmn.SocketCache
 	RtrChanMap     map[string]chan *routing.RoutingResponse
 	RtrChanMutex   *sync.RWMutex
+	Monitor        *cmn.StatsMonitor
 }
 
 type ZMQInfo struct {
@@ -59,6 +61,7 @@ func NewTransactionWorker() (*TxnWorker, error) {
 
 	storageManager := storage.NewAnnaStorageManager(configValue.PublicIP, configValue.AnnaELB)
 	rtrManager := routing.NewAnnaRoutingManager(configValue.IpAddress, configValue.RoutingILB)
+	monitor, _ := cmn.NewStatsMonitor(mpb.NodeType_WORKER, configValue.IpAddress, configValue.MonitorIP)
 
 	return &TxnWorker{
 		Id:             "worker-" + id.String(),
@@ -70,5 +73,6 @@ func NewTransactionWorker() (*TxnWorker, error) {
 		RtrChanMap:     make(map[string]chan *routing.RoutingResponse),
 		RtrChanMutex:   &sync.RWMutex{},
 		StorageManager: storageManager,
+		Monitor:        monitor,
 	}, nil
 }

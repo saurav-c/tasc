@@ -20,4 +20,5 @@ message Latency {
 enum NodeType {
   TXNMANAGER = 0;
   KEYNODE = 1;
+  WORKER = 2;
 }

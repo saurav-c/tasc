@@ -41,6 +41,8 @@ func (w *TxnWorker) listen() {
 }
 
 func (w *TxnWorker) handler(data []byte) {
+	start := time.Now()
+
 	txn := &tpb.TransactionResult{}
 	err := proto.Unmarshal(data, txn)
 	if err != nil {
@@ -55,16 +57,20 @@ func (w *TxnWorker) handler(data []byte) {
 
 	log.Debugf("Received transaction status from %s for txn %s", txnIP, txn.Tag.Tid)
 
+	writeStart := time.Now()
 	// Mimic storage write
 	w.StorageManager.Put(tid + "active-worker", []byte("ACK"))
-
-	log.Debugf("Finished storage write")
+	writeEnd := time.Now()
+	go w.Monitor.TrackStat(tid, "[END] Worker Storage ACK", writeStart.Sub(writeStart))
 
 	data, _ = proto.Marshal(txn.Tag)
 	w.PusherCache.Lock(w.ZMQInfo.context, txnAddr)
 	pusher := w.PusherCache.GetSocket(txnAddr)
 	pusher.SendBytes(data, zmq.DONTWAIT)
 	w.PusherCache.Unlock(txnAddr)
+
+	end := time.Now()
+	go w.Monitor.TrackStat(tid, "[END] Observed Worker", end.Sub(start))
 
 	log.Debugf("Sent ACK to %s", txnAddr)
 
@@ -152,6 +158,7 @@ func main() {
 
 	log.Infof("Started worker at " + worker.IpAddress)
 
+	go worker.Monitor.SendStats(5 * time.Second)
 	// Start listening for transaction updates
 	worker.listen()
 }
