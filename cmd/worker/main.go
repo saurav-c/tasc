@@ -61,7 +61,7 @@ func (w *TxnWorker) handler(data []byte) {
 	// Mimic storage write
 	w.StorageManager.Put(tid + "active-worker", []byte("ACK"))
 	writeEnd := time.Now()
-	go w.Monitor.TrackStat(tid, "[END] Worker Storage ACK", writeStart.Sub(writeStart))
+	go w.Monitor.TrackStat(tid, "[END] Worker Storage ACK", writeEnd.Sub(writeStart))
 
 	data, _ = proto.Marshal(txn.Tag)
 	w.PusherCache.Lock(w.ZMQInfo.context, txnAddr)
