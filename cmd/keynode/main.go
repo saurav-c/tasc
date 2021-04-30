@@ -7,6 +7,7 @@ import (
 	tpb "github.com/saurav-c/tasc/proto/tasc"
 	log "github.com/sirupsen/logrus"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -113,8 +114,8 @@ func (k *KeyNode) validate(tid string, beginTs int64, commitTs int64, keys []str
 	conflictChan := make(chan bool, 2)
 
 	start := time.Now()
-	go k.checkPendingConflicts(beginTs, commitTs, keys, conflictChan)
-	go k.checkCommittedConflicts(beginTs, commitTs, keys, conflictChan)
+	go k.checkConflict(beginTs, commitTs, keys, conflictChan, k.PendingVersionIndex, "PENDING")
+	go k.checkConflict(beginTs, commitTs, keys, conflictChan, k.CommittedVersionIndex, "COMMITTED")
 
 	count := 0
 	for conflict := range conflictChan {
@@ -148,68 +149,95 @@ func (k *KeyNode) validate(tid string, beginTs int64, commitTs int64, keys []str
 	return kpb.TransactionAction_COMMIT
 }
 
-func (k *KeyNode) checkPendingConflicts(beginTs int64, commitTs int64, keys []string, reportChan chan bool) {
-	log.Infof("Inside check pending conflicts")
-	for _, key := range keys {
-		log.Infof("Checking conflict for %s", key)
-		k.PendingVersionIndex.mutex.RLock()
-		pLock, ok := k.PendingVersionIndex.locks[key]
+func (k *KeyNode) checkConflict(beginTs int64, commitTs int64, keys []string, reportChan chan bool,
+	idx *VersionIndex, tp string) {
 
-		if !ok {
-			log.Info("Pending KVI does not exist")
-			k.PendingVersionIndex.mutex.RUnlock()
-			pLock, _ = k.PendingVersionIndex.create(key, k.StorageManager)
-			k.PendingVersionIndex.mutex.RLock()
-		}
+	log.WithFields(log.Fields{
+		"Index Type": tp,
+	}).Debug("Started conflict check...")
 
-		pLock.RLock()
-		pendingVersions := k.PendingVersionIndex.index[key]
-		k.PendingVersionIndex.mutex.RUnlock()
+	var wg sync.WaitGroup
+	wg.Add(len(keys))
 
-		log.Info("Got the pending versions")
-		for _, versions := range pendingVersions.Versions {
-			split := strings.Split(versions, cmn.VersionDelimeter)
-			versionCommitTsStr := split[0]
-			versionCommitTs := cmn.Int64FromString(versionCommitTsStr)
-			if beginTs < versionCommitTs && versionCommitTs < commitTs {
-				pLock.RUnlock()
-				reportChan <- true
-				return
+	for _, checkKey := range keys {
+		go func(key string) {
+			defer wg.Done()
+
+			log.WithFields(log.Fields{
+				"Index Type": tp,
+				"Key": key,
+			}).Debug("Checking Key")
+
+			idx.mutex.RLock()
+			kLock, ok := idx.locks[key]
+
+			if !ok {
+				log.WithFields(log.Fields{
+					"Index Type": tp,
+					"Key": key,
+				}).Debug("KVI does not exist")
+
+				idx.mutex.RUnlock()
+				kLock, _ = idx.create(key, k.StorageManager)
+				idx.mutex.RLock()
 			}
-		}
-		pLock.RUnlock()
+
+			kLock.RLock()
+			pendingVersions := idx.index[key]
+
+			idx.mutex.RUnlock()
+
+			log.WithFields(log.Fields{
+				"Index Type": tp,
+				"Key": key,
+			}).Debug("Accessed KVI")
+
+			for _, versions := range pendingVersions.Versions {
+				split := strings.Split(versions, cmn.VersionDelimeter)
+				versionCommitTsStr := split[0]
+				versionCommitTs := cmn.Int64FromString(versionCommitTsStr)
+				if beginTs < versionCommitTs && versionCommitTs < commitTs {
+					kLock.RUnlock()
+					reportChan <- true
+					return
+				}
+			}
+			kLock.RUnlock()
+
+		}(checkKey)
 	}
+	wg.Wait()
 	reportChan <- false
 }
 
-func (k *KeyNode) checkCommittedConflicts(beginTs int64, commitTs int64, keys []string, reportChan chan bool) {
-	for _, key := range keys {
-		k.CommittedVersionIndex.mutex.RLock()
-		cLock, ok := k.CommittedVersionIndex.locks[key]
-		if !ok {
-			k.CommittedVersionIndex.mutex.RUnlock()
-			cLock, _ = k.CommittedVersionIndex.create(key, k.StorageManager)
-			k.CommittedVersionIndex.mutex.RLock()
-		}
-
-		cLock.RLock()
-		committedVersions := k.CommittedVersionIndex.index[key]
-		k.CommittedVersionIndex.mutex.RUnlock()
-
-		for _, versions := range committedVersions.Versions {
-			split := strings.Split(versions, cmn.VersionDelimeter)
-			versionCommitTsStr := split[0]
-			versionCommitTs := cmn.Int64FromString(versionCommitTsStr)
-			if beginTs < versionCommitTs && versionCommitTs < commitTs {
-				cLock.RUnlock()
-				reportChan <- true
-				return
-			}
-		}
-		cLock.RUnlock()
-	}
-	reportChan <- false
-}
+//func (k *KeyNode) checkCommittedConflicts(beginTs int64, commitTs int64, keys []string, reportChan chan bool) {
+//	for _, key := range keys {
+//		k.CommittedVersionIndex.mutex.RLock()
+//		cLock, ok := k.CommittedVersionIndex.locks[key]
+//		if !ok {
+//			k.CommittedVersionIndex.mutex.RUnlock()
+//			cLock, _ = k.CommittedVersionIndex.create(key, k.StorageManager)
+//			k.CommittedVersionIndex.mutex.RLock()
+//		}
+//
+//		cLock.RLock()
+//		committedVersions := k.CommittedVersionIndex.index[key]
+//		k.CommittedVersionIndex.mutex.RUnlock()
+//
+//		for _, versions := range committedVersions.Versions {
+//			split := strings.Split(versions, cmn.VersionDelimeter)
+//			versionCommitTsStr := split[0]
+//			versionCommitTs := cmn.Int64FromString(versionCommitTsStr)
+//			if beginTs < versionCommitTs && versionCommitTs < commitTs {
+//				cLock.RUnlock()
+//				reportChan <- true
+//				return
+//			}
+//		}
+//		cLock.RUnlock()
+//	}
+//	reportChan <- false
+//}
 
 func (k *KeyNode) endTransaction(tid string, action kpb.TransactionAction, writeSet []string) error {
 	pendingWrites, _ := k.PendingTxnSet.get(tid)
@@ -227,16 +255,16 @@ func (k *KeyNode) endTransaction(tid string, action kpb.TransactionAction, write
 	start := time.Now()
 	k.CommittedVersionIndex.updateIndex(tid, pendingWrites.Keys, true, k.StorageManager, k.Monitor,
 		"[END] Storage Write Committed Index")
+	k.PendingVersionIndex.updateIndex(tid, pendingWrites.Keys, false, k.StorageManager, k.Monitor,
+		"[END] Storage Write Pending Index")
 	end := time.Now()
-	go k.Monitor.TrackStat(tid, "[END] Update Committed Index", end.Sub(start))
+	go k.Monitor.TrackStat(tid, "[END] Update Committed and Pending Indexes", end.Sub(start))
 
 	return nil
 }
 
 func (k *KeyNode) localGarbageCollect(tid string, pendingWrites *tpb.TransactionWriteSet) {
 	go k.PendingTxnSet.remove(tid)
-	go k.PendingVersionIndex.updateIndex(tid, pendingWrites.Keys, false, k.StorageManager, k.Monitor,
-		"[END] Storage Write Pending Index")
 }
 
 func (k *KeyNode) shutdown() {
