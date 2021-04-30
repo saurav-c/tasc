@@ -116,10 +116,10 @@ func (idx *VersionIndex) readFromStorage(key string, storageManager storage.Stor
 	keyVersionList := &kpb.KeyVersionList{}
 	proto.Unmarshal(data, keyVersionList)
 	idx.mutex.Lock()
-	fmt.Printf("Key %s acquired INDEX LOCK", key)
+	fmt.Printf("Key %s acquired INDEX LOCK\n", key)
 	idx.index[key] = keyVersionList
 	idx.mutex.Unlock()
-	fmt.Printf("Key %s released INDEX LOCK", key)
+	fmt.Printf("Key %s released INDEX LOCK\n", key)
 	return keyVersionList, true
 }
 
@@ -180,7 +180,7 @@ func (idx *VersionIndex) create(key string, storageManager storage.StorageManage
 		keyLock.RUnlock()
 		idx.mutex.Unlock()
 
-		fmt.Printf("Key %s released INDEX LOCK", key)
+		fmt.Printf("Key %s released INDEX LOCK\n", key)
 	}
 	return keyLock, versionList
 }
