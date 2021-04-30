@@ -116,8 +116,10 @@ func (idx *VersionIndex) readFromStorage(key string, storageManager storage.Stor
 	keyVersionList := &kpb.KeyVersionList{}
 	proto.Unmarshal(data, keyVersionList)
 	idx.mutex.Lock()
+	fmt.Printf("Key %s acquired INDEX LOCK", key)
 	idx.index[key] = keyVersionList
 	idx.mutex.Unlock()
+	fmt.Printf("Key %s released INDEX LOCK", key)
 	return keyVersionList, true
 }
 
@@ -148,6 +150,8 @@ func (idx *VersionIndex) create(key string, storageManager storage.StorageManage
 	log.Infof("Creating key version state for %s", key)
 	idx.mutex.Lock()
 
+	fmt.Printf("Key %s acquired INDEX LOCK\n", key)
+
 	var keyLock *sync.RWMutex
 	var versionList *kpb.KeyVersionList
 	if kLock, ok := idx.locks[key]; !ok {
@@ -158,11 +162,15 @@ func (idx *VersionIndex) create(key string, storageManager storage.StorageManage
 		idx.index[key] = versionList
 		idx.mutex.Unlock()
 
+		fmt.Printf("Key %s released INDEX LOCK", key)
+
 		// Check storage if index exists
 		log.Infof("Fetching from storage")
+		fmt.Printf("Key %s going to storage\n", key)
 		if storageVersionList, ok := idx.readFromStorage(key, storageManager); ok {
 			versionList = storageVersionList
 		}
+		fmt.Printf("Key %s returned from storage\n", key)
 		log.Infof("Returned fetch from storage")
 		keyLock.Unlock()
 	} else {
@@ -171,6 +179,8 @@ func (idx *VersionIndex) create(key string, storageManager storage.StorageManage
 		versionList = idx.index[key]
 		keyLock.RUnlock()
 		idx.mutex.Unlock()
+
+		fmt.Printf("Key %s released INDEX LOCK", key)
 	}
 	return keyLock, versionList
 }
