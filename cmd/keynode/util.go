@@ -162,7 +162,7 @@ func (idx *VersionIndex) create(key string, storageManager storage.StorageManage
 		idx.index[key] = versionList
 		idx.mutex.Unlock()
 
-		fmt.Printf("Key %s released INDEX LOCK", key)
+		fmt.Printf("Key %s released INDEX LOCK\n", key)
 
 		// Check storage if index exists
 		log.Infof("Fetching from storage")
