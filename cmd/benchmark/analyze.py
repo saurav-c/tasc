@@ -12,22 +12,30 @@ def main():
     save = False
     if len(args) > 2 and 'save' in args[2]:
         save = True
+        saveFile = args[3]
 
-    sa = StatAnalyzer(path, save)
+    sa = StatAnalyzer(path, save, saveFile)
     sa.load()
 
 
 class StatAnalyzer:
-    def __init__(self, path, toSave):
+    def __init__(self, path, toSave, fileName):
         self.path = path
         self.toSave = toSave
         self.stats = []
+        self.fileName = fileName
 
     def load(self):
         for filename in os.listdir(self.path):
             print(filename)
             split = filename.split('_')
-            nodeType = 'TXN' if split[0] == 'txn-manager' else 'KEY'
+            nodeType = None
+            if split[0] == 'txn-manager':
+                nodeType = 'TXN'
+            elif split[0] == 'key-node':
+                nodeType = 'KEY'
+            elif split[0] == 'worker':
+                nodeType = 'WRK'
             addr = split[1]
             with open(os.path.join(self.path, filename), 'r') as f:
                 data = f.read()
@@ -54,7 +62,7 @@ class StatAnalyzer:
         df = pd.DataFrame(self.stats)
         self.df = df
         if self.toSave:
-            self.df.to_csv('stats.csv')
+            self.df.to_csv(self.fileName)
 
 if __name__ == '__main__':
     main()

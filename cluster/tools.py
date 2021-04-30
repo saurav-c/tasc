@@ -172,12 +172,14 @@ def fetch_stats():
 
     tasc_ips = util.get_pod_ips(client, selector='role=tasc', is_running=True)
     key_ips = util.get_pod_ips(client, selector='role=keynode', is_running=True)
+    worker_ips = util.get_pod_ips(client, selector='role=worker', is_running=True)
 
     if not os.path.exists("stats"):
         os.makedirs("stats")
 
     tasc_ips = ["txn-manager_" + ip for ip in tasc_ips]
     key_ips = ["key-node_" + ip for ip in key_ips]
+    worker_ips = ["worker_" + ip for ip in worker_ips]
 
     nodes = []
     nodes.extend(tasc_ips)
