@@ -17,7 +17,7 @@ const (
 
 type AnnaStorageManager struct {
 	freeClients []*AnnaClient
-	clientLock  *sync.Mutex
+	cond        *sync.Cond
 }
 
 func (anna *AnnaStorageManager) GetTransactionWriteSet(transactionKey string) ([]string, error) {
@@ -30,14 +30,14 @@ func (anna *AnnaStorageManager) MultiGetTransactionWriteSet(transactionKeys *[]s
 
 func NewAnnaStorageManager(ipAddress string, elbAddress string) *AnnaStorageManager {
 	clients := []*AnnaClient{}
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 20; i++ {
 		anna := NewAnnaClient(elbAddress, ipAddress, false, i)
 		clients = append(clients, anna)
 	}
 
 	return &AnnaStorageManager{
 		freeClients: clients,
-		clientLock:  &sync.Mutex{},
+		cond:        sync.NewCond(&sync.Mutex{}),
 	}
 }
 
@@ -70,20 +70,22 @@ func (anna *AnnaStorageManager) MultiPut(keys []string, vals [][]byte) ([]string
 }
 
 func (anna *AnnaStorageManager) getClient() *AnnaClient {
-	// We don't need to wait for clients because there will only ever by 3 client
-	// threads that operate per-machine.
-	anna.clientLock.Lock()
+	anna.cond.L.Lock()
+	for len(anna.freeClients) == 0 {
+		anna.cond.Wait()
+	}
 	client := anna.freeClients[0]
 	anna.freeClients = anna.freeClients[1:]
-	anna.clientLock.Unlock()
+	anna.cond.L.Unlock()
 
 	return client
 }
 
 func (anna *AnnaStorageManager) releaseClient(client *AnnaClient) {
-	anna.clientLock.Lock()
+	anna.cond.L.Lock()
 	anna.freeClients = append(anna.freeClients, client)
-	anna.clientLock.Unlock()
+	anna.cond.Signal()
+	anna.cond.L.Unlock()
 }
 
 func (anna *AnnaStorageManager) StartTransaction(id string) error {
