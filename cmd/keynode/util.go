@@ -102,11 +102,9 @@ PRE: KeyLock should be LOCKED
 POST: Returns TRUE if index found in storage and returns the KeyVersionList
 */
 func (idx *VersionIndex) readFromStorage(key string, storageManager storage.StorageManager) (*kpb.KeyVersionList, bool) {
-	log.Infof("Trying to read index %s from storage", key)
-	fmt.Printf("Key %s waiting for storage\n", key)
+	go log.Infof("Trying to read index %s from storage", key)
 	data, err := storageManager.Get(fmt.Sprintf(idx.indexFormat, key))
-	fmt.Printf("Key %s heard from storage\n", key)
-	log.Infof("Read index %s from storage", key)
+	go log.Infof("Read index %s from storage", key)
 
 	if err != nil {
 		if strings.Contains(err.Error(), "KEY_DNE") {
@@ -142,10 +140,8 @@ Pre: No locks required
 Post: Returns key lock and key version list
 */
 func (idx *VersionIndex) create(key string, storageManager storage.StorageManager) (*sync.RWMutex, *kpb.KeyVersionList) {
-	log.Infof("Creating key version state for %s", key)
+	go log.Infof("Creating key version state for %s", key)
 	idx.mutex.Lock()
-
-	fmt.Printf("Key %s acquired INDEX LOCK\n", key)
 
 	var keyLock *sync.RWMutex
 	var versionList *kpb.KeyVersionList
@@ -158,12 +154,8 @@ func (idx *VersionIndex) create(key string, storageManager storage.StorageManage
 		idx.index[key] = versionList
 		idx.mutex.Unlock()
 
-		fmt.Printf("Key %s released INDEX LOCK\n", key)
-
 		// Check storage if index exists
-		log.Infof("Fetching from storage")
-		fmt.Printf("Key %s going to storage\n", key)
-
+		go log.Infof("Fetching from storage")
 		if storageVersionList, ok := idx.readFromStorage(key, storageManager); ok {
 			// Add the versions found from storage
 			for _, storageVersion := range storageVersionList.Versions {
@@ -171,8 +163,7 @@ func (idx *VersionIndex) create(key string, storageManager storage.StorageManage
 			}
 		}
 
-		fmt.Printf("Key %s returned from storage\n", key)
-		log.Infof("Returned fetch from storage")
+		go log.Infof("Returned fetch from storage")
 
 		keyLock.Unlock()
 	} else {
@@ -181,8 +172,6 @@ func (idx *VersionIndex) create(key string, storageManager storage.StorageManage
 		versionList = idx.index[key]
 		keyLock.RUnlock()
 		idx.mutex.Unlock()
-
-		fmt.Printf("Key %s released INDEX LOCK\n", key)
 	}
 	return keyLock, versionList
 }

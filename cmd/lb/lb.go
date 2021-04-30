@@ -7,6 +7,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"math/rand"
 	"os"
+	"strings"
 	"time"
 
 	zmq "github.com/pebbe/zmq4"
@@ -74,12 +75,15 @@ func main() {
 
 		// We only have 1 socket, so no need to check which one it is.
 		if len(sockets) > 0 {
-			lbSocket.Recv(zmq.DONTWAIT) // We can ignore this message.
-
-			index := rand.Intn(len(addresses))
-			address := addresses[index]
-
-			lbSocket.Send(address, zmq.DONTWAIT)
+			msg, _ := lbSocket.Recv(zmq.DONTWAIT) // We can ignore this message.
+			resp := ""
+			if strings.Contains(msg, "all") {
+				resp = strings.Join(addresses, ",")
+			} else {
+				index := rand.Intn(len(addresses))
+				resp = addresses[index]
+			}
+			lbSocket.Send(resp, zmq.DONTWAIT)
 		}
 
 		updateEnd := time.Now()
@@ -91,7 +95,6 @@ func main() {
 			}
 
 			addresses = newAddresses
-			go logAddresses(addresses)
 			updateStart = time.Now()
 		}
 	}
