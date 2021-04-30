@@ -49,14 +49,16 @@ func (w *TxnWorker) handler(data []byte) {
 	}
 	tid := txn.Tag.Tid
 
-	// Mimic storage write
-	w.StorageManager.Put(tid + "active-worker", []byte("ACK"))
-
 	// Send ACK to Txn Manager
 	txnIP := txn.Tag.TxnManagerIP
 	txnAddr := fmt.Sprintf(cmn.PushTemplate, txnIP, cmn.TxnAckPullPort)
 
 	log.Debugf("Received transaction status from %s for txn %s", txnIP, txn.Tag.Tid)
+
+	// Mimic storage write
+	w.StorageManager.Put(tid + "active-worker", []byte("ACK"))
+
+	log.Debugf("Finished storage write")
 
 	data, _ = proto.Marshal(txn.Tag)
 	w.PusherCache.Lock(w.ZMQInfo.context, txnAddr)

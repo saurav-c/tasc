@@ -53,7 +53,7 @@ def main():
             'num_reads': args.reads[0],
             'num_writes': args.writes[0],
             'elb': args.address[0],
-            'zipf': args.zipf[0]
+            'zipf': args.zipf
         }
         message = json.dumps(payload)
 
