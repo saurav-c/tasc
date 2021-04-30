@@ -183,6 +183,8 @@ func (k *KeyNode) checkConflict(beginTs int64, commitTs int64, keys []string, re
 			}
 
 			kLock.RLock()
+			defer kLock.RUnlock()
+
 			pendingVersions := idx.index[key]
 
 			idx.mutex.RUnlock()
@@ -197,13 +199,10 @@ func (k *KeyNode) checkConflict(beginTs int64, commitTs int64, keys []string, re
 				versionCommitTsStr := split[0]
 				versionCommitTs := cmn.Int64FromString(versionCommitTsStr)
 				if beginTs < versionCommitTs && versionCommitTs < commitTs {
-					kLock.RUnlock()
 					reportChan <- true
 					return
 				}
 			}
-			kLock.RUnlock()
-
 		}(checkKey)
 	}
 	wg.Wait()

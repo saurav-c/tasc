@@ -99,7 +99,7 @@ func NewVersionIndex(kind IndexType) VersionIndex {
 /**
 Fetch index from storage if it exists
 PRE: KeyLock should be LOCKED
-POST: Returns TRUE if index found in storage and updates index
+POST: Returns TRUE if index found in storage and returns the KeyVersionList
 */
 func (idx *VersionIndex) readFromStorage(key string, storageManager storage.StorageManager) (*kpb.KeyVersionList, bool) {
 	log.Infof("Trying to read index %s from storage", key)
@@ -107,6 +107,7 @@ func (idx *VersionIndex) readFromStorage(key string, storageManager storage.Stor
 	data, err := storageManager.Get(fmt.Sprintf(idx.indexFormat, key))
 	fmt.Printf("Key %s heard from storage\n", key)
 	log.Infof("Read index %s from storage", key)
+
 	if err != nil {
 		if strings.Contains(err.Error(), "KEY_DNE") {
 			return nil, false
@@ -115,13 +116,9 @@ func (idx *VersionIndex) readFromStorage(key string, storageManager storage.Stor
 			os.Exit(1)
 		}
 	}
+
 	keyVersionList := &kpb.KeyVersionList{}
 	proto.Unmarshal(data, keyVersionList)
-	idx.mutex.Lock()
-	fmt.Printf("Key %s acquired INDEX LOCK\n", key)
-	idx.index[key] = keyVersionList
-	idx.mutex.Unlock()
-	fmt.Printf("Key %s released INDEX LOCK\n", key)
 	return keyVersionList, true
 }
 
@@ -130,11 +127,7 @@ Write index to storage
 PRE: KeyLock should be LOCKED
 POST: Index should be written to storage
 */
-func (idx *VersionIndex) writeToStorage(key string, storageManager storage.StorageManager) {
-	idx.mutex.RLock()
-	versionList := idx.index[key]
-	idx.mutex.RUnlock()
-
+func (idx *VersionIndex) writeToStorage(key string, storageManager storage.StorageManager, versionList *kpb.KeyVersionList) {
 	data, _ := proto.Marshal(versionList)
 	err := storageManager.Put(fmt.Sprintf(idx.indexFormat, key), data)
 	if err != nil {
@@ -159,6 +152,7 @@ func (idx *VersionIndex) create(key string, storageManager storage.StorageManage
 	if kLock, ok := idx.locks[key]; !ok {
 		keyLock = &sync.RWMutex{}
 		versionList = &kpb.KeyVersionList{}
+
 		keyLock.Lock()
 		idx.locks[key] = keyLock
 		idx.index[key] = versionList
@@ -169,11 +163,17 @@ func (idx *VersionIndex) create(key string, storageManager storage.StorageManage
 		// Check storage if index exists
 		log.Infof("Fetching from storage")
 		fmt.Printf("Key %s going to storage\n", key)
+
 		if storageVersionList, ok := idx.readFromStorage(key, storageManager); ok {
-			versionList = storageVersionList
+			// Add the versions found from storage
+			for _, storageVersion := range storageVersionList.Versions {
+				versionList.Versions = append(versionList.Versions, storageVersion)
+			}
 		}
+
 		fmt.Printf("Key %s returned from storage\n", key)
 		log.Infof("Returned fetch from storage")
+
 		keyLock.Unlock()
 	} else {
 		keyLock = kLock
@@ -211,6 +211,8 @@ func (idx *VersionIndex) updateIndex(tid string, keyVersions []string, toInsert 
 				idx.mutex.RLock()
 			}
 			keyLock.Lock()
+			defer keyLock.Unlock()
+
 			versionList = idx.index[key]
 			idx.mutex.RUnlock()
 
@@ -223,11 +225,10 @@ func (idx *VersionIndex) updateIndex(tid string, keyVersions []string, toInsert 
 			// Write index to storage
 			start := time.Now()
 			log.Debugf("Writing index %s to storage", key)
-			idx.writeToStorage(key, storageManager)
+			idx.writeToStorage(key, storageManager, versionList)
 			end := time.Now()
 			log.Debugf("Done writing index %s to storage", key)
 
-			keyLock.Unlock()
 			go monitor.TrackStat(tid, monitorMsg, end.Sub(start))
 		}(keyVersion)
 	}
