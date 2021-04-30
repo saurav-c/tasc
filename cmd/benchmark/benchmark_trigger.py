@@ -25,6 +25,9 @@ def main():
     parser.add_argument('-w', '--writes', nargs=1, type=int, metavar='Y',
                         help='The number of writes to be done.',
                         dest='writes', required=True)
+    parser.add_argument('-z', '--zipf', nargs=1, type=float, metavar='Y',
+                        help='Zipfian coefficient',
+                        dest='zipf', required=False, default=1.0)
     args = parser.parse_args()
 
     servers = []
@@ -49,7 +52,8 @@ def main():
             'num_txns': args.txn[0],
             'num_reads': args.reads[0],
             'num_writes': args.writes[0],
-            'elb': args.address[0]
+            'elb': args.address[0],
+            'zipf': args.zipf[0]
         }
         message = json.dumps(payload)
 

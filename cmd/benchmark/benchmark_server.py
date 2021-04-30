@@ -34,13 +34,15 @@ def main():
         num_txns = config['num_txns']
         num_reads = config['num_reads']
         num_writes = config['num_writes']
+        zipf = config['zipf']
 
         payload = {
             'num_txns': num_txns,
             'num_reads': num_reads,
             'num_writes': num_writes,
             'elb': elb_address,
-            'benchmark_ip': server_ip
+            'benchmark_ip': server_ip,
+            'zipf': zipf,
         }
         lambda_payload = json.dumps(payload)
 
@@ -63,6 +65,8 @@ def main():
         write_txn = []
         read_txn = []
         commit_txn = []
+        num_aborts = 0.0
+        num_failed_reads = 0.0
 
         for _ in range(num_invokes):
             benchmark_data = lambda_socket.recv_string()
@@ -75,6 +79,9 @@ def main():
             write_txn_time = [float(x) for x in benchmark_data[4].split(",")]
             read_txn_time = [float(x) for x in benchmark_data[5].split(",")]
             commit_txn_time = [float(x) for x in benchmark_data[6].split(",")]
+
+            num_aborts += float(benchmark_data[7])
+            num_failed_reads += float(benchmark_data[8])
 
             throughputs.append(throughput)
             latencies.extend(latency)
@@ -128,9 +135,12 @@ def main():
         one_lb = np.percentile(lb_txn, 1)
         ninety_ninth_lb = np.percentile(lb_txn, 99)
 
+        abort_ratio = num_aborts / (num_txns * num_clients)
+        failed_reads_ratio = num_failed_reads / (num_txns * num_reads) if num_reads > 0 else 0.0
+
         output = "A total of {} lambda functions ran.\n".format(num_invokes)
         output += "The throughput of the system is: " + str(throughput) + "\n" + \
-                  "The latency histogram is: " + \
+                  "The latency (w/o load balancing) histogram is: " + \
                   "Median latency: {}\n5th percentile/95th percentile: {}, {}\n1st percentile/99th percentile: {}, {}\n" \
                   .format(median_latency, fifth_latency, ninety_fifth_latency, one_latency, ninety_ninth_latency)
         output += "The load balancing txn histogram is: " + \
@@ -148,6 +158,8 @@ def main():
         output += "The commit txn histogram is: " + \
                   "Median latency: {}\n5th percentile/95th percentile: {}, {}\n1st percentile/99th percentile: {}, {}\n" \
                   .format(median_commit, fifth_commit, ninety_fifth_commit, one_commit, ninety_ninth_commit)
+        output += "Abort Ratio is: {}\n".format(abort_ratio)
+        output += "Failed Reads Ratio is: {}\n".format(failed_reads_ratio)
 
         # Send stats back to trigger
         benchmark_socket.send_string(output)
