@@ -103,9 +103,9 @@ POST: Returns TRUE if index found in storage and updates index
 */
 func (idx *VersionIndex) readFromStorage(key string, storageManager storage.StorageManager) (*kpb.KeyVersionList, bool) {
 	log.Infof("Trying to read index %s from storage", key)
-	fmt.Println("Key %s waiting for storage\n", key)
+	fmt.Printf("Key %s waiting for storage\n", key)
 	data, err := storageManager.Get(fmt.Sprintf(idx.indexFormat, key))
-	fmt.Println("Key %s heard from storage\n", key)
+	fmt.Printf("Key %s heard from storage\n", key)
 	log.Infof("Read index %s from storage", key)
 	if err != nil {
 		if strings.Contains(err.Error(), "KEY_DNE") {
