@@ -186,7 +186,7 @@ def fetch_stats():
     nodes.extend(key_ips)
 
     for node in nodes:
-        cmd = 'kubectl cp default/%s:/go/src/github.com/saurav-c/tasc/cmd/monitor/stats/%s stats/%s' % (mmpname, node)
+        cmd = 'kubectl cp default/%s:/go/src/github.com/saurav-c/tasc/cmd/monitor/stats/%s stats/%s' % (mmpname, node, node)
         subprocess.run(cmd, shell=True)
 
 
