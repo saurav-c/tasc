@@ -121,7 +121,7 @@ func (t *TxnManager) Read(ctx context.Context, requests *tpb.TascRequest) (*tpb.
 		start := time.Now()
 		routingResp := <-txnEntry.rtrChan
 		end := time.Now()
-		go t.Monitor.TrackStat(tid, "[READ] Read Lookup Response", end.Sub(start))
+		go t.Monitor.TrackStat(tid, "[READ] Read Router Lookup Response", end.Sub(start))
 
 		keyNodeIPs, ok := routingResp.Addresses[key]
 		if !ok {
@@ -143,7 +143,7 @@ func (t *TxnManager) Read(ctx context.Context, requests *tpb.TascRequest) (*tpb.
 		start = time.Now()
 		readResponse := <-txnEntry.readChan
 		end = time.Now()
-		go t.Monitor.TrackStat(tid, "[READ] Read Response", end.Sub(start))
+		go t.Monitor.TrackStat(tid, "[READ] Key Node Wait", end.Sub(start))
 
 		if !readResponse.Ok {
 			log.WithFields(log.Fields{
@@ -290,7 +290,7 @@ func (t *TxnManager) CommitTransaction(ctx context.Context, tag *tpb.Transaction
 		start := time.Now()
 		<-storageChan
 		end := time.Now()
-		go t.Monitor.TrackStat(tid, "[COMMIT] Storage Write", end.Sub(start))
+		go t.Monitor.TrackStat(tid, "[COMMIT] Observed Storage Write", end.Sub(start))
 		txnEntry.status = Complete
 		return &tpb.TransactionTag{
 			Tid:    tid,

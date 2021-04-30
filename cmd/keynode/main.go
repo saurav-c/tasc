@@ -28,7 +28,7 @@ func (k *KeyNode) readKey(tid string, key string, readSet []string, beginTs int6
 		start := time.Now()
 		_, keyVersions = k.CommittedVersionIndex.create(key, k.StorageManager)
 		end := time.Now()
-		go k.Monitor.TrackStat(tid, "[READ] Create Commited Version State", end.Sub(start))
+		go k.Monitor.TrackStat(tid, "[READ] Create Committed Version State", end.Sub(start))
 	}
 
 	lowerBoundVersion := ""
@@ -142,12 +142,8 @@ func (k *KeyNode) validate(tid string, beginTs int64, commitTs int64, keys []str
 		Keys: keyVersions,
 	}
 	k.PendingTxnSet.put(tid, pendingTxnSet)
-
-	start = time.Now()
 	k.PendingVersionIndex.updateIndex(tid, keyVersions, true, k.StorageManager, k.Monitor,
 		"[COMMIT] Storage Write Pending Index")
-	end = time.Now()
-	go k.Monitor.TrackStat(tid, "[COMMIT] Update Pending Index", end.Sub(start))
 
 	return kpb.TransactionAction_COMMIT
 }
