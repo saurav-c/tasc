@@ -190,7 +190,7 @@ func (k *KeyNode) validate(tid string, beginTs int64, commitTs int64, keys []str
 func (k *KeyNode) checkPendingConflicts(tid string, keyVersion string, keys[] string, beginTS int64, commitTS int64,
 	conflictChan chan bool, updatedChan chan string) {
 
-	k.Monitor.TrackFuncExecTime(tid, "[COMMIT] Pending Conflict Check", time.Now())
+	defer k.Monitor.TrackFuncExecTime(tid, "[COMMIT] Pending Conflict Check", time.Now())
 
 	defer close(updatedChan)
 	terminate := false // Used to indicate early termination for aborts
@@ -255,7 +255,7 @@ func (k *KeyNode) checkPendingConflicts(tid string, keyVersion string, keys[] st
 func (k *KeyNode) checkCommittedConflicts(tid string, keys[] string, beginTS int64, commitTS int64,
 	conflictChan chan bool) {
 
-	k.Monitor.TrackFuncExecTime(tid, "[COMMIT] Commit Conflict Check", time.Now())
+	defer k.Monitor.TrackFuncExecTime(tid, "[COMMIT] Commit Conflict Check", time.Now())
 	terminate := false // Used to indicate early termination for aborts
 	var wg sync.WaitGroup
 	wg.Add(len(keys))
