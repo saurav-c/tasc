@@ -31,6 +31,9 @@ def main():
     parser.add_argument('-p', '--pre', nargs=1, type=str, metavar='Y',
                         help='Prefix key',
                         dest='prefix', required=False, default='tasc')
+    parser.add_argument('-n', '--numkeys', nargs=1, type=int, metavar='Y',
+                        help='Keyspace to choose from',
+                        dest='knum', required=False, default=1000)
     args = parser.parse_args()
 
     servers = []
@@ -57,7 +60,8 @@ def main():
             'num_writes': args.writes[0],
             'elb': args.address[0],
             'zipf': args.zipf,
-            'prefix': args.prefix
+            'prefix': args.prefix,
+            'N': args.knum
         }
         message = json.dumps(payload)
 

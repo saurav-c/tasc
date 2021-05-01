@@ -36,6 +36,7 @@ def main():
         num_writes = config['num_writes']
         zipf = config['zipf']
         prefix = config['prefix']
+        N = config['N']
 
         payload = {
             'num_txns': num_txns,
@@ -44,7 +45,8 @@ def main():
             'elb': elb_address,
             'benchmark_ip': server_ip,
             'zipf': zipf,
-            'prefix': prefix
+            'prefix': prefix,
+            'N': N
         }
         lambda_payload = json.dumps(payload)
 
