@@ -94,6 +94,7 @@ func (k *KeyNode) readKey(tid string, key string, readSet []string, beginTs int6
 func (k *KeyNode) isCompatibleVersion(versionTid string, readSet []string) ([]string, bool) {
 	writeSet, _ := k.CommittedTxnSet.get(versionTid)
 	writeSetVersions := map[string]string{}
+	log.Debugf("Write Set %v", writeSet.Keys)
 	for _, keyVersion := range writeSet.Keys {
 		log.Debugf("Checking compatability of %s", keyVersion)
 		split := strings.Split(keyVersion, cmn.KeyDelimeter)

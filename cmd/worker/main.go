@@ -11,6 +11,7 @@ import (
 	tpb "github.com/saurav-c/tasc/proto/tasc"
 	log "github.com/sirupsen/logrus"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -80,18 +81,24 @@ func (w *TxnWorker) handler(data []byte) {
 	w.RtrChanMap[txn.Tag.Tid] = c
 	w.RtrChanMutex.Unlock()
 
-	w.RouterManager.Lookup(tid, txn.Writeset.Keys)
+	// Convert keyversions to keys
+	var keys []string
+	for _, kv := range txn.Writeset.Keys {
+		split := strings.Split(kv, cmn.KeyDelimeter)
+		keys = append(keys, split[0])
+	}
+
+	w.RouterManager.Lookup(tid, keys)
 
 	resp := <-c
 	keyToNode := resp.Addresses
-	nodeToKey := make(map[string][]string)
-	for key, addrs := range keyToNode {
+	nodeToKey := make(map[string]string)
+	for _, addrs := range keyToNode {
 		ip := addrs[0]
 		ip = ip[:len(ip)-1]
 		if _, ok := nodeToKey[ip]; !ok {
-			nodeToKey[ip] = []string{}
+			nodeToKey[ip] = ""
 		}
-		nodeToKey[ip] = append(nodeToKey[ip], key)
 	}
 
 	var action kpb.TransactionAction
@@ -102,9 +109,9 @@ func (w *TxnWorker) handler(data []byte) {
 	}
 
 	// Send end transaction messages
-	for keyNode, keys := range nodeToKey {
-		log.Debugf("Sending end txn status to keynode %s for keys %v", keyNode, keys)
-		go w.endTransaction(tid, keyNode, keys, action)
+	for keyNode, _ := range nodeToKey {
+		log.Debugf("Sending end txn status to keynode %s", keyNode)
+		go w.endTransaction(tid, keyNode, txn.Writeset.Keys, action)
 	}
 
 	// Resend if ACK not received
