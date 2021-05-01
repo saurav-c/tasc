@@ -159,7 +159,14 @@ func (t *TxnManager) Read(ctx context.Context, requests *tpb.TascRequest) (*tpb.
 		// Update CoWrittenSet and Readset
 		for _, keyVersion := range readResponse.CoWrittenSet {
 			split := strings.Split(keyVersion, cmn.KeyDelimeter)
+			if len(split) < 2 {
+				log.Debugf("Potential malformed keyversion %s", keyVersion)
+				continue
+			}
 			k, v := split[0], split[1]
+			if k == key {
+				continue
+			}
 			if currVersion, ok := txnEntry.coWrittenSet[k]; !ok || cmn.CompareKeyVersion(v, currVersion) > 0 {
 				txnEntry.coWrittenSet[k] = v
 			}
