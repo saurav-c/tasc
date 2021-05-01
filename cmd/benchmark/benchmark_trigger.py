@@ -25,13 +25,13 @@ def main():
     parser.add_argument('-w', '--writes', nargs=1, type=int, metavar='Y',
                         help='The number of writes to be done.',
                         dest='writes', required=True)
-    parser.add_argument('-z', '--zipf', nargs=1, type=float, metavar='Y',
+    parser.add_argument('-z', '--zipf', nargs='?', type=float, metavar='Y',
                         help='Zipfian coefficient',
                         dest='zipf', required=False, default=1.0)
-    parser.add_argument('-p', '--pre', nargs=1, type=str, metavar='Y',
+    parser.add_argument('-p', '--pre', nargs='?', type=str, metavar='Y',
                         help='Prefix key',
                         dest='prefix', required=False, default='tasc')
-    parser.add_argument('-n', '--numkeys', nargs=1, type=int, metavar='Y',
+    parser.add_argument('-n', '--numkeys', nargs='?', type=int, metavar='Y',
                         help='Keyspace to choose from',
                         dest='knum', required=False, default=1000)
     args = parser.parse_args()
