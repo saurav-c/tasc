@@ -112,6 +112,7 @@ func (k *KeyNode) isCompatibleVersion(versionTid string, readSet []string) ([]st
 }
 
 func (k *KeyNode) validate(tid string, beginTs int64, commitTs int64, keys []string) (action kpb.TransactionAction) {
+	defer k.Monitor.TrackFuncExecTime(tid, "[COMMIT] Validation Function", time.Now())
 	conflictChan := make(chan bool, 2)
 	updateChan := make(chan string, len(keys))
 
@@ -152,6 +153,8 @@ func (k *KeyNode) validate(tid string, beginTs int64, commitTs int64, keys []str
 	end := time.Now()
 	go k.Monitor.TrackStat(tid, "[COMMIT] Validation conflict check", end.Sub(start))
 
+	start = time.Now()
+
 	var keyVersions []string
 	for _, key := range keys {
 		keyVersion := key + cmn.KeyDelimeter + version
@@ -161,6 +164,8 @@ func (k *KeyNode) validate(tid string, beginTs int64, commitTs int64, keys []str
 		Keys: keyVersions,
 	}
 	k.PendingTxnSet.put(tid, pendingTxnSet)
+	end = time.Now()
+	go k.Monitor.TrackStat(tid, "[COMMIT] Pending Txn Set", end.Sub(start))
 
 	// Persist Pending versions to storage
 	wg := sync.WaitGroup{}
