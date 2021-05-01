@@ -97,6 +97,9 @@ func (k *KeyNode) isCompatibleVersion(versionTid string, readSet []string) ([]st
 	log.Debugf("Write Set %v", writeSet.Keys)
 	for _, keyVersion := range writeSet.Keys {
 		log.Debugf("Checking compatability of %s", keyVersion)
+		if len(keyVersion) == 0 {
+			continue
+		}
 		split := strings.Split(keyVersion, cmn.KeyDelimeter)
 		key, version := split[0], split[1]
 		writeSetVersions[key] = version
