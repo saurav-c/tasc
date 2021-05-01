@@ -95,6 +95,7 @@ func (k *KeyNode) isCompatibleVersion(versionTid string, readSet []string) ([]st
 	writeSet, _ := k.CommittedTxnSet.get(versionTid)
 	writeSetVersions := map[string]string{}
 	for _, keyVersion := range writeSet.Keys {
+		log.Debugf("Checking compatability of %s", keyVersion)
 		split := strings.Split(keyVersion, cmn.KeyDelimeter)
 		key, version := split[0], split[1]
 		writeSetVersions[key] = version
@@ -327,6 +328,8 @@ func (k *KeyNode) endTransaction(tid string, action kpb.TransactionAction, write
 	// Commit txn set and key versions
 	txnWriteSet := &tpb.TransactionWriteSet{Keys:writeSet}
 	k.CommittedTxnSet.put(tid, txnWriteSet)
+
+	log.Debugf("Added transaction writeset %v", txnWriteSet.Keys)
 
 	start := time.Now()
 	k.CommittedVersionIndex.updateIndex(tid, pendingWrites.Keys, true, k.StorageManager, k.Monitor,
