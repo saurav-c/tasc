@@ -27,7 +27,7 @@ func (k *KeyNode) readKey(tid string, key string, readSet []string, beginTs int6
 		k.CommittedVersionIndex.mutex.RUnlock()
 
 		start := time.Now()
-		_, keyVersionList := k.CommittedVersionIndex.create(key, k.StorageManager)
+		_, keyVersionList := k.CommittedVersionIndex.create(key, k.StorageManager, tid, "[READ] Storage Read Committed Index", k.Monitor)
 		keyVersions = keyVersionList.Versions
 		end := time.Now()
 		go k.Monitor.TrackStat(tid, "[READ] Create Committed Version State", end.Sub(start))
@@ -211,7 +211,7 @@ func (k *KeyNode) checkPendingConflicts(tid string, keyVersion string, keys[] st
 			// Initialize index entry
 			if !ok {
 				idx.mutex.RUnlock()
-				kLock, _ = idx.create(key, k.StorageManager)
+				kLock, _ = idx.create(key, k.StorageManager, tid, "[COMMIT] Storage Read Pending Index", k.Monitor)
 				idx.mutex.RLock()
 			}
 
@@ -274,7 +274,7 @@ func (k *KeyNode) checkCommittedConflicts(tid string, keys[] string, beginTS int
 			// Initialize index entry
 			if !ok {
 				idx.mutex.RUnlock()
-				kLock, _ = idx.create(key, k.StorageManager)
+				kLock, _ = idx.create(key, k.StorageManager, tid, "[COMMIT] Storage Read Committed Index", k.Monitor)
 				idx.mutex.RLock()
 			}
 

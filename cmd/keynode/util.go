@@ -139,7 +139,8 @@ Creates key lock and key version list if entries do not exist for KEY.
 Pre: No locks required
 Post: Returns key lock and key version list
 */
-func (idx *VersionIndex) create(key string, storageManager storage.StorageManager) (*sync.RWMutex, *kpb.KeyVersionList) {
+func (idx *VersionIndex) create(key string, storageManager storage.StorageManager,
+	tid string, msg string, monitor *cmn.StatsMonitor) (*sync.RWMutex, *kpb.KeyVersionList) {
 	go log.Infof("Creating key version state for %s", key)
 	idx.mutex.Lock()
 
@@ -156,12 +157,15 @@ func (idx *VersionIndex) create(key string, storageManager storage.StorageManage
 
 		// Check storage if index exists
 		go log.Infof("Fetching from storage")
+		start := time.Now()
 		if storageVersionList, ok := idx.readFromStorage(key, storageManager); ok {
 			// Add the versions found from storage
 			for _, storageVersion := range storageVersionList.Versions {
 				versionList.Versions = append(versionList.Versions, storageVersion)
 			}
 		}
+		end := time.Now()
+		go monitor.TrackStat(tid, msg, end.Sub(start))
 
 		go log.Infof("Returned fetch from storage")
 
@@ -196,7 +200,7 @@ func (idx *VersionIndex) updateIndex(tid string, keyVersions []string, toInsert 
 
 			if !ok {
 				idx.mutex.RUnlock()
-				keyLock, _ = idx.create(key, storageManager)
+				keyLock, _ = idx.create(key, storageManager, tid, "[END] Storage Read Index", monitor)
 				idx.mutex.RLock()
 			}
 			keyLock.Lock()
