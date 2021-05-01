@@ -16,6 +16,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -386,24 +387,33 @@ func (t *TxnManager) collectEndTxnResponses(endRespChan chan *tpb.TransactionTag
 func (t *TxnManager) writeToStorage(tid string, endTs int64, entry *WriteBufferEntry, writeChan chan bool) {
 	defer t.Monitor.TrackFuncExecTime(tid, "[COMMIT] Overall Storage Write", time.Now())
 
-	dbKeys := make([]string, len(entry.buffer)+1)
-	dbVals := make([][]byte, len(entry.buffer)+1)
+
 
 	endTsString := cmn.Int64ToString(endTs)
 	// Send writes & transaction set to storage
-	i := 0
-	for k, v := range entry.buffer {
-		newKey := fmt.Sprintf(cmn.StorageKeyTemplate, k, endTsString, tid)
-		dbKeys[i] = newKey
-		dbVals[i] = v
-		i++
-	}
-	txnWriteSet := &tpb.TransactionWriteSet{Keys: dbKeys}
-	data, _ := proto.Marshal(txnWriteSet)
-	dbKeys[i] = tid
-	dbVals[i] = data
+	wg := sync.WaitGroup{}
+	wg.Add(len(entry.buffer)+1)
 
-	t.StorageManager.MultiPut(dbKeys, dbVals)
+	for key, val := range entry.buffer {
+		go func(k string, v []byte) {
+			defer wg.Done()
+			newKey := fmt.Sprintf(cmn.StorageKeyTemplate, k, endTsString, tid)
+			t.StorageManager.Put(newKey, v)
+		}(key, val)
+	}
+
+	go func() {
+		defer wg.Done()
+		dbKeys := make([]string, len(entry.buffer))
+		for key, _ := range entry.buffer {
+			newKey := fmt.Sprintf(cmn.StorageKeyTemplate, key, endTsString, tid)
+			dbKeys = append(dbKeys, newKey)
+		}
+		txnWriteSet := &tpb.TransactionWriteSet{Keys: dbKeys}
+		data, _ := proto.Marshal(txnWriteSet)
+		t.StorageManager.Put(tid, data)
+	}()
+	wg.Wait()
 	writeChan <- true
 }
 
