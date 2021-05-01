@@ -180,6 +180,7 @@ func (k *KeyNode) validate(tid string, beginTs int64, commitTs int64, keys []str
 			kLock.Unlock()
 		}(elem)
 	}
+	wg.Wait()
 	end = time.Now()
 
 	go k.Monitor.TrackStat(tid, "[COMMIT] Storage Write Pending Index", end.Sub(start))
