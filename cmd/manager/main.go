@@ -152,6 +152,7 @@ func (t *TxnManager) Read(ctx context.Context, requests *tpb.TascRequest) (*tpb.
 				"Key": key,
 				"KeyNode": keyNodeIp,
 			}).Error("Keynode error reading key")
+			resp.Pairs = append(resp.Pairs, &tpb.TascRequest_KeyPair{Key:key, Value:nil})
 			continue
 		}
 
