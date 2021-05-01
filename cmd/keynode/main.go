@@ -168,32 +168,24 @@ func (k *KeyNode) validate(tid string, beginTs int64, commitTs int64, keys []str
 	go k.Monitor.TrackStat(tid, "[COMMIT] Pending Txn Set", end.Sub(start))
 
 	// Persist Pending versions to storage
-	//wg := sync.WaitGroup{}
-	//wg.Add(len(keys))
+	wg := sync.WaitGroup{}
+	wg.Add(len(keys))
 
 	start = time.Now()
 	for _, elem := range keys {
-		//go func(key string) {
-		//	defer wg.Done()
-		//
-		//	k.PendingVersionIndex.mutex.RLock()
-		//	kLock := k.PendingVersionIndex.locks[key]
-		//	kLock.Lock()
-		//	pendingVersions := k.PendingVersionIndex.index[key]
-		//	k.PendingVersionIndex.mutex.RUnlock()
-		//	k.PendingVersionIndex.writeToStorage(key, k.StorageManager, pendingVersions)
-		//	kLock.Unlock()
-		//}(elem)
-		key := elem
-		k.PendingVersionIndex.mutex.RLock()
-		kLock := k.PendingVersionIndex.locks[key]
-		kLock.Lock()
-		pendingVersions := k.PendingVersionIndex.index[key]
-		k.PendingVersionIndex.mutex.RUnlock()
-		k.PendingVersionIndex.writeToStorage(key, k.StorageManager, pendingVersions)
-		kLock.Unlock()
+		go func(key string) {
+			defer wg.Done()
+
+			k.PendingVersionIndex.mutex.RLock()
+			kLock := k.PendingVersionIndex.locks[key]
+			kLock.Lock()
+			pendingVersions := k.PendingVersionIndex.index[key]
+			k.PendingVersionIndex.mutex.RUnlock()
+			k.PendingVersionIndex.writeToStorage(key, k.StorageManager, pendingVersions)
+			kLock.Unlock()
+		}(elem)
 	}
-	//wg.Wait()
+	wg.Wait()
 	end = time.Now()
 
 	go k.Monitor.TrackStat(tid, "[COMMIT] Storage Write Pending Index", end.Sub(start))
