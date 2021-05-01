@@ -28,6 +28,9 @@ def main():
     parser.add_argument('-z', '--zipf', nargs=1, type=float, metavar='Y',
                         help='Zipfian coefficient',
                         dest='zipf', required=False, default=1.0)
+    parser.add_argument('-p', '--pre', nargs=1, type=str, metavar='Y',
+                        help='Prefix key',
+                        dest='prefix', required=False, default='tasc')
     args = parser.parse_args()
 
     servers = []
@@ -53,7 +56,8 @@ def main():
             'num_reads': args.reads[0],
             'num_writes': args.writes[0],
             'elb': args.address[0],
-            'zipf': args.zipf
+            'zipf': args.zipf,
+            'prefix': args.prefix
         }
         message = json.dumps(payload)
 
