@@ -33,11 +33,7 @@ func (k *KeyNode) readKey(tid string, key string, readSet []string, beginTs int6
 		go k.Monitor.TrackStat(tid, "[READ] Create Committed Version State", end.Sub(start))
 	}
 
-	lowerBoundVersion := ""
-	if lowerBound != "" {
-		split := strings.Split(lowerBound, cmn.KeyDelimeter)
-		lowerBoundVersion = split[1]
-	}
+	lowerBoundVersion := lowerBound
 
 	var timeoutStart time.Time
 	first := true
