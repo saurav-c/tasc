@@ -59,9 +59,10 @@ func (t *TxnManager) readHandler(data []byte) {
 	}
 	tid := resp.GetTid()
 	t.TransactionTable.mutex.RLock()
-	channel := t.TransactionTable.table[tid].readChan
-	t.TransactionTable.mutex.RUnlock()
-	channel <- resp
+	defer t.TransactionTable.mutex.RUnlock()
+	if entry, ok := t.TransactionTable.table[tid]; ok {
+		entry.readChan <- resp
+	}
 }
 
 func (t *TxnManager) validateHandler(data []byte) {
@@ -73,9 +74,10 @@ func (t *TxnManager) validateHandler(data []byte) {
 	}
 	tid := resp.GetTid()
 	t.TransactionTable.mutex.RLock()
-	channel := t.TransactionTable.table[tid].valChan
-	t.TransactionTable.mutex.RUnlock()
-	channel <- resp
+	defer t.TransactionTable.mutex.RUnlock()
+	if entry, ok := t.TransactionTable.table[tid]; ok {
+		entry.valChan <- resp
+	}
 }
 
 func (t *TxnManager) endTxnHandler(data []byte) {
@@ -87,9 +89,10 @@ func (t *TxnManager) endTxnHandler(data []byte) {
 	}
 	tid := resp.GetTid()
 	t.TransactionTable.mutex.RLock()
-	channel := t.TransactionTable.table[tid].endTxnChan
-	t.TransactionTable.mutex.RUnlock()
-	channel <- resp
+	defer t.TransactionTable.mutex.RUnlock()
+	if entry, ok := t.TransactionTable.table[tid]; ok {
+		entry.endTxnChan <- resp
+	}
 }
 
 func (t *TxnManager) routingHandler(data [] byte) {
@@ -108,8 +111,8 @@ func (t *TxnManager) routingHandler(data [] byte) {
 
 	tid := resp.GetResponseId()
 	t.TransactionTable.mutex.RLock()
-	channel := t.TransactionTable.table[tid].rtrChan
-	t.TransactionTable.mutex.RUnlock()
-
-	channel <- rtrResp
+	defer t.TransactionTable.mutex.RUnlock()
+	if entry, ok := t.TransactionTable.table[tid]; ok {
+		entry.rtrChan <- rtrResp
+	}
 }
