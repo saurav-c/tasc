@@ -130,21 +130,23 @@ func (k *KeyNode) validate(tid string, beginTs int64, commitTs int64, keys []str
 			log.Debugf("Found conflict, aborting transaction %s", tid)
 
 			// Delete Pending versions that were added
-			wg := sync.WaitGroup{}
-			wg.Add(len(updateChan))
-			for elem := range updateChan {
-				go func(key string) {
-					defer wg.Done()
-					k.PendingVersionIndex.mutex.RLock()
-					kLock := k.PendingVersionIndex.locks[key]
-					kLock.Lock()
-					pendingVersions := k.PendingVersionIndex.index[key]
-					k.PendingVersionIndex.mutex.RUnlock()
-					deleteVersion(pendingVersions, version)
-					kLock.Unlock()
-				}(elem)
+			if len(updateChan) > 0 {
+				wg := sync.WaitGroup{}
+				wg.Add(len(updateChan))
+				for elem := range updateChan {
+					go func(key string) {
+						defer wg.Done()
+						k.PendingVersionIndex.mutex.RLock()
+						kLock := k.PendingVersionIndex.locks[key]
+						kLock.Lock()
+						pendingVersions := k.PendingVersionIndex.index[key]
+						k.PendingVersionIndex.mutex.RUnlock()
+						deleteVersion(pendingVersions, version)
+						kLock.Unlock()
+					}(elem)
+				}
+				wg.Wait()
 			}
-			wg.Wait()
 			return kpb.TransactionAction_ABORT
 		}
 		if count == 2 {
@@ -243,11 +245,9 @@ func (k *KeyNode) checkPendingConflicts(tid string, keyVersion string, keys[] st
 					terminate = true
 					return
 				}
-
-				// Insert to Pending KVI
-				insertVersion(pendingVersionList, keyVersion)
-				updatedChan <- key
 			}
+			insertVersion(pendingVersionList, keyVersion)
+			updatedChan <- key
 
 		}(checkKey)
 	}
