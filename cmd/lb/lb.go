@@ -96,6 +96,7 @@ func main() {
 
 			addresses = newAddresses
 			updateStart = time.Now()
+			logAddresses(addresses)
 		}
 	}
 }
