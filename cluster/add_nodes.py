@@ -44,39 +44,39 @@ def add_nodes(client, apps_client, cfile, kind, count, aws_key_id=None,
         apps_client.create_namespaced_daemon_set(namespace=util.NAMESPACE,
                                                  body=yml)
 
-        # Wait until all pods of this kind are running
-        res = []
-        while len(res) != count:
-            res = util.get_pod_ips(client, 'role=' + kind, is_running=True)
+    # Wait until all pods of this kind are running
+    res = []
+    while len(res) != count:
+        res = util.get_pod_ips(client, 'role=' + kind, is_running=True)
 
-        created_pods = []
-        pods = client.list_namespaced_pod(namespace=util.NAMESPACE,
-                                          label_selector='role=' +
-                                                         kind).items
+    created_pods = []
+    pods = client.list_namespaced_pod(namespace=util.NAMESPACE,
+                                      label_selector='role=' +
+                                                     kind).items
 
-        # Send kube config to lb
-        if kind == 'lb':
-            kubecfg = os.path.join(os.environ['HOME'], '.kube/config')
-            for pod in pods:
-                cname = pod.spec.containers[0].name
-                util.copy_file_to_pod(client, kubecfg, pod.metadata.name,
-                                      '/root/.kube', cname)
-
-        # Generate list of all recently created pods.
-        created_pod_ips = []
+    # Send kube config to lb
+    if kind == 'lb':
+        kubecfg = os.path.join(os.environ['HOME'], '.kube/config')
         for pod in pods:
-            created_pod_ips.append(pod.status.pod_ip)
-            pname = pod.metadata.name
-            for container in pod.spec.containers:
-                cname = container.name
-                created_pods.append((pname, cname))
+            cname = pod.spec.containers[0].name
+            util.copy_file_to_pod(client, kubecfg, pod.metadata.name,
+                                  '/root/.kube', cname)
 
-        # Copy the KVS config into all recently created pods.
-        cfile_name = './tasc-config.yml' if kind != 'routing' else './anna-config.yml'
-        cfile_dir = '/go/src/github.com/saurav-c/tasc/config' if kind != 'routing' else 'hydro/anna/conf'
-        os.system(str('cp %s ' + cfile_name) % cfile)
+    # Generate list of all recently created pods.
+    created_pod_ips = []
+    for pod in pods:
+        created_pod_ips.append(pod.status.pod_ip)
+        pname = pod.metadata.name
+        for container in pod.spec.containers:
+            cname = container.name
+            created_pods.append((pname, cname))
 
-        for pname, cname in created_pods:
-            util.copy_file_to_pod(client, cfile_name[2:], pname,
-                                  cfile_dir, cname)
-        os.system('rm ' + cfile_name)
+    # Copy the KVS config into all recently created pods.
+    cfile_name = './tasc-config.yml' if kind != 'routing' else './anna-config.yml'
+    cfile_dir = '/go/src/github.com/saurav-c/tasc/config' if kind != 'routing' else 'hydro/anna/conf'
+    os.system(str('cp %s ' + cfile_name) % cfile)
+
+    for pname, cname in created_pods:
+        util.copy_file_to_pod(client, cfile_name[2:], pname,
+                              cfile_dir, cname)
+    os.system('rm ' + cfile_name)

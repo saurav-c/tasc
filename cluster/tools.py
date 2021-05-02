@@ -141,7 +141,7 @@ def add(kind, count):
         prev_pod_ips = util.get_pod_ips(client, 'role=' + kind, is_running=True)
 
     add_nodes(client, apps_client, BASE_CONFIG_FILE, kind, count,
-              aws_key_id, aws_key, True, './', 'master')
+              aws_key_id, aws_key, False, './', 'master')
 
     if prev_pod_ips is not None:
         pod_ips = util.get_pod_ips(client, 'role=' + kind, is_running=True)
