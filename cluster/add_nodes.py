@@ -46,7 +46,7 @@ def add_nodes(client, apps_client, cfile, kind, count, aws_key_id=None,
 
     # Wait until all pods of this kind are running
     res = []
-    while len(res) != count:
+    while len(res) != prev_count + count:
         res = util.get_pod_ips(client, 'role=' + kind, is_running=True)
 
     created_pods = []
