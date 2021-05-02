@@ -114,7 +114,7 @@ func (k *KeyNode) isCompatibleVersion(versionTid string, readSet []string) ([]st
 
 func (k *KeyNode) validate(tid string, beginTs int64, commitTs int64, keys []string) (action kpb.TransactionAction) {
 	defer k.Monitor.TrackFuncExecTime(tid, "[COMMIT] Validation Function", time.Now())
-	conflictChan := make(chan bool, 2)
+	conflictChan := make(chan bool, len(keys) * 2)
 	updateChan := make(chan string, len(keys))
 
 	version := cmn.Int64ToString(commitTs) + cmn.VersionDelimeter + tid
@@ -132,8 +132,8 @@ func (k *KeyNode) validate(tid string, beginTs int64, commitTs int64, keys []str
 			// Delete Pending versions that were added
 			if len(updateChan) > 0 {
 				wg := sync.WaitGroup{}
-				wg.Add(len(updateChan))
 				for elem := range updateChan {
+					wg.Add(1)
 					go func(key string) {
 						defer wg.Done()
 						k.PendingVersionIndex.mutex.RLock()
@@ -172,10 +172,10 @@ func (k *KeyNode) validate(tid string, beginTs int64, commitTs int64, keys []str
 
 	// Persist Pending versions to storage
 	wg := sync.WaitGroup{}
-	wg.Add(len(keys))
 
 	start = time.Now()
 	for _, elem := range keys {
+		wg.Add(1)
 		go func(key string) {
 			defer wg.Done()
 
@@ -184,8 +184,8 @@ func (k *KeyNode) validate(tid string, beginTs int64, commitTs int64, keys []str
 			kLock.Lock()
 			pendingVersions := k.PendingVersionIndex.index[key]
 			k.PendingVersionIndex.mutex.RUnlock()
-			k.PendingVersionIndex.writeToStorage(key, k.StorageManager, pendingVersions)
 			kLock.Unlock()
+			k.PendingVersionIndex.writeToStorage(key, k.StorageManager, pendingVersions)
 		}(elem)
 	}
 	wg.Wait()

@@ -204,7 +204,6 @@ func (idx *VersionIndex) updateIndex(tid string, keyVersions []string, toInsert 
 				idx.mutex.RLock()
 			}
 			keyLock.Lock()
-			defer keyLock.Unlock()
 
 			versionList = idx.index[key]
 			idx.mutex.RUnlock()
@@ -214,6 +213,8 @@ func (idx *VersionIndex) updateIndex(tid string, keyVersions []string, toInsert 
 			} else {
 				deleteVersion(versionList, version)
 			}
+
+			keyLock.Unlock()
 
 			// Write index to storage
 			start := time.Now()
