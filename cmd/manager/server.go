@@ -41,6 +41,7 @@ type TxnManager struct {
 	Monitor          *cmn.StatsMonitor
 	RouterManager    routing.RouterManager
 	WorkerConn       *worker.WorkerConn
+	GC               *GarbageCollector
 }
 
 type TransactionTable struct {
@@ -58,6 +59,11 @@ type TransactionTableEntry struct {
 	valChan      chan *key.ValidateResponse
 	endTxnChan   chan *tpb.TransactionTag
 	rtrChan      chan *routing.RoutingResponse
+}
+
+type GarbageCollector struct {
+	mutex        *sync.RWMutex
+	finishedTxns []string
 }
 
 type WriteBuffer struct {
@@ -132,6 +138,11 @@ func NewTransactionManager(threadId int) (*TxnManager, error) {
 		mutex:  &sync.RWMutex{},
 	}
 
+	gc := &GarbageCollector{
+		mutex:        &sync.RWMutex{},
+		finishedTxns: make([]string, 100),
+	}
+
 	rtrManager := routing.NewAnnaRoutingManager(configValue.IpAddress, configValue.RoutingILB)
 	wcn := worker.NewWorkerConn(configValue.IpAddress, configValue.WorkerILB)
 
@@ -149,5 +160,6 @@ func NewTransactionManager(threadId int) (*TxnManager, error) {
 		LogFile:          logFile,
 		Monitor:          monitor,
 		WorkerConn:       wcn,
+		GC:               gc,
 	}, nil
 }

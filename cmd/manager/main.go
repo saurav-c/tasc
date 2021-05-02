@@ -208,7 +208,7 @@ func (t *TxnManager) Write(ctx context.Context, requests *tpb.TascRequest) (*tpb
 
 func (t *TxnManager) CommitTransaction(ctx context.Context, tag *tpb.TransactionTag) (*tpb.TransactionTag, error) {
 	tid := tag.Tid
-
+	defer t.addToGc(tid)
 	defer t.Monitor.TrackFuncExecTime(tid, "[API] Commit", time.Now())
 
 	t.TransactionTable.mutex.RLock()
@@ -316,7 +316,7 @@ func (t *TxnManager) CommitTransaction(ctx context.Context, tag *tpb.Transaction
 
 func (t *TxnManager) AbortTransaction(ctx context.Context, tag *tpb.TransactionTag) (*tpb.TransactionTag, error) {
 	tid := tag.Tid
-
+	defer t.addToGc(tid)
 	defer t.Monitor.TrackFuncExecTime(tid, "[API] Abort", time.Now())
 
 	t.TransactionTable.mutex.RLock()
@@ -430,6 +430,32 @@ func (t *TxnManager) shutdown() {
 	t.LogFile.Close()
 }
 
+func (t *TxnManager) addToGc(tid string) {
+	t.GC.mutex.Lock()
+	defer t.GC.mutex.Unlock()
+	t.GC.finishedTxns = append(t.GC.finishedTxns, tid)
+}
+
+func (t* TxnManager) gc(dur time.Duration) {
+	for true {
+		t.GC.mutex.Lock()
+		if len(t.GC.finishedTxns) > 0 {
+			t.TransactionTable.mutex.Lock()
+			t.WriteBuffer.mutex.Lock()
+			for _, tid := range t.GC.finishedTxns {
+				delete(t.TransactionTable.table, tid)
+				delete(t.WriteBuffer.buffer, tid)
+			}
+			t.TransactionTable.mutex.Unlock()
+			t.WriteBuffer.mutex.Unlock()
+		}
+		t.GC.finishedTxns = make([]string, 100)
+		t.GC.mutex.Unlock()
+
+		time.Sleep(dur)
+	}
+}
+
 func main() {
 	lis, err := net.Listen("tcp", ":"+strconv.Itoa(cmn.TxnManagerServerPort))
 	if err != nil {
@@ -452,6 +478,9 @@ func main() {
 
 	// Send statistics to monitoring node
 	go manager.Monitor.SendStats(1 * time.Second)
+
+	// GC
+	go manager.gc(5 * time.Second)
 
 	log.Infof("Starting transaction manager at %s on thread %d", manager.IpAddress, manager.ThreadId)
 	if err = server.Serve(lis); err != nil {
