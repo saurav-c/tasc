@@ -78,7 +78,7 @@ def main():
 
             throughput = float(benchmark_data[0])
             latency = [float(x) for x in benchmark_data[1].split(",")]
-            lb_txn_time = [float(x) for x in benchmark_data[2].split(",")]
+            lb_txn_time = [float(x) for x in benchmark_data[2].split(",")] if benchmark_data[2].split(",")[0] != "" else [0.0]
             start_txn_time = [float(x) for x in benchmark_data[3].split(",")]
             write_txn_time = [float(x) for x in benchmark_data[4].split(",")]
             read_txn_time = [float(x) for x in benchmark_data[5].split(",")]
