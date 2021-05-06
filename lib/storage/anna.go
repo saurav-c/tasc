@@ -3,6 +3,7 @@ package storage
 import (
 	"errors"
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"sync"
 
 	"github.com/golang/protobuf/proto"
@@ -70,6 +71,7 @@ func (anna *AnnaStorageManager) MultiPut(keys []string, vals [][]byte) ([]string
 }
 
 func (anna *AnnaStorageManager) getClient() *AnnaClient {
+	log.Debug("Requested client")
 	anna.cond.L.Lock()
 	for len(anna.freeClients) == 0 {
 		anna.cond.Wait()
@@ -77,7 +79,7 @@ func (anna *AnnaStorageManager) getClient() *AnnaClient {
 	client := anna.freeClients[0]
 	anna.freeClients = anna.freeClients[1:]
 	anna.cond.L.Unlock()
-
+	log.Debug("Received client")
 	return client
 }
 
