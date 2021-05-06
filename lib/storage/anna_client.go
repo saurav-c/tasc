@@ -3,6 +3,7 @@ package storage
 import (
 	"errors"
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"math/rand"
 	"os"
 	"time"
@@ -95,15 +96,28 @@ func (anna *AnnaClient) get(key string) (*annapb.KeyTuple, error) {
 	worker := workers[rand.Intn(len(workers))]
 	socket := anna.getSocket(worker)
 
+	log.WithFields(log.Fields{
+		"Key": key,
+		"Worker": worker,
+	}).Debug("Found an Anna worker")
+
 	request := anna.prepareDataRequest(key)
 	request.Type = annapb.RequestType_GET
 
 	bts, _ := proto.Marshal(request)
 	socket.SendBytes(bts, zmq.DONTWAIT)
 
+	log.WithFields(log.Fields{
+		"Key": key,
+	}).Debug("Sent storage request")
+
 	response := &annapb.KeyResponse{}
 	bts, _ = anna.responsePuller.RecvBytes(0)
 	proto.Unmarshal(bts, response)
+
+	log.WithFields(log.Fields{
+		"Key": key,
+	}).Debug("Received storage response")
 
 	// We only support one GET/PUT at a time.
 	tuple := response.Tuples[0]
