@@ -8,6 +8,7 @@ import util
 from routing_util import register, deregister
 import subprocess
 import time
+import zmq
 
 # AWS Info
 aws_key_id = util.check_or_get_env_arg('AWS_ACCESS_KEY_ID')
@@ -56,6 +57,11 @@ def main():
             restart(node, kind)
     elif cmd == 'get-stats':
         fetch_stats()
+    elif cmd == 'clear':
+        if len(args) > 1 and args[1] == 'cluster':
+            clear(cluster=True)
+        else:
+            clear()
     else:
         print('Unknown cmd: ' + cmd)
 
@@ -189,6 +195,25 @@ def fetch_stats():
     for node in nodes:
         cmd = 'kubectl cp default/%s:/go/src/github.com/saurav-c/tasc/cmd/monitor/stats/%s stats/%s' % (mmpname, node, node)
         subprocess.run(cmd, shell=True)
+
+def clear(cluster=False):
+    context = zmq.Context(1)
+    for role in ['tasc', 'keynode']:
+        node_ips = util.get_node_ips(client, selector='role='+role, tp='ExternalIP')
+        for ip in node_ips:
+            dst = 'tcp://' + ip + ':15000'
+            sock = context.socket(zmq.PUSH)
+            sock.connect(dst)
+            sock.send_string("")
+            print('Cleared {} node at {}'.format(role, ip))
+        print('Cleared all {} nodes'.format(role))
+
+    print('Cleared all TASC components')
+
+    if cluster:
+        print('Clearing Anna Nodes...')
+        print('Cleared Anna Nodes!!!')
+
 
 
 
