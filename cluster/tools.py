@@ -46,7 +46,7 @@ def main():
         delete(ntype, count)
     elif cmd == 'hashring':
         event = args[1]
-        private_ip = args[3]
+        private_ip = args[2]
         hash_ring_change(event, private_ip)
     elif cmd == 'restart':
         node = args[1]
@@ -157,7 +157,7 @@ def add(kind, count):
         created_pod_ips = list(set(pod_ips) - set(prev_pod_ips))
 
         # Register new keynodes with routers
-        if kind == 'keynodes':
+        if kind == 'keynode':
             register(client, created_pod_ips)
 
 def delete(kind, count):
