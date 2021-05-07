@@ -30,6 +30,7 @@ type ZMQInfo struct {
 	readPuller     *zmq.Socket
 	validatePuller *zmq.Socket
 	endTxnPuller   *zmq.Socket
+	clearPuller    *zmq.Socket
 }
 
 func NewKeyNode() (*KeyNode, error) {
@@ -55,12 +56,14 @@ func NewKeyNode() (*KeyNode, error) {
 	readPuller := cmn.CreateSocket(zmq.PULL, zctx, fmt.Sprintf(cmn.PullTemplate, cmn.KeyReadPullPort), true)
 	validatePuller := cmn.CreateSocket(zmq.PULL, zctx, fmt.Sprintf(cmn.PullTemplate, cmn.KeyValidatePullPort), true)
 	endTxnPuller := cmn.CreateSocket(zmq.PULL, zctx, fmt.Sprintf(cmn.PullTemplate, cmn.KeyEndTxnPullPort), true)
+	clearPuller := cmn.CreateSocket(zmq.PULL, zctx, fmt.Sprintf(cmn.PullTemplate, cmn.CLEAR_PORT), true)
 
 	zmqInfo := ZMQInfo{
 		context:        zctx,
 		readPuller:     readPuller,
 		validatePuller: validatePuller,
 		endTxnPuller:   endTxnPuller,
+		clearPuller:    clearPuller,
 	}
 
 	pusherCache := cmn.NewSocketCache()

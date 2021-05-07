@@ -81,6 +81,7 @@ type ZMQInfo struct {
 	valPuller    *zmq.Socket
 	endTxnPuller *zmq.Socket
 	rtrPuller    *zmq.Socket
+	clearPuller  *zmq.Socket
 }
 
 func NewTransactionManager(threadId int) (*TxnManager, error) {
@@ -107,6 +108,7 @@ func NewTransactionManager(threadId int) (*TxnManager, error) {
 		valPuller:    cmn.CreateSocket(zmq.PULL, zctx, fmt.Sprintf(cmn.PullTemplate, cmn.TxnValidatePullPort), true),
 		endTxnPuller: cmn.CreateSocket(zmq.PULL, zctx, fmt.Sprintf(cmn.PullTemplate, cmn.TxnAckPullPort), true),
 		rtrPuller:    cmn.CreateSocket(zmq.PULL, zctx, fmt.Sprintf(cmn.PullTemplate, cmn.TxnRoutingPullPort), true),
+		clearPuller:  cmn.CreateSocket(zmq.PULL, zctx, fmt.Sprintf(cmn.PullTemplate, cmn.CLEAR_PORT), true),
 	}
 
 	// Create ZMQ Socket cache

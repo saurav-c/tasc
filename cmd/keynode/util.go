@@ -30,7 +30,7 @@ type TransactionSet struct {
 
 func NewTransactionSet(manager storage.StorageManager) TransactionSet {
 	return TransactionSet{
-		txnSetMap: map[string]*tpb.TransactionWriteSet{},
+		txnSetMap: make(map[string]*tpb.TransactionWriteSet),
 		mutex:     &sync.RWMutex{},
 		manager:   manager,
 	}
@@ -89,8 +89,8 @@ func NewVersionIndex(kind IndexType) VersionIndex {
 		os.Exit(1)
 	}
 	return VersionIndex{
-		index:       map[string]*kpb.KeyVersionList{},
-		locks:       map[string]*sync.RWMutex{},
+		index:       make(map[string]*kpb.KeyVersionList),
+		locks:       make(map[string]*sync.RWMutex),
 		mutex:       &sync.RWMutex{},
 		indexFormat: format,
 	}

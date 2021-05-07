@@ -28,6 +28,8 @@ const (
 	WorkerRtrPullPort = TxnRoutingPullPort
 	WorkerEndTxnPullPort = TxnEndTxnPullPort
 
+	CLEAR_PORT = 15000
+
 	// Trasaction ID Template
 	TidTemplate = "%s-%d-%s"
 

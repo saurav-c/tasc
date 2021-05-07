@@ -18,6 +18,7 @@ func (t *TxnManager) listener() {
 	poller.Add(info.valPuller, zmq.POLLIN)
 	poller.Add(info.endTxnPuller, zmq.POLLIN)
 	poller.Add(info.rtrPuller, zmq.POLLIN)
+	poller.Add(info.clearPuller, zmq.POLLIN)
 
 	for true {
 		sockets, _ := poller.Poll(10 * time.Millisecond)
@@ -43,6 +44,11 @@ func (t *TxnManager) listener() {
 				{
 					data, _ := info.rtrPuller.RecvBytes(zmq.DONTWAIT)
 					go t.routingHandler(data)
+				}
+			case info.clearPuller:
+				{
+					info.clearPuller.Recv(zmq.DONTWAIT)
+					t.clearHandler()
 				}
 			}
 		}
@@ -115,4 +121,16 @@ func (t *TxnManager) routingHandler(data [] byte) {
 	if entry, ok := t.TransactionTable.table[tid]; ok {
 		entry.rtrChan <- rtrResp
 	}
+}
+
+func (t *TxnManager) clearHandler() {
+	t.TransactionTable.mutex.Lock()
+	t.TransactionTable.table = make(map[string]*TransactionTableEntry)
+	t.TransactionTable.mutex.Unlock()
+
+	t.WriteBuffer.mutex.Lock()
+	t.WriteBuffer.buffer = make(map[string]*WriteBufferEntry)
+	t.WriteBuffer.mutex.Unlock()
+
+	log.Debug("Cleared transaction table and write buffer!")
 }

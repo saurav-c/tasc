@@ -6,7 +6,9 @@ import (
 	zmq "github.com/pebbe/zmq4"
 	cmn "github.com/saurav-c/tasc/lib/common"
 	kpb "github.com/saurav-c/tasc/proto/keynode"
+	tpb "github.com/saurav-c/tasc/proto/tasc"
 	log "github.com/sirupsen/logrus"
+	"sync"
 	"time"
 )
 
@@ -17,6 +19,7 @@ func (keyNode *KeyNode) listener() {
 	poller.Add(zmqInfo.readPuller, zmq.POLLIN)
 	poller.Add(zmqInfo.validatePuller, zmq.POLLIN)
 	poller.Add(zmqInfo.endTxnPuller, zmq.POLLIN)
+	poller.Add(zmqInfo.clearPuller, zmq.POLLIN)
 
 	for true {
 		sockets, _ := poller.Poll(10 * time.Millisecond)
@@ -45,6 +48,11 @@ func (keyNode *KeyNode) listener() {
 					data, _ := zmqInfo.endTxnPuller.RecvBytes(zmq.DONTWAIT)
 					proto.Unmarshal(data, req)
 					go endTxnHandler(keyNode, req)
+				}
+			case zmqInfo.clearPuller:
+				{
+					zmqInfo.clearPuller.Recv(zmq.DONTWAIT)
+					clearHandler(keyNode)
 				}
 			}
 		}
@@ -142,4 +150,50 @@ func endTxnHandler(keyNode *KeyNode, req *kpb.EndRequest) {
 	end = time.Now()
 
 	go keyNode.Monitor.TrackStat(req.Tid, "[END] Key Node End Pusher", end.Sub(start))
+}
+
+func clearHandler(keyNode *KeyNode) {
+	keyNode.PendingVersionIndex.mutex.Lock()
+	log.WithFields(log.Fields{
+		"Struct": "Pending Locks",
+		"Size": len(keyNode.PendingVersionIndex.locks),
+	}).Debug("Cleared!")
+	log.WithFields(log.Fields{
+		"Struct": "Pending Index",
+		"Size": len(keyNode.PendingVersionIndex.index),
+	}).Debug("Cleared!")
+	keyNode.PendingVersionIndex.locks = make(map[string]*sync.RWMutex)
+	keyNode.PendingVersionIndex.index = make(map[string]*kpb.KeyVersionList)
+	keyNode.PendingVersionIndex.mutex.Unlock()
+
+	keyNode.CommittedVersionIndex.mutex.Lock()
+	log.WithFields(log.Fields{
+		"Struct": "Committed Locks",
+		"Size": len(keyNode.CommittedVersionIndex.locks),
+	}).Debug("Cleared!")
+	log.WithFields(log.Fields{
+		"Struct": "Committed Index",
+		"Size": len(keyNode.CommittedVersionIndex.index),
+	}).Debug("Cleared!")
+	keyNode.CommittedVersionIndex.locks = make(map[string]*sync.RWMutex)
+	keyNode.CommittedVersionIndex.index = make(map[string]*kpb.KeyVersionList)
+	keyNode.CommittedVersionIndex.mutex.Unlock()
+
+	keyNode.PendingTxnSet.mutex.Lock()
+	log.WithFields(log.Fields{
+		"Struct": "Pending Txn Set",
+		"Size": len(keyNode.PendingTxnSet.txnSetMap),
+	}).Debug("Cleared!")
+	keyNode.PendingTxnSet.txnSetMap = make(map[string]*tpb.TransactionWriteSet)
+	keyNode.PendingTxnSet.mutex.Unlock()
+
+	keyNode.CommittedTxnSet.mutex.Lock()
+	log.WithFields(log.Fields{
+		"Struct": "Committed Txn Set",
+		"Size": len(keyNode.CommittedTxnSet.txnSetMap),
+	}).Debug("Cleared!")
+	keyNode.CommittedTxnSet.txnSetMap = make(map[string]*tpb.TransactionWriteSet)
+	keyNode.CommittedTxnSet.mutex.Unlock()
+
+	log.Debug("Cleared all indexes and txn sets!")
 }
