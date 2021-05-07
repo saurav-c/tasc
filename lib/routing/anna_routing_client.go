@@ -7,6 +7,7 @@ import (
 	cmn "github.com/saurav-c/tasc/lib/common"
 	annapb "github.com/saurav-c/tasc/proto/anna"
 	log "github.com/sirupsen/logrus"
+	"math/rand"
 	"os"
 )
 
@@ -16,8 +17,10 @@ const (
 
 type AnnaRoutingClient struct {
 	responseAddress string
-	routerPushers   []zmq.Socket
-	pusher          *zmq.Socket
+	pusher0         *zmq.Socket
+	pusher1         *zmq.Socket
+	pusher2         *zmq.Socket
+	pusher3         *zmq.Socket
 }
 
 func NewAnnaRoutingClient(elbAddress string, ipAddress string) *AnnaRoutingClient {
@@ -28,20 +31,19 @@ func NewAnnaRoutingClient(elbAddress string, ipAddress string) *AnnaRoutingClien
 		os.Exit(1)
 	}
 
-	var pushers []zmq.Socket
-	for i := 0; i < 4; i++ {
-		lookupAddress := fmt.Sprintf(cmn.PushTemplate, elbAddress, AnnaRouterPort+i)
-		socket := cmn.CreateSocket(zmq.PUSH, context, lookupAddress, false)
-		pushers = append(pushers, *socket)
-	}
-	socket := cmn.CreateSocket(zmq.PUSH, context, fmt.Sprintf(cmn.PushTemplate, elbAddress, AnnaRouterPort), false)
+	socket0 := cmn.CreateSocket(zmq.PUSH, context, fmt.Sprintf(cmn.PushTemplate, elbAddress, AnnaRouterPort), false)
+	socket1 := cmn.CreateSocket(zmq.PUSH, context, fmt.Sprintf(cmn.PushTemplate, elbAddress, AnnaRouterPort+1), false)
+	socket2 := cmn.CreateSocket(zmq.PUSH, context, fmt.Sprintf(cmn.PushTemplate, elbAddress, AnnaRouterPort+2), false)
+	socket3 := cmn.CreateSocket(zmq.PUSH, context, fmt.Sprintf(cmn.PushTemplate, elbAddress, AnnaRouterPort+3), false)
 
 	respAddr := fmt.Sprintf(cmn.PushTemplate, ipAddress, cmn.TxnRoutingPullPort)
 
 	return &AnnaRoutingClient{
 		responseAddress: respAddr,
-		routerPushers:   pushers,
-		pusher:          socket,
+		pusher0:         socket0,
+		pusher1:         socket1,
+		pusher2:         socket2,
+		pusher3:         socket3,
 	}
 }
 
@@ -53,8 +55,21 @@ func (annaRtr *AnnaRoutingClient) lookup(tid string, keys []string) {
 	}
 
 	// Get random socket
-	//socket := annaRtr.routerPushers[rand.Intn(4)]
-	socket := annaRtr.pusher
+	r := rand.Intn(4)
+	var socket *zmq.Socket
+	switch r {
+	case 0:
+		socket = annaRtr.pusher0
+	case 1:
+		socket = annaRtr.pusher1
+	case 2:
+		socket = annaRtr.pusher2
+	case 3:
+		socket = annaRtr.pusher3
+	default:
+		log.Debug("None of the routing cases applied...exiting")
+		os.Exit(1)
+	}
 	bts, _ := proto.Marshal(request)
 	socket.SendBytes(bts, zmq.DONTWAIT)
 	log.Debug("Sent lookup request")
