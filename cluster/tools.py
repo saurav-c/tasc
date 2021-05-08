@@ -235,7 +235,9 @@ def cluster_init(txn, key, worker, anna_ip):
     for ip in lb_ips:
         dst = 'tcp://' + ip + ':' + str(LB_CONFIG_PORT)
         sock = context.socket(zmq.PUSH)
+        sock.connect(dst)
         sock.send_string(str(txn))
+        print('Sent txn manager reconfig to load balancer at %' % ip)
 
     # Reconfig key nodes
     key_ips = util.get_pod_ips(client, selector='role=keynode', is_running=True)
@@ -257,6 +259,7 @@ def cluster_init(txn, key, worker, anna_ip):
 
         for still_standby in standby_keys[diff:]:
             f.write(still_standby + '\n')
+        print('Registered %d Key Nodes' % diff)
     elif key < active_key_count:
         diff = active_key_count - key
         deregister_keys = key_ips[:diff]
@@ -264,6 +267,7 @@ def cluster_init(txn, key, worker, anna_ip):
 
         for new_standby in deregister_keys + standby_keys:
             f.write(new_standby + '\n')
+        print('Deregistered %d Key Nodes' % diff)
     f.close()
 
     # Clear Cluster
