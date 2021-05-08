@@ -46,7 +46,7 @@ def main():
             warmup(config)
 
         print('Running workload...')
-        data = run(config)
+        data = run(config, anna_manager_ip)
         bestTPut = 0.0
         for x in data:
             clients, tput = x[0], x[1]
@@ -75,7 +75,10 @@ def warmup(config):
     fmt_cmd = cmd.format(num_clients, benchmark, elb, num_txns, num_reads, num_writes, n_size)
     run_cmd(fmt_cmd)
 
-def run(config):
+def clear(anna_ip):
+    tools.clear(True, anna_ip)
+
+def run(config, anna_ip):
     num_clients = BASE_CLIENTS
     benchmark = DEFAULT_LAMBDA
     elb = config['elb']
@@ -87,27 +90,37 @@ def run(config):
     cmd = 'python3 benchmark_trigger.py -c {} -l {} -a {} -t {} -r {} -w {} -n {}'
 
     throughputs = []
+    print("Trying clients: ", end="")
     while True:
+        print(str(num_clients), end=", ")
         fmt_cmd = cmd.format(num_clients, benchmark, elb, num_txns, num_reads, num_writes, n_size)
         throughput = run_cmd(fmt_cmd)
 
         throughputs.append((num_clients, throughput))
 
+        clear(anna_ip)
+
         if len(throughputs) > 1 and throughput < throughputs[-2][1]:
             # Decrement by 10 and retry
             num_clients -= 10
+            print(str(num_clients), end=", ")
             fmt_cmd = cmd.format(num_clients, benchmark, elb, num_txns, num_reads, num_writes, n_size)
             throughput = run_cmd(fmt_cmd)
 
             throughputs.append((num_clients, throughput))
+            clear(anna_ip)
 
             if throughput > throughputs[-3][1]:
                 # Increment by 5 and retry
                 num_clients += 5
+                print(str(num_clients), end=", ")
                 fmt_cmd = cmd.format(num_clients, benchmark, elb, num_txns, num_reads, num_writes, n_size)
                 throughput = run_cmd(fmt_cmd)
                 throughputs.append((num_clients, throughput))
 
+                clear(anna_ip)
+
+            print()
             return throughputs
         else:
             num_clients += 20
