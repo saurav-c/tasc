@@ -78,10 +78,10 @@ def run(config):
     num_clients = BASE_CLIENTS
     benchmark = DEFAULT_LAMBDA
     elb = config['elb']
-    num_txns = config['txns']
-    num_reads = config['reads']
-    num_writes = config['writes']
-    n_size = config['N']
+    num_txns = int(config['txns'])
+    num_reads = int(config['reads'])
+    num_writes = int(config['writes'])
+    n_size = int(config['N'])
 
     cmd = 'python3 benchmark_trigger.py -c {} -l {} -a {} -t {} -r {} -w {} -n {}'
 
