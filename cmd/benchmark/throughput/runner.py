@@ -40,8 +40,8 @@ def main():
         split = cc.split(',')
         txn, key, worker = int(split[0]), int(split[1]), int(split[2])
         print('Initializing cluster for {} Txn Managers, {} Key Nodes, {} Workers'.format(txn, key, worker))
-        warmup = init(txn, key, worker, anna_manager_ip)
-        if warmup or i == 0:
+        toWarm = init(txn, key, worker, anna_manager_ip)
+        if toWarm or i == 0:
             print('Warming up to deal with newly added nodes or (1st run)...')
             warmup(config)
 
