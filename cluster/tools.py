@@ -22,6 +22,10 @@ POD_CONFIG_DIR = '/go/src/github.com/saurav-c/tasc/config'
 NODE_TYPES = ['tasc', 'keynode', 'routing', 'lb', 'worker', 'benchmark']
 client, apps_client = util.init_k8s()
 
+# CLUSTER INIT INFO
+LB_CONFIG_PORT = 15000
+KEY_STANDBY_FILE = 'key-standby.txt'
+
 def main():
     args = sys.argv[1:]
     cmd = args[0]
@@ -59,9 +63,15 @@ def main():
         fetch_stats()
     elif cmd == 'clear':
         if len(args) > 1 and args[1] == 'cluster':
-            clear(cluster=True)
+            ip = args[2]
+            clear(cluster=True, anna_ip=ip)
         else:
             clear()
+    elif cmd == 'cluster-init':
+        txn = args[1]
+        key = args[2]
+        worker = args[3]
+        cluster_init(txn, key, worker)
     else:
         print('Unknown cmd: ' + cmd)
 
@@ -196,7 +206,7 @@ def fetch_stats():
         cmd = 'kubectl cp default/%s:/go/src/github.com/saurav-c/tasc/cmd/monitor/stats/%s stats/%s' % (mmpname, node, node)
         subprocess.run(cmd, shell=True)
 
-def clear(cluster=False):
+def clear(cluster=False, anna_ip=None):
     context = zmq.Context(1)
     for role in ['tasc', 'keynode']:
         node_ips = util.get_node_ips(client, selector='role='+role, tp='ExternalIP')
@@ -214,10 +224,51 @@ def clear(cluster=False):
         print('Clearing Anna Nodes...')
         print('Cleared Anna Nodes!!!')
 
+def cluster_init(txn, key, worker, anna_ip):
+    # Reconig transaction managers
+    context = zmq.Context(1)
+    lb_ips = util.get_node_ips(client, selector='role=lb', tp='ExternalIP')
+    for ip in lb_ips:
+        dst = 'tcp://' + ip + ':' + str(LB_CONFIG_PORT)
+        sock = context.socket(zmq.PUSH)
+        sock.send_string(str(txn))
 
+    # Reconfig key nodes
+    key_ips = util.get_pod_ips(client, selector='role=keynode', is_running=True)
+    f = open(KEY_STANDBY_FILE, 'w+')
+    standby_keys = [x.strip() for x in f.readlines()]
 
+    active_key_count = len(key_ips) - len(standby_keys)
+    if key > active_key_count:
+        diff = key - active_key_count
+        register_keys = standby_keys[:diff]
+        register(client, register_keys)
 
+        for still_standby in standby_keys[diff:]:
+            f.write(still_standby + '\n')
+    elif key < active_key_count:
+        diff = active_key_count - key
+        deregister_keys = key_ips[:diff]
+        deregister(client, deregister_keys)
 
+        for new_standby in deregister_keys + standby_keys:
+            f.write(new_standby + '\n')
+    f.close()
+
+    # Clear Cluster
+    clear(True, anna_ip)
+
+    # Reconfig workers
+    worker_ips = util.get_pod_ips(client, selector='role=worker', is_running=True)
+    worker_count = len(worker_ips)
+    if worker_count == worker:
+        return False
+
+    if worker > worker_count:
+        add('worker', worker-worker_count)
+    elif worker < worker_count:
+        delete('worker', worker_count-worker)
+    return True
 
 if __name__ == '__main__':
     main()

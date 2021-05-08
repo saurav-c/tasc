@@ -7,6 +7,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"math/rand"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -62,9 +63,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	activeCount := -1
+
 	lbSocket := createSocket(zmq.REP, context, fmt.Sprintf(cmn.PullTemplate, cmn.LoadBalancerPort), true)
+	configSocket := createSocket(zmq.PULL, context, fmt.Sprintf(cmn.PullTemplate, 15000), true)
 	poller := zmq.NewPoller()
 	poller.Add(lbSocket, zmq.POLLIN)
+	poller.Add(configSocket, zmq.POLLIN)
 
 	logger := cmn.InitLogger("logs", "lb", log.DebugLevel)
 	defer logger.Close()
@@ -73,17 +78,30 @@ func main() {
 	for true {
 		sockets, _ := poller.Poll(10 * time.Millisecond)
 
-		// We only have 1 socket, so no need to check which one it is.
-		if len(sockets) > 0 {
-			msg, _ := lbSocket.Recv(zmq.DONTWAIT) // We can ignore this message.
-			resp := ""
-			if strings.Contains(msg, "all") {
-				resp = strings.Join(addresses, ",")
-			} else {
-				index := rand.Intn(len(addresses))
-				resp = addresses[index]
+		for _, socket := range sockets {
+			switch s := socket.Socket; s {
+			case lbSocket:
+				{
+					msg, _ := lbSocket.Recv(zmq.DONTWAIT) // We can ignore this message.
+					resp := ""
+					if strings.Contains(msg, "all") {
+						resp = strings.Join(addresses, ",")
+					} else {
+						index := rand.Intn(len(addresses))
+						resp = addresses[index]
+					}
+					lbSocket.Send(resp, zmq.DONTWAIT)
+				}
+			case configSocket:
+				{
+					msg, _ := configSocket.Recv(zmq.DONTWAIT)
+					count, _ := strconv.Atoi(msg)
+					if count > 0 {
+						activeCount = count
+					}
+					log.Debug("Set active count to %d", activeCount)
+				}
 			}
-			lbSocket.Send(resp, zmq.DONTWAIT)
 		}
 
 		updateEnd := time.Now()
@@ -95,6 +113,9 @@ func main() {
 			}
 
 			addresses = newAddresses
+			if activeCount > 0 {
+				addresses = addresses[:activeCount]
+			}
 			updateStart = time.Now()
 			logAddresses(addresses)
 		}
