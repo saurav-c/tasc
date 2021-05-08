@@ -114,7 +114,7 @@ def run(config):
 
 def run_cmd(cmd):
     result = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
-    for line in result:
+    for line in result.stdout:
         line = line.decode("utf-8")
         if "throughput" in line:
             return float(line.split(':')[1])
