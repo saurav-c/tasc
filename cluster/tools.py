@@ -223,9 +223,10 @@ def clear(cluster=False, anna_ip=None):
     if cluster:
         print('Clearing Anna Nodes...')
         dst = 'tcp://' + anna_ip + ':5000'
-        sock = context.socket(zmq.PUSH)
+        sock = context.socket(zmq.REQ)
         sock.connect(dst)
         sock.send_string('CLEAR')
+        sock.recv_string()
         print('Cleared Anna Nodes!!!')
 
 def cluster_init(txn, key, worker, anna_ip):
