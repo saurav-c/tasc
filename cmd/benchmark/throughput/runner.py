@@ -92,11 +92,12 @@ def run(config, anna_ip, base_clients=BASE_CLIENTS):
     cmd = 'python3 benchmark_trigger.py -c {} -l {} -a {} -t {} -r {} -w {} -n {}'
 
     throughputs = []
-    print("Trying clients: ", end="")
+    print("Beginning...")
     while True:
-        print(str(num_clients), end=", ")
+        print('Trying %d clients...' % num_clients)
         fmt_cmd = cmd.format(num_clients, benchmark, elb, num_txns, num_reads, num_writes, n_size)
         throughput = run_cmd(fmt_cmd)
+        print('Got throughput %f' % throughput)
 
         throughputs.append((num_clients, throughput))
 
@@ -105,9 +106,10 @@ def run(config, anna_ip, base_clients=BASE_CLIENTS):
         if len(throughputs) > 1 and throughput < throughputs[-2][1]:
             # Decrement by 10 and retry
             num_clients -= 10
-            print(str(num_clients), end=", ")
+            print('Trying %d clients...' % num_clients)
             fmt_cmd = cmd.format(num_clients, benchmark, elb, num_txns, num_reads, num_writes, n_size)
             throughput = run_cmd(fmt_cmd)
+            print('Got throughput %f' % throughput)
 
             throughputs.append((num_clients, throughput))
             clear(anna_ip)
@@ -115,9 +117,10 @@ def run(config, anna_ip, base_clients=BASE_CLIENTS):
             if throughput > throughputs[-3][1]:
                 # Increment by 5 and retry
                 num_clients += 5
-                print(str(num_clients), end=", ")
+                print('Trying %d clients...' % num_clients)
                 fmt_cmd = cmd.format(num_clients, benchmark, elb, num_txns, num_reads, num_writes, n_size)
                 throughput = run_cmd(fmt_cmd)
+                print('Got throughput %f' % throughput)
                 throughputs.append((num_clients, throughput))
 
                 clear(anna_ip)
