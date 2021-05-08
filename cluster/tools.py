@@ -237,7 +237,7 @@ def cluster_init(txn, key, worker, anna_ip):
         sock = context.socket(zmq.PUSH)
         sock.connect(dst)
         sock.send_string(str(txn))
-        print('Sent txn manager reconfig to load balancer at %' % ip)
+        print('Sent txn manager reconfig to load balancer at %s' % ip)
 
     # Reconfig key nodes
     key_ips = util.get_pod_ips(client, selector='role=keynode', is_running=True)
