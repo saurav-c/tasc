@@ -105,7 +105,7 @@ func (t *TxnManager) routingHandler(data [] byte) {
 	resp := &annapb.KeyAddressResponse{}
 	err := proto.Unmarshal(data, resp)
 	if err != nil {
-		log.Error("Unable to parse Router response")
+		log.Errorf("Unable to parse Router response %s", err.Error())
 		return
 	}
 
