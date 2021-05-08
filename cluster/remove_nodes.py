@@ -42,11 +42,12 @@ def delete_nodes(client, kind, count):
     for pod in pods_to_delete:
         deleted_pod_ips.append(pod.status.pod_ip)
         podname = pod.metadata.name
+        hostname = 'ip-%s.ec2.internal' % (pod.status.pod_ip.replace('.', '-'))
         client.delete_namespaced_pod(name=podname, namespace=util.NAMESPACE,
                                      body=k8s.client.V1DeleteOptions())
         client.delete_node(name=hostname, body=k8s.client.V1DeleteOptions())
 
-    util.run_process(['./modify_ig.sh', ntype, str(prev_count - count)], 'kops')
+    util.run_process(['./modify_ig.sh', kind, str(prev_count - count)], 'kops')
 
     # Notify routers about deleted key nodes
     if kind == 'keynode':
