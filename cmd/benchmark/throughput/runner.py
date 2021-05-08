@@ -35,13 +35,14 @@ def main():
     bestWriter = csv.writer(bestDataFile)
     bestWriter.writerow(['Transaction Managers', 'Key Nodes', 'Workers', 'Peak Throughput'])
 
-    for cc in lines:
+    for i in range(len(lines)):
+        cc = lines[i]
         split = cc.split(',')
         txn, key, worker = int(split[0]), int(split[1]), int(split[2])
         print('Initializing cluster for {} Txn Managers, {} Key Nodes, {} Workers'.format(txn, key, worker))
         warmup = init(txn, key, worker, anna_manager_ip)
-        if warmup:
-            print('Warming up to deal with newly added nodes...')
+        if warmup or i == 0:
+            print('Warming up to deal with newly added nodes or (1st run)...')
             warmup(config)
 
         print('Running workload...')
