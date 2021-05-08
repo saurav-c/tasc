@@ -222,6 +222,10 @@ def clear(cluster=False, anna_ip=None):
 
     if cluster:
         print('Clearing Anna Nodes...')
+        dst = 'tcp://' + anna_ip + ':5000'
+        sock = context.socket(zmq.PUSH)
+        sock.connect(dst)
+        sock.send_string('CLEAR')
         print('Cleared Anna Nodes!!!')
 
 def cluster_init(txn, key, worker, anna_ip):
@@ -235,8 +239,15 @@ def cluster_init(txn, key, worker, anna_ip):
 
     # Reconfig key nodes
     key_ips = util.get_pod_ips(client, selector='role=keynode', is_running=True)
+    standby_keys = []
+    if os.path.exists(KEY_STANDBY_FILE):
+        try:
+            with open(KEY_STANDBY_FILE, 'r') as f:
+                standby_keys = [x.strip() for x in f.readlines()]
+        except Exception:
+            pass
+
     f = open(KEY_STANDBY_FILE, 'w+')
-    standby_keys = [x.strip() for x in f.readlines()]
 
     active_key_count = len(key_ips) - len(standby_keys)
     if key > active_key_count:
@@ -265,10 +276,11 @@ def cluster_init(txn, key, worker, anna_ip):
         return False
 
     if worker > worker_count:
-        add('worker', worker-worker_count)
+        add('worker', worker - worker_count)
+        return True
     elif worker < worker_count:
-        delete('worker', worker_count-worker)
-    return True
+        delete('worker', worker_count - worker)
+    return False
 
 if __name__ == '__main__':
     main()
