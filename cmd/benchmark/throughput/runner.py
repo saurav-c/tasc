@@ -113,8 +113,9 @@ def run(config):
             num_clients += 20
 
 def run_cmd(cmd):
-    result = subprocess.call(cmd, shell=True, stdout=subprocess.PIPE)
+    result = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
     for line in result:
+        line = line.decode("utf-8")
         if "throughput" in line:
             return float(line.split(':')[1])
     print('Throughput not found...exiting')
