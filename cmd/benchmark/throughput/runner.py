@@ -47,7 +47,8 @@ def main():
             warmup(config)
 
         print('Running workload...')
-        data = run(config, anna_manager_ip)
+        base_client = 35 if key <= 2 else 65
+        data = run(config, anna_manager_ip, base_clients=base_client)
         bestTPut = 0.0
         for x in data:
             clients, tput = x[0], x[1]
@@ -79,8 +80,8 @@ def warmup(config):
 def clear(anna_ip):
     tools.clear(True, anna_ip)
 
-def run(config, anna_ip):
-    num_clients = BASE_CLIENTS
+def run(config, anna_ip, base_clients=BASE_CLIENTS):
+    num_clients = base_clients
     benchmark = DEFAULT_LAMBDA
     elb = config['elb']
     num_txns = int(config['txns'])
