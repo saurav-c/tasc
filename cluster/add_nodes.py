@@ -4,6 +4,8 @@ import os
 import boto3
 import util
 
+KOPS_DIR = '/home/ec2-user/tasc/cluster/kops'
+
 ec2_client = boto3.client('ec2', os.getenv('AWS_REGION', 'us-east-1'))
 
 
@@ -12,9 +14,9 @@ def add_nodes(client, apps_client, cfile, kind, count, aws_key_id=None,
     print('Adding %d %s server node(s) to cluster...' % (count, kind))
 
     prev_count = util.get_previous_count(client, kind)
-    util.run_process(['./modify_ig.sh', kind, str(count + prev_count)], 'kops')
+    util.run_process(['./modify_ig.sh', kind, str(count + prev_count)], KOPS_DIR)
 
-    util.run_process(['./validate_cluster.sh'], 'kops')
+    util.run_process(['./validate_cluster.sh'], KOPS_DIR)
 
     if create:
         fname = 'yaml/ds/%s-ds.yml' % kind

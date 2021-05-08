@@ -8,6 +8,8 @@ import kubernetes as k8s
 import util
 from routing_util import deregister
 
+KOPS_DIR = '/home/ec2-user/tasc/cluster/kops'
+
 ec2_client = boto3.client('ec2', os.getenv('AWS_REGION', 'us-east-1'))
 
 
@@ -23,7 +25,7 @@ def remove_node(ip, ntype):
     client.delete_node(name=hostname, body=k8s.client.V1DeleteOptions())
 
     prev_count = util.get_previous_count(client, ntype)
-    util.run_process(['./modify_ig.sh', ntype, str(prev_count - 1)], 'kops')
+    util.run_process(['./modify_ig.sh', ntype, str(prev_count - 1)], KOPS_DIR)
 
 
 def delete_nodes(client, kind, count):
@@ -47,7 +49,7 @@ def delete_nodes(client, kind, count):
                                      body=k8s.client.V1DeleteOptions())
         client.delete_node(name=hostname, body=k8s.client.V1DeleteOptions())
 
-    util.run_process(['./modify_ig.sh', kind, str(prev_count - count)], 'kops')
+    util.run_process(['./modify_ig.sh', kind, str(prev_count - count)], KOPS_DIR)
 
     # Notify routers about deleted key nodes
     if kind == 'keynode':
