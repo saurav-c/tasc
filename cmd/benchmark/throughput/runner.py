@@ -1,5 +1,6 @@
 import sys
 sys.path.append('./../../cluster')
+sys.path.append('./../../cluster/kops')
 
 from util import load_yaml
 import tools
