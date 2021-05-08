@@ -281,7 +281,8 @@ def cluster_init(txn, key, worker, anna_ip):
         add('worker', worker - worker_count)
         return True
     elif worker < worker_count:
-        delete('worker', worker_count - worker)
+        input("Delete {} workers to continue, waiting...".format(worker_count - worker))
+        # delete('worker', worker_count - worker)
     return False
 
 if __name__ == '__main__':
