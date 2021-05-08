@@ -250,26 +250,23 @@ def cluster_init(txn, key, worker, anna_ip):
         except Exception:
             pass
 
-    f = open(KEY_STANDBY_FILE, 'w+')
-
     active_key_count = len(key_ips) - len(standby_keys)
     if key > active_key_count:
         diff = key - active_key_count
         register_keys = standby_keys[:diff]
         register(client, register_keys)
-
-        for still_standby in standby_keys[diff:]:
-            f.write(still_standby + '\n')
+        with open(KEY_STANDBY_FILE, 'w+') as f:
+            for still_standby in standby_keys[diff:]:
+                f.write(still_standby + '\n')
         print('Registered %d Key Nodes' % diff)
     elif key < active_key_count:
         diff = active_key_count - key
         deregister_keys = key_ips[:diff]
         deregister(client, deregister_keys)
-
-        for new_standby in deregister_keys + standby_keys:
-            f.write(new_standby + '\n')
+        with open(KEY_STANDBY_FILE, 'w+') as f:
+            for new_standby in deregister_keys + standby_keys:
+                f.write(new_standby + '\n')
         print('Deregistered %d Key Nodes' % diff)
-    f.close()
 
     # Clear Cluster
     clear(True, anna_ip)
