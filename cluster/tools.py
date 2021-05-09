@@ -281,7 +281,15 @@ def cluster_init(txn, key, worker, anna_ip):
         add('worker', worker - worker_count)
         return True
     elif worker < worker_count:
-        input("Delete {} workers to continue, waiting...".format(worker_count - worker))
+        # input("Delete {} workers to continue, waiting...".format(worker_count - worker))
+        cmd = 'python3 tools.py delete worker {}'.format(worker_count - worker)
+        subprocess.Popen(cmd, cwd='/home/ec2-user/tasc/cluster')
+
+        # Wait
+        print('Waiting for workers to terminate...')
+        worker_ips = util.get_pod_ips(client, selector='role=worker', is_running=True)
+        while len(worker_ips) > worker_count:
+            worker_ips = util.get_pod_ips(client, selector='role=worker', is_running=True)
         # delete('worker', worker_count - worker)
     return False
 
