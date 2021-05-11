@@ -19,7 +19,7 @@ def main():
 
 
 class StatAnalyzer:
-    def __init__(self, path, toSave, fileName):
+    def __init__(self, path='stats', toSave=True, fileName='stats.csv'):
         self.path = path
         self.toSave = toSave
         self.stats = []
