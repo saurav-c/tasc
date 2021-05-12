@@ -299,11 +299,11 @@ def cluster_init(txn, key, worker, anna_ip):
         # cmd = 'python3 tools.py add worker {}'.format(worker - worker_count)
         # subprocess.Popen(cmd, cwd='/home/ec2-user/tasc/cluster')
         #
-        # # Wait
-        # print('Waiting for workers to start...')
-        # worker_ips = util.get_pod_ips(client, selector='role=worker', is_running=True)
-        # while len(worker_ips) < worker:
-        #     worker_ips = util.get_pod_ips(client, selector='role=worker', is_running=True)
+        # Wait
+        print('Waiting for workers to start...')
+        worker_ips = util.get_pod_ips(client, selector='role=worker', is_running=True)
+        while len(worker_ips) < worker:
+            worker_ips = util.get_pod_ips(client, selector='role=worker', is_running=True)
         return True
     elif worker < worker_count:
         # input("Delete {} workers to continue, waiting...".format(worker_count - worker))
@@ -311,11 +311,11 @@ def cluster_init(txn, key, worker, anna_ip):
         # subprocess.Popen(cmd, cwd='/home/ec2-user/tasc/cluster')
         #
         # # Wait
-        # print('Waiting for workers to terminate...')
-        # worker_ips = util.get_pod_ips(client, selector='role=worker', is_running=True)
-        # while len(worker_ips) > worker:
-        #     worker_ips = util.get_pod_ips(client, selector='role=worker', is_running=True)
         delete('worker', worker_count - worker)
+        print('Waiting for workers to terminate...')
+        worker_ips = util.get_pod_ips(client, selector='role=worker', is_running=True)
+        while len(worker_ips) > worker:
+            worker_ips = util.get_pod_ips(client, selector='role=worker', is_running=True)
     return False
 
 if __name__ == '__main__':
