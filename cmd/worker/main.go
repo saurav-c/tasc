@@ -56,7 +56,11 @@ func (w *TxnWorker) handler(data []byte) {
 	txnIP := txn.Tag.TxnManagerIP
 	txnAddr := fmt.Sprintf(cmn.PushTemplate, txnIP, cmn.TxnAckPullPort)
 
-	log.Debugf("Received transaction status from %s for txn %s", txnIP, txn.Tag.Tid)
+	log.WithFields(log.Fields{
+		"TID": tid,
+		"Txn Manager": txnIP,
+		"MSG": "Received End Txn Request",
+	}).Debug()
 
 	writeStart := time.Now()
 	// Mimic storage write
@@ -73,7 +77,11 @@ func (w *TxnWorker) handler(data []byte) {
 	end := time.Now()
 	go w.Monitor.TrackStat(tid, "[END] Observed Worker", end.Sub(start))
 
-	log.Debugf("Sent ACK to %s", txnAddr)
+	log.WithFields(log.Fields{
+		"TID": tid,
+		"Txn Manager": txnIP,
+		"MSG": "Responded with ACK",
+	}).Debug()
 
 	// Lookup relevant Key Nodes
 	c := make(chan *routing.RoutingResponse)
