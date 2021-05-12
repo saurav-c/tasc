@@ -58,6 +58,8 @@ def main():
             bestTPut = max(bestTPut, x[1])
             dataWriter.writerow([clients, txn, key, worker, tput])
         bestWriter.writerow([txn, key, worker, bestTPut])
+        dataFile.flush()
+        bestDataFile.flush()
         print('Peak Throughput of {} for {} Txn Managers, {} Key Nodes, {} Workers'.format(bestTPut, txn, key, worker))
 
     dataFile.close()
@@ -81,6 +83,7 @@ def warmup(config):
     run_cmd(fmt_cmd)
 
 def clear(anna_ip):
+    print('Sleeping and clearing...')
     time.sleep(15)
     tools.clear(True, anna_ip)
 
