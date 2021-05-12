@@ -280,22 +280,27 @@ func (t *TxnManager) CommitTransaction(ctx context.Context, tag *tpb.Transaction
 	}
 
 	// Wait for Phase 2 responses
-	ok := t.collectEndTxnResponses(txnEntry.endTxnChan)
+	t.collectEndTxnResponses(txnEntry.endTxnChan)
 	end = time.Now()
 
 	go t.Monitor.TrackStat(tid, "[COMMIT] Phase 2", end.Sub(start))
 
 	// Rollback transaction
-	if !ok && action == kpb.TransactionAction_COMMIT {
-		log.WithFields(log.Fields{
-			"TID": tid,
-		}).Error("Rolling back transaction")
-		action = kpb.TransactionAction_ABORT
-		go t.endTransaction(tid, tpb.TascTransactionStatus_ABORTED, nil)
-	}
+	//if !ok && action == kpb.TransactionAction_COMMIT {
+	//	log.WithFields(log.Fields{
+	//		"TID": tid,
+	//	}).Error("Rolling back transaction")
+	//	action = kpb.TransactionAction_ABORT
+	//	go t.endTransaction(tid, tpb.TascTransactionStatus_ABORTED, nil)
+	//}
 
 	if action == kpb.TransactionAction_COMMIT {
 		// Wait for storage write to finish
+		go log.WithFields(log.Fields{
+			"TID": tid,
+			"MSG": "Waiting for storage to finish",
+		}).Debug()
+
 		start := time.Now()
 		<-storageChan
 		end := time.Now()
@@ -400,16 +405,22 @@ func (t *TxnManager) writeToStorage(tid string, endTs int64, entry *WriteBufferE
 	endTsString := cmn.Int64ToString(endTs)
 	// Send writes & transaction set to storage
 	wg := sync.WaitGroup{}
-	wg.Add(len(entry.buffer)+1)
 
 	for key, val := range entry.buffer {
+		wg.Add(1)
 		go func(k string, v []byte) {
 			defer wg.Done()
 			newKey := fmt.Sprintf(cmn.StorageKeyTemplate, k, endTsString, tid)
 			t.StorageManager.Put(newKey, v)
+			log.WithFields(log.Fields{
+				"TID": tid,
+				"Key": k,
+				"MSG": "Wrote Key to storage",
+			}).Debug()
 		}(key, val)
 	}
 
+	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		dbKeys := make([]string, len(entry.buffer))
@@ -420,7 +431,12 @@ func (t *TxnManager) writeToStorage(tid string, endTs int64, entry *WriteBufferE
 		txnWriteSet := &tpb.TransactionWriteSet{Keys: dbKeys}
 		data, _ := proto.Marshal(txnWriteSet)
 		t.StorageManager.Put(tid, data)
+		log.WithFields(log.Fields{
+			"TID": tid,
+			"MSG": "Wrote Write Set to storage",
+		}).Debug()
 	}()
+
 	wg.Wait()
 	writeChan <- true
 }
