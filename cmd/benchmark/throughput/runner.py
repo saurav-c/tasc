@@ -15,7 +15,7 @@ CLUSTER_CONFIG_FILE = './throughput/cluster_config.txt'
 DATA_FILE = './throughput/data.csv'
 BEST_DATA_FILE = './throughput/best_data.csv'
 
-BASE_CLIENTS = 25
+BASE_CLIENTS = 35
 DEFAULT_LAMBDA = 'tasc-lambda'
 
 def main():
@@ -48,9 +48,7 @@ def main():
             warmup(config)
 
         print('Running workload...')
-        base_client = 35
-        if key > 2 and txn > 2:
-            base_client += (20 * (key - 2))
+        base_client = BASE_CLIENTS
         data = run(config, anna_manager_ip, base_clients=base_client)
         bestTPut = 0.0
         for x in data:
