@@ -8,6 +8,7 @@ import tools
 import csv
 import subprocess
 import os
+import time
 
 CONFIG_FILE = './throughput/config.yml'
 CLUSTER_CONFIG_FILE = './throughput/cluster_config.txt'
@@ -47,7 +48,9 @@ def main():
             warmup(config)
 
         print('Running workload...')
-        base_client = 35 if key <= 2 else 65
+        base_client = 35
+        if key > 2 and txn > 2:
+            base_client += (20 * (key - 2))
         data = run(config, anna_manager_ip, base_clients=base_client)
         bestTPut = 0.0
         for x in data:
@@ -78,6 +81,7 @@ def warmup(config):
     run_cmd(fmt_cmd)
 
 def clear(anna_ip):
+    time.sleep(30)
     tools.clear(True, anna_ip)
 
 def run(config, anna_ip, base_clients=BASE_CLIENTS):
@@ -117,13 +121,17 @@ def run(config, anna_ip, base_clients=BASE_CLIENTS):
             if throughput > throughputs[-3][1]:
                 # Increment by 5 and retry
                 num_clients += 5
-                print('Trying %d clients...' % num_clients)
-                fmt_cmd = cmd.format(num_clients, benchmark, elb, num_txns, num_reads, num_writes, n_size)
-                throughput = run_cmd(fmt_cmd)
-                print('Got throughput %f' % throughput)
-                throughputs.append((num_clients, throughput))
+            else:
+                # Decrement by 5
+                num_clients -= 5
 
-                clear(anna_ip)
+            print('Trying %d clients...' % num_clients)
+            fmt_cmd = cmd.format(num_clients, benchmark, elb, num_txns, num_reads, num_writes, n_size)
+            throughput = run_cmd(fmt_cmd)
+            print('Got throughput %f' % throughput)
+            throughputs.append((num_clients, throughput))
+
+            clear(anna_ip)
 
             print()
             return throughputs
