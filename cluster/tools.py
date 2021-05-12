@@ -233,6 +233,8 @@ def clear(cluster=False, anna_ip=None):
             print('Cleared {} node at {}'.format(role, ip))
         print('Cleared all {} nodes'.format(role))
 
+    clean_stats()
+
     print('Cleared all TASC components')
 
     if cluster:
