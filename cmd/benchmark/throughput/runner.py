@@ -81,7 +81,7 @@ def warmup(config):
     run_cmd(fmt_cmd)
 
 def clear(anna_ip):
-    time.sleep(30)
+    time.sleep(15)
     tools.clear(True, anna_ip)
 
 def run(config, anna_ip, base_clients=BASE_CLIENTS):

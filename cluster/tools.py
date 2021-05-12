@@ -153,12 +153,13 @@ def sendConfig(nodeIP, configFile):
 
     os.system('rm ' + CONFIG_FILE)
 
-def add(kind, count):
+def add(kind, count, cfile=None):
+    config_file = cfile if cfile else BASE_CONFIG_FILE
     prev_pod_ips = None
     if kind == 'keynode':
         prev_pod_ips = util.get_pod_ips(client, 'role=' + kind, is_running=True)
 
-    add_nodes(client, apps_client, BASE_CONFIG_FILE, kind, count,
+    add_nodes(client, apps_client, config_file, kind, count,
               aws_key_id, aws_key, False, './', 'master')
 
     if prev_pod_ips is not None:
@@ -294,8 +295,11 @@ def cluster_init(txn, key, worker, anna_ip):
     if worker_count == worker:
         return False
 
+    # Throughput path to config file
+    c_path = '../../config/tasc-base.yml'
+
     if worker > worker_count:
-        add('worker', worker - worker_count)
+        add('worker', worker - worker_count, cfile=c_path)
         # cmd = 'python3 tools.py add worker {}'.format(worker - worker_count)
         # subprocess.Popen(cmd, cwd='/home/ec2-user/tasc/cluster')
         #
