@@ -96,6 +96,10 @@ func logStatistics(data []byte) {
 		return
 	}
 
+	if _, err := os.Stat("stats"); os.IsNotExist(err) {
+		os.Mkdir("stats", os.ModePerm)
+	}
+
 	if _, err := os.Stat(fileName); os.IsNotExist(err) {
 		jstring = "[" + jstring
 	}
