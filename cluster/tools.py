@@ -218,6 +218,7 @@ def clean_stats():
     cname = mpod.spec.containers[0].name
 
     cmd = 'kubectl exec -it %s -c %s -- rm %s/*' % (mmpname, cname, dir)
+    subprocess.run(cmd, shell=True)
 
     print('Monitor stats cleared')
 
